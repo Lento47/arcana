@@ -218,7 +218,7 @@ describe("internal notifications TUI plugin", () => {
     expect(harness.notifications).toEqual([
       {
         title: "Demo session",
-        message: "Session error",
+        message: "Session error — open the session for details",
         notification: { when: "blurred" },
         sound: { name: "error", when: "always" },
       },

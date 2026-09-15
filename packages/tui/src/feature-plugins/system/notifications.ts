@@ -24,7 +24,7 @@ function sessionErrorMessage(error: SessionError) {
   if (data && typeof data === "object" && "message" in data && data.message === "SSE read timed out") {
     return "Model stopped responding"
   }
-  return "Session error"
+  return "Session error — open the session for details"
 }
 
 const tui: TuiPlugin = async (api) => {
