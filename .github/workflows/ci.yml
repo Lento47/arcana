@@ -5,6 +5,7 @@ on:
     branches:
       - master
       - phase-d-implementation
+      - arcanagov
   push:
     branches:
       - master
