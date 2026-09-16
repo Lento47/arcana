@@ -9,6 +9,9 @@
 
 - The "Working in the … context" line is a FALLBACK shown only while `streaming` with empty live output (`preliminaryToolOutput` requires `status==="running"` + string output). Cancelled/pending tasks render no working panel — keep state wording distinct or cards read as duplicated messages.
 - Task parts cancelled by turn cleanup (sibling failed → wave cancelled) still render as agent entries; derive liveness/badge from `part.state.status`, never from child heartbeat alone.
+- Card layout budget: the status line is state + progress + `↵ open` only (elapsed lives in the header chip; repeating it read as noise). The live ticker shows the newest `LIVE_OUTPUT_LINES` (2) lines — newest brightest, `…` on the clipped first — and the returned step list caps at `MAX_CARD_STEPS` (6) with a `… N more steps` tail.
+- Collapsed returned cards show a one-line report preview (markers stripped); expanding replaces it with the full markdown body — one-line scan, no duplicate preview.
+- `^b background` (session.background) is surfaced only by the focused-card hint, and only while the entry is `streaming` and not already `background` (from `state.metadata.background`) — the hint must not offer a no-op.
 
 ## Gates
 
