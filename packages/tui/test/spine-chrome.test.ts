@@ -236,6 +236,15 @@ describe("approvalGateFacts", () => {
       "connect to the operator-configured MCP server",
     )
   })
+
+  test("approval fact groups mark a missing reason explicitly", () => {
+    const groups = approvalFactGroups({
+      tool: "mcp",
+      action: "network.write",
+      available: true,
+    }, "wide")
+    expect(groups.primary.find((row) => row.label === "reason")?.value).toBe("(not provided)")
+  })
 })
 
 describe("task / chat / prompt / code chrome", () => {

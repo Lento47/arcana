@@ -365,7 +365,7 @@ export function approvalFactGroups(
   }
   push("primary", "tool", snapshot?.tool)
   push("primary", "action", snapshot?.action)
-  push("primary", "reason", snapshot?.reason)
+  push("primary", "reason", snapshot?.reason ?? (snapshot?.available ? "(not provided)" : undefined))
   if (snapshot?.contractRevision !== undefined && snapshot.contractRevision !== null) {
     push("primary", "contract", `r${snapshot.contractRevision}`)
   }

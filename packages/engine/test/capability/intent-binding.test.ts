@@ -340,30 +340,39 @@ describe("PDP integration: intent binding rules", () => {
     expect(d.decision).toBe("ALLOW")
   })
 
-  test("model-initiated consequential action without a reason → DENY_MISSING_TOOL_REASON", () => {
+  test("missing reason never hard-denies; remote content still routes to approval", () => {
     const cap = makeCapability({
       actions: ["network.write"],
       resources: [{ kind: "network", pattern: "*" }],
     })
-    const req = buildAuthorizationRequest({
+    const mcpReq = buildAuthorizationRequest({
+      toolName: "mcp",
+      principalId: "agent:main",
+      sessionId: "sess-001",
+      args: { server: "freeconomics" },
+      provenance: ["REMOTE_CONTENT", "MODEL_OUTPUT", "MCP_DESCRIPTION"],
+    })
+    const ctx = makeContext({ capabilities: [cap], intentBindings: [] })
+    const d = evaluate(mcpReq, ctx)
+    // The notice is informational; the operator gate is the control.
+    expect(d.reasons.some((r) => r.code === "MISSING_TOOL_REASON")).toBe(true)
+    expect(d.decision).toBe("REQUIRE_APPROVAL")
+    expect(d.reasons.some((r) => r.code === "REQUIRE_APPROVAL_REMOTE_CONTENT")).toBe(true)
+  })
+
+  test("reason notice is informational: supplied reason clears it, operator surfaces exempt", () => {
+    const cap = makeCapability({
+      actions: ["network.write"],
+      resources: [{ kind: "network", pattern: "*" }],
+    })
+    const modelReq = buildAuthorizationRequest({
       toolName: "send_message",
       principalId: "agent:main",
       sessionId: "sess-001",
       args: { target: "telegram", message: "hello" },
       provenance: ["MODEL_OUTPUT"],
     })
-    const ctx = makeContext({ capabilities: [cap], intentBindings: [] })
-    const d = evaluate(req, ctx)
-    expect(d.decision).toBe("DENY")
-    expect(d.reasons.some((r) => r.code === "DENY_MISSING_TOOL_REASON")).toBe(true)
-  })
-
-  test("a supplied reason clears the reason gate (operator surfaces exempt)", () => {
-    const cap = makeCapability({
-      actions: ["network.write"],
-      resources: [{ kind: "network", pattern: "*" }],
-    })
-    const modelReq = buildAuthorizationRequest({
+    const reasonedReq = buildAuthorizationRequest({
       toolName: "send_message",
       principalId: "agent:main",
       sessionId: "sess-001",
@@ -379,9 +388,9 @@ describe("PDP integration: intent binding rules", () => {
       provenance: ["USER_INSTRUCTION"],
     })
     const ctx = makeContext({ capabilities: [cap], intentBindings: [] })
-    for (const req of [modelReq, operatorReq]) {
-      const d = evaluate(req, ctx)
-      expect(d.reasons.some((r) => r.code === "DENY_MISSING_TOOL_REASON")).toBe(false)
+    expect(evaluate(modelReq, ctx).reasons.some((r) => r.code === "MISSING_TOOL_REASON")).toBe(true)
+    for (const req of [reasonedReq, operatorReq]) {
+      expect(evaluate(req, ctx).reasons.some((r) => r.code === "MISSING_TOOL_REASON")).toBe(false)
     }
   })
 })

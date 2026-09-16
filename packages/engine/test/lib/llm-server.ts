@@ -96,8 +96,18 @@ function finishLine(reason: string, usage?: Usage) {
   return chunk({ finish: reason, usage })
 }
 
-function toolStartLine(id: string, name: string) {
-  return chunk({
+/**
+ * Every model tool call carries a `reason` (ADR-006). Fixtures that do not
+ * exercise the reason notice get a default so the platform accepts the call.
+ */
+function withDefaultReason(input: unknown): unknown {
+  if (input === null || typeof input !== "object" || Array.isArray(input)) return input
+  const record = input as Record<string, unknown>
+  if (typeof record.reason === "string" && record.reason.trim()) return record
+  return { ...record, reason: "fixture tool call" }
+}
+
+function toolStartLine(id: string, name: string) {  return chunk({
     delta: {
       tool_calls: [
         {
@@ -511,14 +521,16 @@ export class Reply {
 
   tool(name: string, input: unknown) {
     const id = this.#id()
-    const args = JSON.stringify(input)
+    // Every model tool call carries a `reason` (ADR-006). Fixtures that do not
+    // exercise the reason gate get a default so the platform accepts the call.
+    const args = JSON.stringify(withDefaultReason(input))
     this.#tail = [...this.#tail, toolStartLine(id, name), toolArgsLine(args)]
     return this.toolCalls()
   }
 
   pendingTool(name: string, input: unknown) {
     const id = this.#id()
-    const args = JSON.stringify(input)
+    const args = JSON.stringify(withDefaultReason(input))
     const size = Math.max(1, Math.floor(args.length / 2))
     this.#tail = [...this.#tail, toolStartLine(id, name), toolArgsLine(args.slice(0, size))]
     return this

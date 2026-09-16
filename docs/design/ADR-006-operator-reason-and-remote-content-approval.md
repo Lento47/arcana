@@ -35,10 +35,12 @@ human decision, and the system must ask rather than fail into a dead end.
    so an approval binding for a bare request can never authorize a reasoned one.
 3. **Operator surfaces show it.** The reason rides `authorization.requested`, the
    immutable request snapshot, and the approval gate as a primary `reason` fact.
-4. **Model-initiated consequential calls without a reason fail closed**
-   (`DENY_MISSING_TOOL_REASON`) with instructions to retry with a reason. Operator/CLI
-   mediation (no `MODEL_OUTPUT` provenance) is exempt, so kernel/CLI paths are
-   unchanged.
+4. **Model-initiated calls are asked for a reason, but absence never hard-denies.**
+   When a reason is missing the PDP records an informational `MISSING_TOOL_REASON`
+   notice and the approval gate shows `(not provided)`. The operator gate — remote
+   content, risk, provenance — still decides. A hard deny (`DENY_MISSING_TOOL_REASON`)
+   was tried and removed: it left the model no recovery path and blocked ordinary
+   tool use in practice.
 5. **Remote content without a user binding requires approval, not denial**
    (`REQUIRE_APPROVAL_REMOTE_CONTENT`). On approve, the engine creates the
    `EXPLICIT_APPROVAL` binding for the exact request and retries; the remote-content
