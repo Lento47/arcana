@@ -869,7 +869,7 @@ function GenericTool(props: ToolProps) {
     <Show
       when={props.output && ctx.showGenericToolOutput()}
       fallback={
-        <InlineTool icon="⚙" pending={pickVerb(VerbPool.pending.generic, props.part.sessionID) + "…"} complete={true} part={props.part}>
+        <InlineTool pending={pickVerb(VerbPool.pending.generic, props.part.sessionID) + "…"} complete={true} part={props.part}>
           {browserToolDisplay(props.tool)} {input(props.input)} {badge()}
         </InlineTool>
       }
@@ -967,8 +967,6 @@ function formatPermissionDenial(error: string): string {
 }
 
 function InlineTool(props: {
-  icon: string
-  iconColor?: RGBA
   color?: RGBA
   complete: unknown
   pending: string
@@ -1039,10 +1037,8 @@ function InlineTool(props: {
   return (
     <InlineToolRow
       id={`tool-inline-${props.subagent ? "subagent-" : ""}${props.part.messageID}-${props.part.id}`}
-      icon={props.icon}
       tool={props.part.tool}
       label={toolCategoryLabel(props.part.tool)}
-      iconColor={props.iconColor}
       color={fg()}
       errorColor={theme.error}
       failed={failed()}
@@ -1077,11 +1073,9 @@ function InlineTool(props: {
 
 export function InlineToolRow(props: {
   id?: string
-  icon: string
   /** Canonical tool name used for the shared semantic category pill. */
   tool?: string
   label?: string
-  iconColor?: RGBA
   color?: RGBA
   errorColor?: RGBA
   failed?: boolean
@@ -1289,7 +1283,7 @@ function Shell(props: ToolProps) {
         </BlockTool>
       </Match>
       <Match when={true}>
-        <InlineTool icon="$" pending={pickVerb(VerbPool.pending.shell, props.part.sessionID) + "…"} complete={stringValue(props.input.command)} part={props.part}>
+        <InlineTool pending={pickVerb(VerbPool.pending.shell, props.part.sessionID) + "…"} complete={stringValue(props.input.command)} part={props.part}>
           {stringValue(props.input.command)}
         </InlineTool>
       </Match>
@@ -1323,7 +1317,6 @@ function Write(props: ToolProps) {
       </Match>
       <Match when={true}>
         <InlineTool
-          icon="←"
           pending={pickVerb(VerbPool.pending.write, props.part.sessionID) + "…"}
           complete={stringValue(props.input.filePath)}
           part={props.part}
@@ -1338,7 +1331,7 @@ function Write(props: ToolProps) {
 function Glob(props: ToolProps) {
   const pathFormatter = usePathFormatter()
   return (
-    <InlineTool icon="✱" pending={pickVerb(VerbPool.pending.search, props.part.sessionID) + "…"} complete={stringValue(props.input.pattern)} part={props.part}>
+    <InlineTool pending={pickVerb(VerbPool.pending.search, props.part.sessionID) + "…"} complete={stringValue(props.input.pattern)} part={props.part}>
       Glob "{stringValue(props.input.pattern)}"{" "}
       <Show when={stringValue(props.input.path)}>in {pathFormatter.format(stringValue(props.input.path))} </Show>
       <Show when={numberValue(props.metadata.count)}>
@@ -1362,7 +1355,6 @@ function Read(props: ToolProps) {
   return (
     <>
       <InlineTool
-        icon="→"
         pending={pickVerb(VerbPool.pending.read, props.part.sessionID) + "…"}
         complete={stringValue(props.input.filePath)}
         spinner={isRunning()}
@@ -1386,7 +1378,7 @@ function Read(props: ToolProps) {
 function Grep(props: ToolProps) {
   const pathFormatter = usePathFormatter()
   return (
-    <InlineTool icon="✱" pending={pickVerb(VerbPool.pending.search, props.part.sessionID) + "…"} complete={stringValue(props.input.pattern)} part={props.part}>
+    <InlineTool pending={pickVerb(VerbPool.pending.search, props.part.sessionID) + "…"} complete={stringValue(props.input.pattern)} part={props.part}>
       Grep "{stringValue(props.input.pattern)}"{" "}
       <Show when={stringValue(props.input.path)}>in {pathFormatter.format(stringValue(props.input.path))} </Show>
       <Show when={numberValue(props.metadata.matches)}>
@@ -1398,7 +1390,7 @@ function Grep(props: ToolProps) {
 
 function WebFetch(props: ToolProps) {
   return (
-    <InlineTool icon="%" pending={pickVerb(VerbPool.pending.fetch, props.part.sessionID) + "…"} complete={stringValue(props.input.url)} part={props.part}>
+    <InlineTool pending={pickVerb(VerbPool.pending.fetch, props.part.sessionID) + "…"} complete={stringValue(props.input.url)} part={props.part}>
       WebFetch {stringValue(props.input.url)}
     </InlineTool>
   )
@@ -1406,7 +1398,7 @@ function WebFetch(props: ToolProps) {
 
 function WebSearch(props: ToolProps) {
   return (
-    <InlineTool icon="◈" pending={pickVerb(VerbPool.pending.search, props.part.sessionID) + "…"} complete={stringValue(props.input.query)} part={props.part}>
+    <InlineTool pending={pickVerb(VerbPool.pending.search, props.part.sessionID) + "…"} complete={stringValue(props.input.query)} part={props.part}>
       {webSearchProviderLabel(props.metadata.provider)} "{stringValue(props.input.query)}"{" "}
       <Show when={numberValue(props.metadata.numResults)}>({numberValue(props.metadata.numResults)} results)</Show>
     </InlineTool>
@@ -1500,7 +1492,6 @@ function Task(props: ToolProps) {
 
   return (
     <InlineTool
-      icon={props.part.state.status === "completed" ? "✓" : "│"}
       subagent={true}
       color={retry() ? theme.error : undefined}
       spinner={isRunning()}
@@ -1599,7 +1590,7 @@ function Edit(props: ToolProps) {
         </BlockTool>
       </Match>
       <Match when={true}>
-        <InlineTool icon="←" pending={pickVerb(VerbPool.pending.edit, props.part.sessionID) + "…"} complete={stringValue(props.input.filePath)} part={props.part}>
+        <InlineTool pending={pickVerb(VerbPool.pending.edit, props.part.sessionID) + "…"} complete={stringValue(props.input.filePath)} part={props.part}>
           Edit {pathFormatter.format(stringValue(props.input.filePath))} {input({ replaceAll: props.input.replaceAll })}
         </InlineTool>
       </Match>
@@ -1675,7 +1666,7 @@ function ApplyPatch(props: ToolProps) {
         </For>
       </Match>
       <Match when={true}>
-        <InlineTool icon="%" pending={pickVerb(VerbPool.pending.edit, props.part.sessionID) + "…"} failure="Patch failed" complete={false} part={props.part}>
+        <InlineTool pending={pickVerb(VerbPool.pending.edit, props.part.sessionID) + "…"} failure="Patch failed" complete={false} part={props.part}>
           Patch
         </InlineTool>
       </Match>
@@ -1696,7 +1687,6 @@ function TodoWrite(props: ToolProps) {
       </Match>
       <Match when={true}>
         <InlineTool
-          icon="⚙"
           pending={pickVerb(VerbPool.pending.todo, props.part.sessionID) + "…"}
           failure="Todo update failed"
           complete={false}
@@ -1738,7 +1728,7 @@ function Question(props: ToolProps) {
         </BlockTool>
       </Match>
       <Match when={true}>
-        <InlineTool icon="→" pending={pickVerb(VerbPool.pending.question, props.part.sessionID) + "…"} complete={count()} part={props.part}>
+        <InlineTool pending={pickVerb(VerbPool.pending.question, props.part.sessionID) + "…"} complete={count()} part={props.part}>
           Asked {count()} question{count() !== 1 ? "s" : ""}
         </InlineTool>
       </Match>
@@ -1748,7 +1738,7 @@ function Question(props: ToolProps) {
 
 function Skill(props: ToolProps) {
   return (
-    <InlineTool icon="→" pending={pickVerb(VerbPool.pending.skill, props.part.sessionID) + "…"} complete={stringValue(props.input.name)} part={props.part}>
+    <InlineTool pending={pickVerb(VerbPool.pending.skill, props.part.sessionID) + "…"} complete={stringValue(props.input.name)} part={props.part}>
       Skill "{stringValue(props.input.name)}"
     </InlineTool>
   )
@@ -1757,7 +1747,7 @@ function Skill(props: ToolProps) {
 function PlanEnter(props: ToolProps) {
   const { theme } = useTheme()
   return (
-    <InlineTool icon="◈" pending="Entering plan mode…" complete={props.part.state.status === "completed"} part={props.part}>
+    <InlineTool pending="Entering plan mode…" complete={props.part.state.status === "completed"} part={props.part}>
       <span style={{ fg: theme.accent }}>Plan mode</span>{" "}— read-only exploration and design
     </InlineTool>
   )
@@ -1768,7 +1758,7 @@ function PlanExit(props: ToolProps) {
   const title = createMemo(() => stringValue(props.metadata.title) || "Switching to build agent")
   const output = createMemo(() => stringValue(props.output))
   return (
-    <InlineTool icon="◈" pending="Finalizing plan…" complete={props.part.state.status === "completed"} part={props.part}>
+    <InlineTool pending="Finalizing plan…" complete={props.part.state.status === "completed"} part={props.part}>
       <span style={{ fg: theme.accent }}>{title()}</span>
       <Show when={output()}>
         <span style={{ fg: theme.textMuted }}> {Glyph.sep} </span>{output()}
