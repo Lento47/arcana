@@ -14,6 +14,13 @@ export type SpineOrderingKey = {
   sessionId: string
   sequence: number
   timestamp: string
+  /**
+   * Wall-clock time of the underlying fact (message creation, governance
+   * event, approval creation). Message indexes and event sequences are
+   * different scales, so occurredAt is the primary cross-source order; the
+   * sequence stays as the within-source tie-breaker.
+   */
+  occurredAt?: number
   /** Source priority: GOVERNANCE=0 (highest), APPROVAL=1, MESSAGE=2 */
   sourcePriority: number
   sourceEventId: string
@@ -29,6 +36,7 @@ export function createOrderingKey(input: {
   sessionId: string
   sequence: number
   timestamp: string
+  occurredAt?: number
   source: string
   sourceEventId: string
 }): SpineOrderingKey {
@@ -36,6 +44,7 @@ export function createOrderingKey(input: {
     sessionId: input.sessionId,
     sequence: input.sequence,
     timestamp: input.timestamp,
+    occurredAt: input.occurredAt,
     sourcePriority: SOURCE_PRIORITY[input.source] ?? 99,
     sourceEventId: input.sourceEventId,
   }
@@ -51,22 +60,29 @@ export function compareOrderingKeys(a: SpineOrderingKey, b: SpineOrderingKey): n
     return a.sessionId < b.sessionId ? -1 : 1
   }
 
-  // 2. Sequence number (primary ordering)
+  // 2. Wall clock when both sides know when the fact happened. Without this,
+  // approval rows (sequence 0, no timestamp) sorted above every message and
+  // rendered before the request that triggered them.
+  if (a.occurredAt !== undefined && b.occurredAt !== undefined && a.occurredAt !== b.occurredAt) {
+    return a.occurredAt - b.occurredAt
+  }
+
+  // 3. Sequence number (within-source ordering)
   if (a.sequence !== b.sequence) {
     return a.sequence - b.sequence
   }
 
-  // 3. Timestamp (secondary ordering for same-sequence entries)
+  // 4. Timestamp (secondary ordering for same-sequence entries)
   if (a.timestamp !== b.timestamp) {
     return a.timestamp < b.timestamp ? -1 : 1
   }
 
-  // 4. Source priority (governance > approval > message)
+  // 5. Source priority (governance > approval > message)
   if (a.sourcePriority !== b.sourcePriority) {
     return a.sourcePriority - b.sourcePriority
   }
 
-  // 5. Source event ID (final tie-breaker)
+  // 6. Source event ID (final tie-breaker)
   if (a.sourceEventId !== b.sourceEventId) {
     return a.sourceEventId < b.sourceEventId ? -1 : 1
   }

@@ -373,7 +373,10 @@ export function approvalFactGroups(
   if (compact) {
     push("meta", "policy", snapshot?.policy)
     push("meta", "route", snapshot?.route)
-    push("meta", "change", snapshot?.change ?? "unavailable · fail-closed")
+    // `change` is executed-argument evidence; a pending approval has none yet.
+    // Rendering "unavailable · fail-closed" on every live gate was noise — the
+    // inspector still states it explicitly when reviewing a record.
+    push("meta", "change", snapshot?.change)
   }
   push("meta", "principal", snapshot?.principal)
   if (wide && snapshot?.arguments?.length) {

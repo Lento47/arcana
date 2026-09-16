@@ -24,6 +24,7 @@ import {
   approvalIdFromEntryID,
   dedupeApprovalEntries,
 } from "./approval-spine-adapter"
+import { resolveApprovalSnapshot } from "./approval-snapshot"
 import { compareOrderingKeys, createOrderingKey, createDedupeKey, dedupeKeyToString } from "./spine-ordering"
 import {
   governanceTraceToSpineEntry,
@@ -270,7 +271,11 @@ export function useSpineProjection(props: ShellProps, input: {
   // ── TUI-2.1: Approval integration ────────────────────────────────
   const approvals = createMemo(() => props.approvals?.() ?? [])
 
-  const approvalEntries = createMemo(() => dedupeApprovalEntries(approvals()))
+  const approvalEntries = createMemo(() =>
+    dedupeApprovalEntries(approvals(), (approval) =>
+      resolveApprovalSnapshot(approval, props.governance?.() ?? []),
+    ),
+  )
 
   const governanceEntries = createMemo(() => {
     const seen = new Set<string>()
@@ -353,6 +358,7 @@ export function useSpineProjection(props: ShellProps, input: {
         sessionId: sid,
         sequence: a.index,
         timestamp: a.timestamp ?? "",
+        occurredAt: a.occurredAt,
         source: a.source?.kind === "governance" ? "GOVERNANCE" : a.source?.kind === "approve" ? "APPROVAL" : "MESSAGE",
         sourceEventId: a.id,
       })
@@ -360,6 +366,7 @@ export function useSpineProjection(props: ShellProps, input: {
         sessionId: sid,
         sequence: b.index,
         timestamp: b.timestamp ?? "",
+        occurredAt: b.occurredAt,
         source: b.source?.kind === "governance" ? "GOVERNANCE" : b.source?.kind === "approve" ? "APPROVAL" : "MESSAGE",
         sourceEventId: b.id,
       })

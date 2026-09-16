@@ -105,4 +105,23 @@ describe("approval snapshot resolution (PR6)", () => {
     expect(shortHash("short")).toBe("short")
     expect(shortHash(undefined)).toBe("unavailable")
   })
+
+  test("record facts stay visible and a foreign request hash never leaks in", () => {
+    const foreign = [
+      event("req-other", "authorization.requested", "other-hash", {
+        tool: "write_file",
+        action: "filesystem.write",
+        reason: "unrelated",
+      }),
+    ]
+    const snapshot = resolveApprovalSnapshot(approval, foreign as never)
+
+    expect(snapshot.available).toBe(false)
+    expect(snapshot.tool).toBeUndefined()
+    expect(snapshot.reason).toBeUndefined()
+    // The durable record fields survive an uncorrelated event window.
+    expect(snapshot.requestHash).toBe(approval.requestHash)
+    expect(snapshot.contractRevision).toBe(3)
+    expect(snapshot.expires).toBeTruthy()
+  })
 })

@@ -15,7 +15,7 @@
 
 import type { ApprovalRecord, ApprovalState } from "@arcana/core/crypto/approval-lifecycle"
 import type { AuthorityAffordance } from "@arcana/core/crypto/authority-affordance"
-import type { SpineEntry, SpineKind, StatusTone } from "./spine-types"
+import type { SpineApprovalSnapshot, SpineEntry, SpineKind, StatusTone } from "./spine-types"
 import { SPINE_GLYPH } from "./spine-types"
 import { createDedupeKey, dedupeKeyToString } from "./spine-ordering"
 import { Locale } from "../../util/locale"
@@ -54,16 +54,25 @@ const APPROVAL_STATE_LABEL: Record<ApprovalState, string> = {
 
 /**
  * Convert an ApprovalRecord to a SpineEntry for rendering.
+ *
+ * `snapshot` is the exact-request projection resolved from governance events
+ * (`resolveApprovalSnapshot`); the gate renders it, so a durable approval row
+ * must carry it — otherwise the card shows "snapshot unavailable" even though
+ * the record itself is present.
  */
-export function approvalToSpineEntry(approval: ApprovalRecord): SpineEntry {
+export function approvalToSpineEntry(approval: ApprovalRecord, snapshot?: SpineApprovalSnapshot): SpineEntry {
   const kind = APPROVAL_STATE_KIND[approval.state]
   const tone = APPROVAL_STATE_TONE[approval.state]
   const label = APPROVAL_STATE_LABEL[approval.state]
+  const createdMs = Date.parse(approval.createdAt)
 
   return {
     id: `approval:${approval.approvalId}:${approval.version}`,
     index: 0,
     elapsed: "",
+    // Wall clock of the approval's creation: the ordering key uses it to place
+    // the row at the point it happened instead of above the whole transcript.
+    occurredAt: Number.isFinite(createdMs) ? createdMs : undefined,
     kind,
     label,
     // PENDING approvals have no operator yet - never claim one. The requester
@@ -76,6 +85,7 @@ export function approvalToSpineEntry(approval: ApprovalRecord): SpineEntry {
     bodyLabel: "approval gate",
     collapsible: true,
     expandedByDefault: approval.state === "PENDING",
+    approval: snapshot,
     source: {
       messageID: approval.approvalId,
       kind: "approve",
@@ -166,8 +176,14 @@ export function approvalIdFromEntryID(entryID: string): string | undefined {
  * spine entry, deduped by (approvalId, version). Both the projection
  * (use-spine-projection) and the integration hook (approval-integration)
  * render through this so the two paths can never drift.
+ *
+ * `snapshotFor` resolves the exact-request projection (governance correlation)
+ * so the inline gate can show tool/action/reason/route instead of "unavailable".
  */
-export function dedupeApprovalEntries(approvals: readonly ApprovalRecord[]): SpineEntry[] {
+export function dedupeApprovalEntries(
+  approvals: readonly ApprovalRecord[],
+  snapshotFor?: (approval: ApprovalRecord) => SpineApprovalSnapshot | undefined,
+): SpineEntry[] {
   const seen = new Set<string>()
   const entries: SpineEntry[] = []
   for (const approval of approvals) {
@@ -179,7 +195,7 @@ export function dedupeApprovalEntries(approvals: readonly ApprovalRecord[]): Spi
     )
     if (seen.has(key)) continue
     seen.add(key)
-    entries.push(approvalToSpineEntry(approval))
+    entries.push(approvalToSpineEntry(approval, snapshotFor?.(approval)))
   }
   return entries
 }

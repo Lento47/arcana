@@ -2379,6 +2379,18 @@ export function messagesToSpineEntriesCached(input: {
       entries = []
     }
 
+    // Every message row carries its message's wall clock. The cross-source
+    // ordering key uses it so approvals/governance land where they happened
+    // instead of preempting the transcript (approval rows have no message
+    // index). Reels are unaffected: units sharing one timestamp fall back to
+    // their measured durations (see elapsedFor).
+    const messageMs = message.time?.created
+    if (messageMs !== undefined) {
+      entries = entries.map((entry) =>
+        entry.occurredAt !== undefined ? entry : { ...entry, occurredAt: messageMs },
+      )
+    }
+
     nextCache.set(message.id, {
       message,
       parts,

@@ -323,3 +323,28 @@ describe("approval lifecycle via spine keys (a approve / d deny / v inspect)", (
     expect(engine2.record.state).toBe("PENDING")
   })
 })
+
+describe("approval spine entries carry renderable evidence", () => {
+  test("the exact-request snapshot is attached for the inline gate", () => {
+    const approval = baseApproval()
+    const snapshot = {
+      requestHash: approval.requestHash,
+      available: true,
+      tool: "mcp",
+      action: "network.write",
+      reason: "use MCP firecrawl",
+      risk: "HIGH",
+      contractRevision: approval.contractRevision,
+      expires: "1:14 AM",
+    } as Parameters<typeof approvalToSpineEntry>[1]
+
+    const entry = approvalToSpineEntry(approval, snapshot)
+    expect(entry.approval).toBe(snapshot)
+  })
+
+  test("the creation time is the ordering anchor", () => {
+    const approval = baseApproval()
+    const entry = approvalToSpineEntry(approval)
+    expect(entry.occurredAt).toBe(Date.parse(approval.createdAt))
+  })
+})

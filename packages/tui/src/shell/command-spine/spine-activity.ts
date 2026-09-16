@@ -64,7 +64,10 @@ function elapsedFor(units: readonly SpineEntry[]): number | undefined {
     if (lastOccurrence === undefined || value > lastOccurrence) lastOccurrence = value
   }
   if (firstOccurrence !== undefined && lastOccurrence !== undefined) {
-    if (lastOccurrence >= firstOccurrence && lastOccurrence > 0) return lastOccurrence - firstOccurrence
+    // Strictly increasing: rows that share one timestamp (every row of a single
+    // message now carries the message time) must fall back to measured
+    // durations instead of reporting a 0s reel.
+    if (lastOccurrence > firstOccurrence && lastOccurrence > 0) return lastOccurrence - firstOccurrence
   }
 
   let total = 0
