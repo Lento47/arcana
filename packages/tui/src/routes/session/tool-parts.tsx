@@ -586,6 +586,149 @@ type ToolProps = {
   output?: string
   part: ToolPart
 }
+/** The gutter between two table columns, counted by the budget below. */
+export const TABLE_GAP = 2
+
+/**
+ * Columns one table cell may occupy, given the pane's width.
+ *
+ * The gaps are taken out before the division, so a row's total is the width it
+ * was given rather than that width plus `2 × (columns - 1)` of gutter: the old
+ * `floor(width / columns)` ignored the gutters entirely and overran the pane by
+ * eight columns on a five-column table. Cells are no longer floored at eight
+ * either, because a floor is not a fit — `max(8, …)` still overshot on a narrow
+ * pane, which is how a table came to paint past its own right edge. One column
+ * is the honest floor; `Locale.truncate` is what keeps a cell that does not fit
+ * reading as cut rather than as short.
+ */
+export function tableCellWidth(width: number, columns: number): number {
+  const count = Math.max(1, Math.floor(Number.isFinite(columns) ? columns : 1))
+  const room = Number.isFinite(width) ? Math.max(0, Math.floor(width)) : 0
+  return Math.max(1, Math.floor((room - TABLE_GAP * (count - 1)) / count))
+}
+
+/** Rows of a table the viewer renders before the tail is summarised. */
+const TABLE_ROW_LIMIT = 20
+
+/**
+ * A JSON array of flat objects, as a table.
+ *
+ * One record per row, always: a cell is elided to its column rather than
+ * wrapped, because a table that wraps is no longer a table — the wrapped cell
+ * grows its row, and the record beside it is then read at the wrong height. The
+ * cells are `wrapMode="none"` as the invariant and truncated as the mechanism,
+ * since a grapheme can be two columns wide.
+ *
+ * Rows past the limit are counted rather than dropped silently: the tool's badge
+ * reports the full row count, so a table that stops at twenty has to say so or
+ * the two readouts disagree.
+ */
+export function ToolOutputTable(props: {
+  columns: readonly string[]
+  rows: ReadonlyArray<Record<string, string>>
+  width: number
+}) {
+  const { theme } = useTheme()
+  const cellWidth = createMemo(() => tableCellWidth(props.width, props.columns.length))
+  const cell = (value: string) => Locale.truncate(value, cellWidth())
+  const shown = createMemo(() => props.rows.slice(0, TABLE_ROW_LIMIT))
+  const hidden = createMemo(() => Math.max(0, props.rows.length - TABLE_ROW_LIMIT))
+
+  return (
+    <box flexDirection="column" gap={0} minWidth={0}>
+      <box flexDirection="row" gap={TABLE_GAP} overflow="hidden">
+        <For each={props.columns}>
+          {(col) => (
+            <text
+              fg={theme.textMuted}
+              width={cellWidth()}
+              flexShrink={0}
+              wrapMode="none"
+              overflow="hidden"
+            >
+              <span style={{ bold: true }}>{cell(col)}</span>
+            </text>
+          )}
+        </For>
+      </box>
+      <For each={shown()}>
+        {(row) => (
+          <box flexDirection="row" gap={TABLE_GAP} overflow="hidden">
+            <For each={props.columns}>
+              {(col) => (
+                <text fg={theme.text} width={cellWidth()} flexShrink={0} wrapMode="none" overflow="hidden">
+                  {cell(row[col] ?? "")}
+                </text>
+              )}
+            </For>
+          </box>
+        )}
+      </For>
+      <Show when={hidden() > 0}>
+        <text fg={theme.textMuted} wrapMode="none">
+          … {hidden()} more {hidden() === 1 ? "row" : "rows"}
+        </text>
+      </Show>
+    </box>
+  )
+}
+
+/** The key column's floor, and the share of the pane it may never exceed. */
+const KV_KEY_MIN = 8
+const KV_KEY_SHARE = 0.4
+
+/**
+ * Columns the key column may occupy: the widest key plus its colon, capped at a
+ * share of the pane so one verbose key cannot push every value off the row.
+ *
+ * Keys were unmeasured, so each row aligned to its own length and the values
+ * started at a different column on every line — a metadata block read as a
+ * paragraph rather than as a table of fields.
+ */
+export function kvKeyWidth(keys: readonly string[], width: number): number {
+  const room = Number.isFinite(width) ? Math.max(1, Math.floor(width)) : 1
+  const widest = keys.reduce((max, key) => Math.max(max, Locale.displayWidth(key)), 0)
+  const cap = Math.max(KV_KEY_MIN, Math.floor(room * KV_KEY_SHARE))
+  return Math.min(Math.max(KV_KEY_MIN, widest + 1), cap)
+}
+
+/**
+ * A flat JSON object, as an aligned `key: value` block. Values wrap — they are
+ * prose or paths, and the key column beside them is what is fixed.
+ */
+export function ToolOutputFields(props: {
+  entries: ReadonlyArray<readonly [string, string]>
+  width: number
+}) {
+  const { theme } = useTheme()
+  const keyWidth = createMemo(() => kvKeyWidth(props.entries.map(([key]) => key), props.width))
+
+  return (
+    <box flexDirection="column" gap={0} minWidth={0}>
+      <For each={props.entries}>
+        {([key, value]) => (
+          <box flexDirection="row" gap={1} minWidth={0} overflow="hidden">
+            {/* Width, not just truncation: a short key has to hold the column
+                open for the long one, or every value starts somewhere else. */}
+            <text
+              fg={theme.textMuted}
+              width={keyWidth()}
+              flexShrink={0}
+              wrapMode="none"
+              overflow="hidden"
+            >
+              {Locale.truncate(`${key}:`, keyWidth())}
+            </text>
+            <text fg={theme.text} flexGrow={1} minWidth={0} wrapMode="word">
+              {value}
+            </text>
+          </box>
+        )}
+      </For>
+    </box>
+  )
+}
+
 function GenericTool(props: ToolProps) {
   /** Strip MCP browser tool prefix for display. Matches any server name,
    *  so renaming the MCP server in arcana.json won't break the display. */
@@ -709,33 +852,14 @@ function GenericTool(props: ToolProps) {
             <Match when={formattedOutput().type === "table"}>
               {((): any => {
                 const tbl = formattedOutput() as { type: "table"; columns: string[]; rows: Record<string,string>[] }
-                return (
-                  <box flexDirection="column" gap={0}>
-                    <box flexDirection="row" gap={2}>
-                      <For each={tbl.columns}>{(col) => 
-                        <text fg={theme.textMuted} width={Math.max(8, Math.floor(ctx.width / tbl.columns.length))}><span style={{ bold: true }}>{col}</span></text>
-                      }</For>
-                    </box>
-                    <For each={tbl.rows.slice(0, 20)}>{(row) =>
-                      <box flexDirection="row" gap={2}>
-                        <For each={tbl.columns}>{(col) =>
-                          <text fg={theme.text} width={Math.max(8, Math.floor(ctx.width / tbl.columns.length))}>{row[col]}</text>
-                        }</For>
-                      </box>
-                    }</For>
-                  </box>
-                )
+                return <ToolOutputTable columns={tbl.columns} rows={tbl.rows} width={ctx.width} />
               })()}
             </Match>
             <Match when={formattedOutput().type === "kv"}>
-              <For each={(formattedOutput() as { type: "kv"; entries: [string,string][] }).entries}>
-                {([k, v]) => (
-                  <box flexDirection="row" gap={1}>
-                    <text fg={theme.textMuted}>{k}:</text>
-                    <text fg={theme.text}>{v}</text>
-                  </box>
-                )}
-              </For>
+              {((): any => {
+                const kv = formattedOutput() as { type: "kv"; entries: [string,string][] }
+                return <ToolOutputFields entries={kv.entries} width={ctx.width} />
+              })()}
             </Match>
             <Match when={formattedOutput().type === "xml"}>
               {((): any => {
