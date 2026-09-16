@@ -208,6 +208,7 @@ describe("daemon TUI transport", () => {
       directory: process.cwd(),
       command: ["arcana", "--daemon"],
       connectAttempts: 0,
+      env: { ARCANA_DAEMON_GRACE_MS: "600000", ARCANA_DAEMON_WORK_TIMEOUT_MS: "3600000" },
       dependencies: {
         readLock: () => null,
         isLockStale: () => false,
@@ -224,6 +225,11 @@ describe("daemon TUI transport", () => {
     // the TUI so a running turn keeps going after Ctrl+C.
     expect(spawnInput?.detached).toBe(true)
     expect(spawnInput?.stdio).toEqual(["ignore", "ignore", "ignore"])
-    expect(spawnInput?.env).toMatchObject({ ARCANA_DAEMON: "1" })
+    // Config-derived lifecycle values ride the spawn env; the daemon marker wins.
+    expect(spawnInput?.env).toMatchObject({
+      ARCANA_DAEMON: "1",
+      ARCANA_DAEMON_GRACE_MS: "600000",
+      ARCANA_DAEMON_WORK_TIMEOUT_MS: "3600000",
+    })
   })
 })

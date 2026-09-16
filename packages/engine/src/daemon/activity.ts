@@ -20,9 +20,8 @@ import { touchActivity } from "./lock"
  * self-destruct entirely.
  */
 
-const RECONNECT_GRACE_MS = 30 * 60 * 1000
+const RECONNECT_GRACE_MS = 10 * 60 * 1000
 const WORK_TIMEOUT_MS = 60 * 60 * 1000
-const HOSTED_GRACE_MS = 15 * 60 * 1000
 
 function envMs(name: string): number | undefined {
   const raw = process.env[name]
@@ -34,17 +33,17 @@ function envMs(name: string): number | undefined {
 
 /**
  * Resolution order:
- *   ARCANA_DAEMON_GRACE_MS        explicit reconnect grace
+ *   ARCANA_DAEMON_GRACE_MS        explicit reconnect grace (config daemon.grace_ms
+ *                                 is forwarded into this env by the TUI spawn)
  *   ARCANA_DAEMON_IDLE_TIMEOUT_MS legacy override ("0" disables idle-stop)
- *   30 min                        dedicated daemon process (ARCANA_DAEMON=1)
- *   15 min                        dev/TUI-hosted default
+ *   10 min                        default
  */
 function resolveGraceMs(): number {
   const explicit = envMs("ARCANA_DAEMON_GRACE_MS")
   if (explicit !== undefined) return explicit
   const legacy = envMs("ARCANA_DAEMON_IDLE_TIMEOUT_MS")
   if (legacy !== undefined) return legacy
-  return process.env.ARCANA_DAEMON === "1" ? RECONNECT_GRACE_MS : HOSTED_GRACE_MS
+  return RECONNECT_GRACE_MS
 }
 
 function resolveWorkTimeoutMs(): number {

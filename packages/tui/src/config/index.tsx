@@ -42,6 +42,18 @@ export const Attention = Schema.Struct({
   sounds: Schema.optional(AttentionSounds),
 }).annotate({ description: "Attention notification and sound settings" })
 
+const DaemonMs = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+export const Daemon = Schema.Struct({
+  grace_ms: Schema.optional(DaemonMs).annotate({
+    description:
+      "How long the detached daemon keeps serving after the TUI exits and work settles (default: 600000 = 10 minutes). 0 disables the idle self-destruct.",
+  }),
+  work_timeout_ms: Schema.optional(DaemonMs).annotate({
+    description:
+      "Total-silence fuse while a session turn is live; the daemon keeps working with no TUI attached until this elapses (default: 3600000 = 60 minutes).",
+  }),
+}).annotate({ description: "Daemon lifecycle: reconnect grace and work fuse" })
+
 const PromptSize = Schema.Int.check(Schema.isGreaterThan(0))
 export const Prompt = Schema.Struct({
   max_height: Schema.optional(PromptSize).annotate({ description: "Prompt textarea max height" }),
@@ -69,7 +81,7 @@ export const Prompt = Schema.Struct({
       }),
       model: Schema.optional(Schema.String).annotate({
         description:
-          "Model id. ollama default qwen2.5:0.5b; required for arcana-proxy/custom (any free model id)",
+          "Model id. ollama default: best installed of qwen2.5-coder:1.5b, qwen2.5:1.5b, qwen2.5:0.5b; required for arcana-proxy/custom (any free model id)",
       }),
       base_url: Schema.optional(Schema.String).annotate({
         description: "OpenAI-compatible base URL when source=custom (e.g. https://openrouter.ai/api/v1)",
@@ -82,6 +94,10 @@ export const Prompt = Schema.Struct({
       }),
       debounce_ms: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))).annotate({
         description: "Idle time after the last keystroke before predicting. Default: 350",
+      }),
+      context_messages: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))).annotate({
+        description:
+          "Recent session messages sent with each prediction so it matches topic and vocabulary (0 disables). Default: 3",
       }),
     }).annotate({ description: "LLM sentence-prediction settings" }),
   ),
@@ -171,6 +187,7 @@ export const Info = Schema.Struct({
   plugin_enabled: Schema.optional(Schema.Record(Schema.String, Schema.Boolean)),
   leader_timeout: Schema.optional(LeaderTimeout),
   attention: Schema.optional(Attention),
+  daemon: Schema.optional(Daemon),
   prompt: Schema.optional(Prompt),
   scroll_speed: Schema.optional(ScrollSpeed).annotate({ description: "TUI scroll speed" }),
   scroll_acceleration: Schema.optional(ScrollAcceleration),
@@ -199,6 +216,7 @@ export type Resolved = Omit<
   shell: Shell
   lexicon: LexiconVoice
   self_governance: boolean
+  daemon: { grace_ms: number; work_timeout_ms: number }
   attention: {
     enabled: boolean
     notifications: boolean
@@ -262,6 +280,10 @@ export function resolve(input: Info, options: ResolveOptions): Resolved {
       sound_pack: input.attention?.sound_pack ?? "arcana.default",
       sounds: input.attention?.sounds ?? {},
     },
+    daemon: {
+      grace_ms: input.daemon?.grace_ms ?? 10 * 60 * 1000,
+      work_timeout_ms: input.daemon?.work_timeout_ms ?? 60 * 60 * 1000,
+    },
     shell: input.shell ?? "command-spine",
     lexicon: input.lexicon ?? "arcane",
     keybinds: createBindingLookup(TuiKeybind.toBindingConfig(TuiKeybind.parse(keybinds)), {
@@ -284,6 +306,7 @@ export function resolve(input: Info, options: ResolveOptions): Resolved {
         api_key: input.prompt?.predictor?.api_key,
         max_tokens: input.prompt?.predictor?.max_tokens ?? 24,
         debounce_ms: input.prompt?.predictor?.debounce_ms ?? 350,
+        context_messages: input.prompt?.predictor?.context_messages ?? 3,
       },
     },
     voice: {

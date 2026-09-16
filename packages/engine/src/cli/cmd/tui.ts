@@ -212,6 +212,13 @@ export const TuiThreadCommand = cmd({
       }
       const cwd = Filesystem.resolve(process.cwd())
 
+      // Config decides the daemon lifecycle: the values are forwarded into the
+      // spawn env so a fresh daemon gets the operator's reconnect grace and
+      // work fuse (an attached healthy daemon already has its own).
+      const config = await TuiConfig.get()
+      mark("tui-config-loaded")
+      measure("tui-handler-start", "tui-config-loaded", "tui-init")
+
       // ── Daemon detection: try existing daemon, auto-spawn if missing ──
       const isCompiled = typeof Bun !== "undefined" && (Bun as any).isCompiled
       const daemonCmd = isCompiled
@@ -222,6 +229,10 @@ export const TuiThreadCommand = cmd({
       const daemonAttempt = await createDaemonTransport({
         directory: cwd,
         command: daemonCmd,
+        env: {
+          ARCANA_DAEMON_GRACE_MS: String(config.daemon.grace_ms),
+          ARCANA_DAEMON_WORK_TIMEOUT_MS: String(config.daemon.work_timeout_ms),
+        },
       })
       const daemonTransport = daemonAttempt.status === "connected" ? daemonAttempt.transport : undefined
       if (daemonAttempt.status === "unavailable") {
@@ -272,9 +283,6 @@ export const TuiThreadCommand = cmd({
       }
 
       const prompt = await input(args.prompt)
-      const config = await TuiConfig.get()
-      mark("tui-config-loaded")
-      measure("tui-handler-start", "tui-config-loaded", "tui-init")
 
       const network = resolveNetworkOptionsNoConfig(args)
       const external =
@@ -384,9 +392,10 @@ export const TuiThreadCommand = cmd({
       if (daemonTransport) {
         const grace = await daemonReconnectGraceMs(daemonTransport.url)
         if (grace !== undefined) {
-          const minutes = Math.max(1, Math.round(grace / 60_000))
           UI.println(
-            `Arcana keeps working in the background. Reopen the TUI here to reconnect — the daemon waits ~${minutes}m after work settles.`,
+            grace > 0
+              ? `Arcana keeps working in the background. Reopen the TUI here to reconnect — the daemon waits ~${Math.max(1, Math.round(grace / 60_000))}m after work settles.`
+              : "Arcana keeps working in the background. Reopen the TUI here to reconnect — this daemon stays until stopped.",
           )
         }
       }

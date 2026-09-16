@@ -31,6 +31,11 @@ export interface DaemonTransportOptions {
   readonly directory: string
   readonly command: readonly string[]
   readonly fetch?: typeof fetch
+  /**
+   * Extra environment for a freshly spawned daemon (ignored when attaching to
+   * a healthy one — its own env already decided its lifecycle).
+   */
+  readonly env?: Record<string, string>
   readonly connectAttempts?: number
   readonly connectIntervalMs?: number
   readonly dependencies?: Partial<DaemonTransportDependencies>
@@ -281,6 +286,7 @@ export async function createDaemonTransport(options: DaemonTransportOptions): Pr
             ...(process.env as Record<string, string>),
             ARCANA_DAEMON: "1",
             ARCANA_DAEMON_CWD: directory,
+            ...(options.env ?? {}),
           },
           // Detach so the daemon survives the TUI process (Ctrl+C / quit) and
           // keeps running live session turns in the background.
