@@ -111,7 +111,8 @@ function kindLabel(kind: SpineKind, fallback?: string, tool?: string): string {
     if (t === "glob" || t === "list" || t === "list_files" || t === "directory_list" || t === "file_search") return "list"
     if (t === "web_search" || t === "search") return "search"
     if (t === "web_fetch" || t === "fetch") return "fetch"
-    return "tool"
+    // Unknown tools keep their own name — "tool" told the operator nothing.
+    return tool
   }
   switch (kind) {
     case "run": return "run"
@@ -1037,6 +1038,21 @@ function toolOutputBody(part: ToolPart): ToolOutputBody {
   return { body: output, label: "output", reminders: [] }
 }
 
+/**
+ * Engine denial metadata → one clean operator-facing line. A denial is a
+ * deliberate policy outcome, not a crash: the collapsed row should say who
+ * denied it, with the raw DENIED payload kept as collapsed details.
+ */
+function toolDenialSummary(state: ToolPart["state"]): string | undefined {
+  if (state.status !== "completed") return undefined
+  const meta = (state.metadata ?? {}) as Record<string, unknown>
+  if (meta.approval_denied === true) return "Denied by operator"
+  if (meta.pep_denied === true) return "Denied by policy"
+  if (meta.intent_binding_failed === true) return "Intent binding failed"
+  if (meta.approval_re_run_exhausted === true) return "Approval re-run exhausted"
+  return undefined
+}
+
 function toolPartToEntries(
   message: Message,
   part: ToolPart,
@@ -1086,8 +1102,13 @@ function toolPartToEntries(
 
   const renderedOutput = toolOutputBody(resolved)
   const body = renderedOutput.body
-  const finalKind: SpineKind = renderedOutput.report && !agentName ? "report" : kind
-  const finalGlyph = renderedOutput.report && !agentName ? SPINE_GLYPH.report : glyph
+  const denial = toolDenialSummary(state)
+  const finalKind: SpineKind = denial ? "fail" : renderedOutput.report && !agentName ? "report" : kind
+  const finalGlyph = denial
+    ? SPINE_GLYPH.fail
+    : renderedOutput.report && !agentName
+      ? SPINE_GLYPH.report
+      : glyph
   const taskSessionID = taskToolSessionID(resolved)
   if (renderedOutput.report) {
     summary = agentName ? renderedOutput.report.title : `Divination: ${renderedOutput.report.title}`
@@ -1095,6 +1116,13 @@ function toolPartToEntries(
   if (kind === "fail" && state.status === "error") {
     // Prefer the error on the spine line (design: "fail  error[E0308]: …").
     summary = truncate(stripAnsi(state.error ?? ""), 120) || summary || resolved.tool
+  }
+  if (denial) {
+    // Clean operator-facing headline; the raw DENIED payload stays as
+    // collapsed details, and a denial never carries success stats.
+    summary = denial
+    receipt = undefined
+    diff = undefined
   }
   // Completed subagents: append a one-line result peek to the collapsed summary
   // (report summary paragraph, else first output line) so the parent view shows
@@ -1256,13 +1284,15 @@ function toolPartToEntries(
       timestamp: formatTimestamp(message.time?.created),
       kind: finalKind,
       label:
-        finalKind === "fail"
-          ? "fail"
-          : agentName
-            ? agentName
-            : finalKind === "report"
-              ? "report"
-              : kindLabel(kind, undefined, resolved.tool),
+        denial
+          ? resolved.tool || "denied"
+          : finalKind === "fail"
+            ? "fail"
+            : agentName
+              ? agentName
+              : finalKind === "report"
+                ? "report"
+                : kindLabel(kind, undefined, resolved.tool),
       glyph: finalGlyph,
       actor: agentName,
       summary,
@@ -1272,7 +1302,7 @@ function toolPartToEntries(
       bodyNote: [listingBodyNote, listingNote].filter(Boolean).join(" · ") || undefined,
       liveOutput: running ? preliminaryToolOutput(state) : undefined,
       collapsible: !!diff || !!renderedOutput.report || hasExpandableBody,
-      expandedByDefault: expandDefault,
+      expandedByDefault: denial ? false : expandDefault,
       receipt,
       diff,
       listing: displayListing,
@@ -1739,6 +1769,11 @@ function assistantMessagePartsToEntries(
     const retryCount = Number.parseInt(data.metadata?.retryCount ?? "", 10)
     const exhausted = data.metadata?.retryExhausted === "true"
     const aborted = message.error.name === "MessageAbortedError"
+    // A cancelled tool row already shows the interruption; a second
+    // message-level "Interrupted before completion" row is pure noise.
+    if (aborted && parts.some((part) => part.type === "tool" && part.state.status === "cancelled")) {
+      return undefined
+    }
     const summary = exhausted
       ? `Provider unavailable · paused after ${Number.isFinite(retryCount) ? retryCount : 3} retries`
       : aborted

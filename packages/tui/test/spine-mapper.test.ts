@@ -2114,6 +2114,99 @@ Diff excerpts can be improved later.`,
     expect(run?.streaming).toBe(false)
   })
 
+  test("operator-denied tool rows name the tool and say who denied it", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-denied", { completed: 5000 })
+    parts.push({
+      id: "p-denied",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c-denied",
+      tool: "mcp",
+      state: {
+        status: "completed",
+        input: { action: "connect" },
+        title: "Denied: mcp",
+        output: "DENIED\nreason: approval denied\naction: network.write",
+        metadata: { approval_denied: true, approval_id: "appr_1" },
+        time: { start: 1000, end: 5000 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+      sessionStatusType: "idle",
+    })
+    const row = result.find((entry) => entry.source?.partID === "p-denied")!
+
+    expect(row.kind).toBe("fail")
+    expect(row.label).toBe("mcp")
+    expect(row.summary).toBe("Denied by operator")
+    expect(row.receipt).toBeUndefined()
+    expect(row.expandedByDefault).toBe(false)
+  })
+
+  test("policy-denied tool rows say denied by policy", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-pep-denied", { completed: 5000 })
+    parts.push({
+      id: "p-pep-denied",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c-pep-denied",
+      tool: "mcp",
+      state: {
+        status: "completed",
+        input: { action: "connect" },
+        title: "Denied: mcp",
+        output: "DENIED\nreason: DENY_REMOTE_CONTENT_INJECTION",
+        metadata: { pep_denied: true },
+        time: { start: 1000, end: 5000 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+      sessionStatusType: "idle",
+    })
+    const row = result.find((entry) => entry.source?.partID === "p-pep-denied")!
+    expect(row.summary).toBe("Denied by policy")
+  })
+
+  test("an aborted message with a cancelled tool row adds no second interrupted row", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-abort-tool", { completed: 5000 })
+    ;(msgs[0] as { error?: unknown }).error = { name: "MessageAbortedError", data: {} }
+    parts.push({
+      id: "p-cancelled-tool",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c-cancelled-tool",
+      tool: "mcp",
+      state: {
+        status: "cancelled",
+        reason: "session_cancelled",
+        input: { action: "connect" },
+        title: "mcp",
+        output: "",
+        metadata: {},
+        time: { start: 1000, end: 5000 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+      sessionStatusType: "idle",
+    })
+    expect(result.some((entry) => entry.summary === "Interrupted before completion")).toBe(false)
+  })
+
   test("simple reply stops writing when session is idle even without time.completed", () => {
     const { messages: msgs, parts } = makeAssistantMessage("a-idle-stop")
     // No completed timestamp — classic promptAsync lag case
