@@ -174,6 +174,29 @@ describe("spine activity reel projection", () => {
     expect(activity.streaming).toBe(false)
   })
 
+  test("hidden rows neither split nor join a reel", () => {
+    const rows = collapseWorkActivities([
+      turnEntry("run-1", "run", "turn-1", { elapsedMs: 10 }),
+      turnEntry("run-2", "run", "turn-1", { elapsedMs: 15 }),
+      // Per-message trailing `ok` stubs are hidden; a run of settled turns used
+      // to render one reel per message because these rows sat between them.
+      turnEntry("turn-2:ok", "ok", "turn-2", { hidden: true }),
+      turnEntry("run-3", "run", "turn-2", { elapsedMs: 20 }),
+      turnEntry("run-4", "run", "turn-2", { elapsedMs: 25 }),
+      turnEntry("turn-3:ok", "ok", "turn-3", { hidden: true }),
+      // A hidden work row stays hidden: it must not become a reel child either.
+      turnEntry("hidden-think", "think", "turn-3", { hidden: true }),
+    ])
+
+    const visible = rows.filter((row) => row.hidden !== true)
+    expect(visible).toHaveLength(1)
+    expect(visible[0]!.id).toBe("activity:run-1")
+    expect(visible[0]!.children?.map((child) => child.id)).toEqual(["run-1", "run-2", "run-3", "run-4"])
+    expect(visible[0]!.summary).toBe("4 actions · 4 tools")
+    expect(visible[0]!.elapsedMs).toBe(70)
+    expect(rows.every((row) => row.hidden !== true || row.children === undefined)).toBe(true)
+  })
+
   test("keeps prose and active reels as merge boundaries", () => {
     const rows = collapseWorkActivities([
       turnEntry("run-1", "run", "turn-1", { elapsedMs: 10 }),

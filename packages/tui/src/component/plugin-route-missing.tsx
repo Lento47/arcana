@@ -6,7 +6,7 @@ export function PluginRouteMissing(props: { id: string; onHome: () => void }) {
   return (
     <box width="100%" height="100%" alignItems="center" justifyContent="center" flexDirection="column" gap={1}>
       <text fg={theme.warning}>Unknown plugin route: {props.id}</text>
-      <text fg={theme.textMuted}>Select Go Home to return to your session.</text>
+      <text fg={theme.textMuted}>Click Go Home to return to your session.</text>
       <box onMouseUp={props.onHome} backgroundColor={theme.backgroundElement} paddingLeft={1} paddingRight={1}>
         <text fg={theme.text}>Go Home</text>
       </box>

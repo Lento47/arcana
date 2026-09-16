@@ -5,6 +5,10 @@ import { Lexicon } from "../branding"
 
 const BARS = ["▁", "▂", "▃", "▄", "▅", "▆", "▇"] as const
 
+// With animations off the frame counter is frozen at 0, whose wave is mid-height
+// and thus reads as live input. A flat row stays truthful while still recording.
+const IDLE_WAVE = BARS[0].repeat(28)
+
 export function isVoiceUiActive(status: string): boolean {
   return status === "recording" || status === "transcribing" || status === "normalizing" || status === "sending"
 }
@@ -45,7 +49,7 @@ export function VoiceWave(props: { status: () => string }) {
     <Show when={active()}>
       <box width="100%" flexDirection="row" flexShrink={0} gap={1} alignItems="center">
         <text fg={recording() ? theme.error : theme.primary}>
-          {voiceWaveFrame(frame())} {voiceStatusLabel(props.status())}
+          {animationsEnabled() ? voiceWaveFrame(frame()) : IDLE_WAVE} {voiceStatusLabel(props.status())}
         </text>
       </box>
     </Show>

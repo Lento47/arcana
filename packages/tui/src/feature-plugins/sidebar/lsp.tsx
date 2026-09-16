@@ -31,7 +31,9 @@ function View(props: { api: TuiPluginApi }) {
       </box>
       <Show when={list().length <= 2 || open()}>
         <Show when={list().length === 0}>
-          <text fg={theme().textMuted}>{off() ? "LSPs are disabled" : "LSPs will activate as files are read"}</text>
+          <text fg={theme().textMuted}>
+            {off() ? 'LSPs are disabled — set "lsp": true in config' : "LSPs will activate as files are read"}
+          </text>
         </Show>
         <For each={list()}>
           {(item) => (

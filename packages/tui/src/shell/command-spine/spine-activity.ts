@@ -190,7 +190,11 @@ function isSettledActivity(entry: SpineEntry): boolean {
 }
 
 function isSettledWorkRow(entry: SpineEntry): boolean {
-  return entry.activity === undefined && entry.streaming !== true && isWorkActivityEntry(entry)
+  // Hidden rows render nothing: they must never be absorbed as reel children.
+  return entry.hidden !== true
+    && entry.activity === undefined
+    && entry.streaming !== true
+    && isWorkActivityEntry(entry)
 }
 
 /**
@@ -253,11 +257,23 @@ export function collapseWorkActivities(entries: readonly SpineEntry[]): SpineEnt
   flush()
 
   const merged: SpineEntry[] = []
+  // Hidden rows (per-message `ok` stubs, standalone proof continuations) render
+  // nothing. They must never split a merge boundary and must never be absorbed
+  // as children — otherwise a single working stretch of turns shows up as one
+  // reel per message. Look back to the last VISIBLE row and leave the hidden
+  // rows exactly where they are.
+  const lastVisibleIndex = () => {
+    for (let index = merged.length - 1; index >= 0; index--) {
+      if (merged[index]!.hidden !== true) return index
+    }
+    return -1
+  }
   for (const entry of result) {
-    const prev = merged[merged.length - 1]
+    const prevIndex = entry.hidden === true ? -1 : lastVisibleIndex()
+    const prev = prevIndex >= 0 ? merged[prevIndex] : undefined
     if (prev && isSettledActivity(prev)) {
       if (isSettledActivity(entry)) {
-        merged[merged.length - 1] = rebuildActivity(
+        merged[prevIndex] = rebuildActivity(
           prev,
           [...(prev.children ?? []), ...(entry.children ?? [])],
           addElapsed(prev.elapsedMs, entry.elapsedMs),
@@ -265,7 +281,7 @@ export function collapseWorkActivities(entries: readonly SpineEntry[]): SpineEnt
         continue
       }
       if (isSettledWorkRow(entry)) {
-        merged[merged.length - 1] = rebuildActivity(
+        merged[prevIndex] = rebuildActivity(
           prev,
           [...(prev.children ?? []), entry],
           addElapsed(prev.elapsedMs, entry.elapsedMs),

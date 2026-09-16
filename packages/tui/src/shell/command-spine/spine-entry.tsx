@@ -267,6 +267,7 @@ function ChildrenGroup(props: {
                   elapsed={child.elapsed}
                   layout={props.layout}
                   contentWidth={props.contentWidth}
+                  wrapSummary={child.kind === "think"}
                   onMouseUp={(event) => openChildSession(child, event)}
                 />
                 <Show when={child.sessionID}>

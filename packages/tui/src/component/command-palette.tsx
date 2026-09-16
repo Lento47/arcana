@@ -85,7 +85,7 @@ export function CommandPaletteDialog() {
   return (
     <DialogSelect
       ref={setRef}
-      title={`ARCANA ${arcanaDitherPattern("commands", 12)} commands`}
+      title={`ARCANA ${arcanaDitherPattern("commands", 12)} Commands`}
       options={list()}
       emptyView={
         <box paddingLeft={4} paddingRight={4} paddingTop={1}>

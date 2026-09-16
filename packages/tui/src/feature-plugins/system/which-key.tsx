@@ -2,6 +2,7 @@
 import { RGBA, TextAttributes, type KeyEvent, type Renderable } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/solid"
 import { displayWidth } from "../../util/locale"
+import { Size, Space } from "../../ui/chrome"
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
 import { useBindings, useKeymapSelector } from "../../keymap"
 import type { ActiveKey } from "@opentui/keymap"
@@ -37,8 +38,8 @@ const scrollCommands = [
 const panelCommands = [command.groupPrevious, command.groupNext, ...scrollCommands] as const
 const COLUMN_GAP = 4
 const TAB_GAP = 3
-const MIN_TAB_GAP = 1
-const TAB_CONTENT_GAP = 1
+const MIN_TAB_GAP = Space.gap
+const TAB_CONTENT_GAP = Space.gap
 const MAX_COLUMN_WIDTH = 44
 const MORE_TAB_WIDTH = 3 // "⋯" (1 col) + 2 padding — same as the scroll indicator.
 const PANEL_HEIGHT_RATIO = 0.3
@@ -190,7 +191,7 @@ function HomeHint(props: { api: TuiPluginApi }) {
   const look = createMemo(() => skin(props.api))
 
   return (
-    <box width="100%" maxWidth={75} alignItems="center" paddingTop={1} flexShrink={0}>
+    <box width="100%" maxWidth={Size.promptMaxWidth} alignItems="center" paddingTop={1} flexShrink={0}>
       <text fg={look().muted} wrapMode="none">
         Show keyboard shortcuts with <span style={{ fg: look().subtle }}>{trigger() || command.toggle}</span>
       </text>

@@ -715,6 +715,34 @@ describe("collapsible think entries", () => {
     expect(result[0]!.kind).toBe("think")
     expect(result[0]!.summary).toBe("First attempt: DENIED with reason.")
   })
+  test("settled reasoning keeps the whole lead and never repeats it in the body", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("t2d", { completed: 2000 })
+    parts.push({
+      id: "p-reason",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "reasoning",
+      text: 'I don\'t see a "freeconomics" directory in this checkout.\nThe runtime lives under packages/.',
+      time: { start: 100, end: 200 },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+      sessionStatusType: "idle",
+    })
+
+    const think = result.find((entry) => entry.kind === "think")
+    expect(think).toBeDefined()
+    // The header shows the complete lead. The old 36-char budget cut every
+    // longer thought with an ellipsis, so the chip could never be read whole.
+    expect(think!.summary).toBe('I don\'t see a "freeconomics" directory in this checkout.')
+    expect(think!.summary).not.toContain("…")
+    // The header already prints the lead; the body carries only the remainder.
+    expect(think!.body).toContain("The runtime lives under packages/.")
+    expect(think!.body ?? "").not.toContain("freeconomics")
+  })
   test("streaming assistant without visible output does not create fake spine rows", () => {
     const { messages: msgs, parts } = makeAssistantMessage("t3")
     // incomplete assistant with no parts yet

@@ -72,7 +72,7 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
       <text fg={colors.muted}>{arcanaDitherPattern("fatal-error", 48)} FATAL</text>
       <box flexDirection="row" gap={1} alignItems="center">
         <text attributes={TextAttributes.BOLD} fg={colors.text}>
-          Arcana encountered a fatal error and needs to restart.
+          {APP_NAME} encountered a fatal error and needs to restart.
         </text>
         <box
           onMouseUp={copyIssueURL}
@@ -82,13 +82,13 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
           padding={1}
         >
           <text attributes={TextAttributes.BOLD} fg={buttonFg("copy")}>
-            Copy Issue URL (exception info pre-filled)
+            Copy Issue URL (Exception Info Pre-filled)
           </text>
         </box>
         {copied() && <text fg={colors.muted}>Copied issue URL</text>}
       </box>
       <box flexDirection="row" gap={2} alignItems="center">
-        <text fg={colors.text}>Press Reset TUI to restart, or Exit to close Arcana.</text>
+        <text fg={colors.text}>Press Reset TUI to restart, or Exit to close {APP_NAME}.</text>
         <box
           onMouseUp={props.reset}
           onMouseOver={() => setHover("reset")}
@@ -108,7 +108,7 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
           <text fg={buttonFg("exit")}>Exit</text>
         </box>
       </box>
-      <text fg={colors.muted} attributes={TextAttributes.BOLD}>Technical details (for bug reports):</text>
+      <text fg={colors.muted} attributes={TextAttributes.BOLD}>Technical Details (for Bug Reports):</text>
       <scrollbox height={Math.floor(term().height * 0.4)} scrollAcceleration={getScrollAcceleration()}>
         <text fg={colors.muted}>{props.error.stack}</text>
       </scrollbox>

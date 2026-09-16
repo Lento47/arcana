@@ -1,7 +1,6 @@
 import type { Message, Part, ToolPart, TextPart, PatchPart, ReasoningPart } from "@arcana/sdk/v2"
 import type { SpineEntry, SpineKind, SpineReportData, SpineConcernSeverity, SpineReceipt } from "./spine-types"
 import { SPINE_GLYPH, formatElapsedMs } from "./spine-types"
-import { reasoningSummary } from "../../context/thinking"
 import { APP_NAME } from "../../branding"
 import { truncate } from "../../util/locale"
 import {
@@ -347,29 +346,38 @@ function isLowSignalThinkingLine(line: string): boolean {
 const META_REASONING_LEAD =
   /^(the user|they|let me|okay\b|ok\b|i(?:'ll|'m|'ve| will| need| should| can| must| want| think))/i
 
-function thinkingSummary(text: string, seed: string, streaming: boolean): string {
-  // Prefer OpenAI-style **Title** — compact slug for the spine header.
+/**
+ * Split a reasoning block into the header summary and the body that
+ * progressive disclosure reveals. The summary line is removed from the body:
+ * the header already prints it, and a settled think row that showed the same
+ * sentence twice read as a duplicated thought.
+ */
+function thinkingDisclosure(text: string, streaming: boolean): { summary: string; body: string } {
   const content = text.trim()
-  if (!content) return streaming ? "Thinking" : "Thought"
+  if (!content) return { summary: streaming ? "Thinking" : "Thought", body: "" }
+  // Prefer OpenAI-style **Title** — compact slug for the spine header.
   const titleMatch = content.match(/^\*\*([^*\n]+)\*\*(?:\r?\n\r?\n|$)/)
-  if (titleMatch?.[1]) return truncate(titleMatch[1].trim(), 36)
+  if (titleMatch?.[1]) {
+    return { summary: titleMatch[1].trim(), body: content.slice(titleMatch[0].length).trim() }
+  }
   // Untitled reasoning: lead with the first OPERATIONAL line once settled — a
   // literal "Thought" stub carries no information and reads as noise in a long
   // session. Meta-language leads ("The user wants…") stay out of the header;
-  // the full reasoning is one disclosure away either way.
+  // the rest of the reasoning is one disclosure away either way.
   if (!streaming) {
-    const operational = content
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .find((line) => line.length > 0 && !META_REASONING_LEAD.test(line))
+    const lines = content.split(/\r?\n/)
+    const index = lines.findIndex((line) => line.trim().length > 0 && !META_REASONING_LEAD.test(line.trim()))
     // List markers ("1. ", "- ") are formatting, not the idea — drop them so
     // the spine line reads as a statement instead of a numbered fragment.
-    const lead = operational?.replace(/^(?:\d+[.)]|[-*•])\s+/, "")
-    if (lead) return truncate(lead, 36)
+    const lead = index >= 0 ? lines[index]!.trim().replace(/^(?:\d+[.)]|[-*•])\s+/, "") : ""
+    if (lead) {
+      const body = [...lines.slice(0, index), ...lines.slice(index + 1)].join("\n").trim()
+      return { summary: lead, body }
+    }
   }
   // Fixed verb — avoids confusing glyph salad across entries.
   // Flips to past tense once the reasoning part has ended.
-  return streaming ? "Thinking" : "Thought"
+  return { summary: streaming ? "Thinking" : "Thought", body: content }
 }
 
 const EMPTY_PARTS: Part[] = []
@@ -1603,8 +1611,7 @@ function makeInlineThinkEntry(
   })
   const streaming =
     message.role === "assistant" && isAssistantSegmentStreaming("think", life)
-  const { body: titleStrippedBody } = reasoningSummary(raw)
-  const summary = thinkingSummary(raw, `${part.id}:inline`, streaming)
+  const { summary, body } = thinkingDisclosure(raw, streaming)
   return {
     id: `${message.id}:${part.id}:think-inline`,
     index: 0,
@@ -1615,7 +1622,7 @@ function makeInlineThinkEntry(
     label: "",
     glyph: SPINE_GLYPH.think,
     summary,
-    body: hasText ? titleStrippedBody : undefined,
+    body: hasText ? body : undefined,
     bodyLabel: "reasoning",
     collapsible: hasText,
     expandedByDefault: hasText && (streaming || options?.expandThinking === true),
@@ -1644,11 +1651,9 @@ function makeThinkEntry(
   })
   const streaming =
     message.role === "assistant" && isAssistantSegmentStreaming("think", life)
-  // Split OpenAI-style **Title** disclosure so the title lives only in the spine
-  // header summary, not duplicated at the top of the body (matches legacy reasoningSummary).
-  const { body: titleStrippedBody } = reasoningSummary(raw)
-  // Summary is a short one-line title only (no "think"/"thinking" label spam).
-  const summary = thinkingSummary(raw, part.id, streaming)
+  // The header owns the summary line (title or operational lead); the body owns
+  // the remainder, so expanding a settled think row never repeats the thought.
+  const { summary, body } = thinkingDisclosure(raw, streaming)
   // Auto-open while tokens are streaming so the user actually sees the agent think;
   // when complete, respect thinking_mode (expandThinking).
   const expandedByDefault = hasText && (streaming || options?.expandThinking === true)
@@ -1663,7 +1668,7 @@ function makeThinkEntry(
     label: "",
     glyph: SPINE_GLYPH.think,
     summary,
-    body: hasText ? titleStrippedBody : undefined,
+    body: hasText ? body : undefined,
     bodyLabel: "reasoning",
     collapsible: hasText,
     expandedByDefault,

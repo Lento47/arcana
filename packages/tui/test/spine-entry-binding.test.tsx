@@ -110,3 +110,74 @@ test("stable entry id renders the latest streamed entry object", async () => {
     app.renderer.destroy()
   }
 })
+
+test("a work reel shows its think child in full and never repeats it", async () => {
+  const lead =
+    'I don\'t see a "freeconomics" directory in this checkout; the runtime layout differs from the docs.'
+  const entry: SpineEntry = {
+    id: "activity:m-reel:think",
+    index: 2,
+    elapsed: "+1.2s",
+    label: "work",
+    kind: "think",
+    glyph: "✓",
+    summary: "2 steps · 1 tool · 1 thought",
+    collapsible: true,
+    children: [
+      {
+        id: "m-reel:think",
+        index: 0,
+        elapsed: "",
+        kind: "think",
+        label: "",
+        glyph: "",
+        summary: lead,
+        // The mapper strips the summary line from the body; the reel must not
+        // re-print it while revealing the remainder.
+        body: "The runtime lives under packages/.",
+        source: { messageID: "m-reel", kind: "reasoning" },
+      },
+      {
+        id: "m-reel:run",
+        index: 1,
+        elapsed: "+400ms",
+        kind: "run",
+        label: "run",
+        glyph: "▷",
+        summary: "bun test packages/tui",
+        receipt: { label: "run", status: "ok" },
+        source: { messageID: "m-reel", partID: "p-run", kind: "tool" },
+      },
+    ],
+    activity: { type: "work", turnID: "m-reel", childCount: 2 },
+    source: { messageID: "m-reel", kind: "reasoning" },
+  }
+
+  const app = await testRender(
+    () =>
+      withProviders(() => (
+        <box flexDirection="column" width="100%" height="100%">
+          <SpineEntryBinding
+            getEntry={() => entry}
+            layout="wide"
+            expanded={true}
+            focused={false}
+            contentWidth={116}
+          />
+        </box>
+      )),
+    { width: 120, height: 16 },
+  )
+
+  try {
+    const frame = (await capture(app)).replace(/\s+/g, " ")
+    expect(frame).toContain(lead)
+    expect(frame).not.toContain("…")
+    // The thought appears once: header summary only, body carries the rest.
+    expect(frame.split("freeconomics").length - 1).toBe(1)
+    // The body renders below the chip (prose blocks may letter-space glyphs).
+    expect(frame.replace(/\s+/g, "")).toContain("Theruntimelivesunderpackages/.")
+  } finally {
+    app.renderer.destroy()
+  }
+})

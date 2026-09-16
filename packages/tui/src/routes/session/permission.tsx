@@ -623,14 +623,7 @@ export function PermissionPrompt(props: {
                   {current.title}
                 </text>
               </box>
-              <Show when={props.queue && props.queue.total > 1}>
-                <box flexDirection="row" paddingLeft={2} flexShrink={0} minWidth={0}>
-                  <text fg={theme.textMuted} wrapMode="none">
-                    Request {props.queue!.index} of {props.queue!.total}
-                    {props.queue!.next ? ` · next: ${props.queue!.next}` : ""}
-                  </text>
-                </box>
-              </Show>
+              <GateQueueLine queue={props.queue} />
             </box>
           )
 
@@ -674,6 +667,24 @@ export function PermissionPrompt(props: {
         })()}
       </Match>
     </Switch>
+  )
+}
+
+/**
+ * Pending-gate docket line: how many requests are queued and what comes next.
+ * Only the head request renders; this keeps the queue visible to the operator.
+ */
+export function GateQueueLine(props: { queue?: { index: number; total: number; next?: string } }) {
+  const { theme } = useTheme()
+  return (
+    <Show when={props.queue && props.queue.total > 1}>
+      <box flexDirection="row" paddingLeft={2} flexShrink={0} minWidth={0}>
+        <text fg={theme.textMuted} wrapMode="none">
+          Request {props.queue!.index} of {props.queue!.total}
+          {props.queue!.next ? ` · next: ${props.queue!.next}` : ""}
+        </text>
+      </box>
+    </Show>
   )
 }
 
