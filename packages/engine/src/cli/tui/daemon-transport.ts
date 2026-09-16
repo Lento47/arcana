@@ -31,11 +31,6 @@ export interface DaemonTransportOptions {
   readonly directory: string
   readonly command: readonly string[]
   readonly fetch?: typeof fetch
-  /**
-   * Extra environment for a freshly spawned daemon (ignored when attaching to
-   * a healthy one — its own env already decided its lifecycle).
-   */
-  readonly env?: Record<string, string>
   readonly connectAttempts?: number
   readonly connectIntervalMs?: number
   readonly dependencies?: Partial<DaemonTransportDependencies>
@@ -44,29 +39,6 @@ export interface DaemonTransportOptions {
 export interface DaemonTransport {
   readonly url: string
   readonly fetch: typeof fetch
-}
-
-/**
- * Lifecycle env for a freshly spawned daemon. Operator env wins over config:
- * a one-off `ARCANA_DAEMON_GRACE_MS=0` must not be lost to a config value, and
- * config only forwards values the operator actually set (the daemon owns the
- * defaults: 10 min reconnect grace / 60 min work fuse).
- */
-export function daemonSpawnEnv(input: {
-  config?: { grace_ms?: number; work_timeout_ms?: number } | undefined
-  env?: Record<string, string | undefined>
-}): Record<string, string> {
-  const env = input.env ?? {}
-  const out: Record<string, string> = {}
-  const graceEnvSet =
-    env.ARCANA_DAEMON_GRACE_MS !== undefined || env.ARCANA_DAEMON_IDLE_TIMEOUT_MS !== undefined
-  if (!graceEnvSet && input.config?.grace_ms !== undefined) {
-    out.ARCANA_DAEMON_GRACE_MS = String(input.config.grace_ms)
-  }
-  if (env.ARCANA_DAEMON_WORK_TIMEOUT_MS === undefined && input.config?.work_timeout_ms !== undefined) {
-    out.ARCANA_DAEMON_WORK_TIMEOUT_MS = String(input.config.work_timeout_ms)
-  }
-  return out
 }
 
 export type DaemonTransportFailureReason = "invalid_lock" | "spawn_failed" | "health_timeout" | "not_configured"
@@ -309,7 +281,6 @@ export async function createDaemonTransport(options: DaemonTransportOptions): Pr
             ...(process.env as Record<string, string>),
             ARCANA_DAEMON: "1",
             ARCANA_DAEMON_CWD: directory,
-            ...(options.env ?? {}),
           },
           // Detach so the daemon survives the TUI process (Ctrl+C / quit) and
           // keeps running live session turns in the background.

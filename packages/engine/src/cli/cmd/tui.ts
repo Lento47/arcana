@@ -14,7 +14,7 @@ import { writeHeapSnapshot } from "node:v8"
 import { validateSession } from "../tui/validate-session"
 import { win32InstallCtrlCGuard, win32RestoreTerminal } from "@arcana/tui/terminal-win32"
 import { mark, measure } from "../../cli/profile"
-import { assertEngineHealthy, createDaemonTransport, daemonSpawnEnv } from "../tui/daemon-transport"
+import { assertEngineHealthy, createDaemonTransport } from "../tui/daemon-transport"
 import { DAEMON_LOG, daemonLog } from "../../daemon/log"
 
 declare global {
@@ -212,28 +212,17 @@ export const TuiThreadCommand = cmd({
       }
       const cwd = Filesystem.resolve(process.cwd())
 
-      // Config decides the daemon lifecycle: the values are forwarded into the
-      // spawn env so a fresh daemon gets the operator's reconnect grace and
-      // work fuse (an attached healthy daemon already has its own).
-      const config = await TuiConfig.get()
-      mark("tui-config-loaded")
-      measure("tui-handler-start", "tui-config-loaded", "tui-init")
-
       // ── Daemon detection: try existing daemon, auto-spawn if missing ──
       const isCompiled = typeof Bun !== "undefined" && (Bun as any).isCompiled
       const daemonCmd = isCompiled
         ? [process.execPath, "--daemon"]
         : [process.execPath, "--conditions=browser", daemonScript, "--daemon"]
-      // Operator env wins over config: a one-off `ARCANA_DAEMON_GRACE_MS=0`
-      // must not be lost to a config value, and config only forwards values
-      // the operator actually set (defaults live in the daemon).
-      const daemonEnv = daemonSpawnEnv({ config: config.daemon, env: process.env })
       // The engine host owns daemon lifecycle and injects the resulting
-      // workspace-bound transport into the presentation package.
+      // workspace-bound transport into the presentation package. The daemon
+      // reads its lifecycle config (arcana.json daemon.*) itself at boot.
       const daemonAttempt = await createDaemonTransport({
         directory: cwd,
         command: daemonCmd,
-        env: daemonEnv,
       })
       const daemonTransport = daemonAttempt.status === "connected" ? daemonAttempt.transport : undefined
       if (daemonAttempt.status === "unavailable") {
@@ -284,6 +273,9 @@ export const TuiThreadCommand = cmd({
       }
 
       const prompt = await input(args.prompt)
+      const config = await TuiConfig.get()
+      mark("tui-config-loaded")
+      measure("tui-handler-start", "tui-config-loaded", "tui-init")
 
       const network = resolveNetworkOptionsNoConfig(args)
       const external =

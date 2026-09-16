@@ -263,6 +263,21 @@ export const Info = Schema.Struct({
   ).annotate({
     description: "Self-driven session loop: continue until the user prompt is satisfied, a question is asked, or the continuation cap is hit.",
   }),
+  daemon: Schema.optional(
+    Schema.Struct({
+      grace_ms: Schema.optional(NonNegativeInt).annotate({
+        description:
+          "How long the detached daemon keeps serving after the TUI exits and work settles (default: 600000 = 10 minutes). 0 disables the self-stop entirely.",
+      }),
+      work_timeout_ms: Schema.optional(NonNegativeInt).annotate({
+        description:
+          "Total-silence fuse while a session turn is live; the daemon keeps working with no TUI attached until this elapses (default: 3600000 = 60 minutes). 0 disables the fuse.",
+      }),
+    }),
+  ).annotate({
+    description:
+      "Daemon lifecycle for TUI-hosted work: reconnect grace after the TUI closes and the silence fuse while a turn runs (env ARCANA_DAEMON_GRACE_MS / ARCANA_DAEMON_WORK_TIMEOUT_MS override this).",
+  }),
   git: Schema.optional(
     Schema.Struct({
       commit_signature: Schema.optional(Schema.Literals(["minimal", "branded", false])).annotate({

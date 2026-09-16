@@ -110,21 +110,6 @@ test("disables suspend and assigns ctrl+z to undo when unsupported", () => {
   expect(config.keybinds.get("input.undo")).toMatchObject([{ key: "ctrl+z,ctrl+-,super+z" }])
 })
 
-test("daemon lifecycle passes operator values through (defaults live in the daemon)", () => {
-  // Unset: no env is forwarded, the daemon applies its own defaults
-  // (grace 10 min, work fuse 60 min).
-  expect(resolve({}, { terminalSuspend: true }).daemon).toBeUndefined()
-
-  const overridden = resolve(
-    { daemon: { grace_ms: 60_000, work_timeout_ms: 120_000 } },
-    { terminalSuspend: true },
-  )
-  expect(overridden.daemon).toEqual({ grace_ms: 60_000, work_timeout_ms: 120_000 })
-
-  // 0 is a valid operator choice: disables the idle self-destruct.
-  expect(resolve({ daemon: { grace_ms: 0 } }, { terminalSuspend: true }).daemon).toEqual({ grace_ms: 0 })
-})
-
 test("preserves an explicit undo binding when suspend is unsupported", () => {
   const config = resolve({ keybinds: { input_undo: "ctrl+u", terminal_suspend: "ctrl+s" } }, { terminalSuspend: false })
 

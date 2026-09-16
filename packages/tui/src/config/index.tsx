@@ -42,18 +42,6 @@ export const Attention = Schema.Struct({
   sounds: Schema.optional(AttentionSounds),
 }).annotate({ description: "Attention notification and sound settings" })
 
-const DaemonMs = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
-export const Daemon = Schema.Struct({
-  grace_ms: Schema.optional(DaemonMs).annotate({
-    description:
-      "How long the detached daemon keeps serving after the TUI exits and work settles (default: 600000 = 10 minutes). 0 disables the idle self-destruct.",
-  }),
-  work_timeout_ms: Schema.optional(DaemonMs).annotate({
-    description:
-      "Total-silence fuse while a session turn is live; the daemon keeps working with no TUI attached until this elapses (default: 3600000 = 60 minutes).",
-  }),
-}).annotate({ description: "Daemon lifecycle: reconnect grace and work fuse" })
-
 const PromptSize = Schema.Int.check(Schema.isGreaterThan(0))
 export const Prompt = Schema.Struct({
   max_height: Schema.optional(PromptSize).annotate({ description: "Prompt textarea max height" }),
@@ -187,7 +175,6 @@ export const Info = Schema.Struct({
   plugin_enabled: Schema.optional(Schema.Record(Schema.String, Schema.Boolean)),
   leader_timeout: Schema.optional(LeaderTimeout),
   attention: Schema.optional(Attention),
-  daemon: Schema.optional(Daemon),
   prompt: Schema.optional(Prompt),
   scroll_speed: Schema.optional(ScrollSpeed).annotate({ description: "TUI scroll speed" }),
   scroll_acceleration: Schema.optional(ScrollAcceleration),

@@ -16,7 +16,10 @@ import { touchActivity } from "./lock"
  *   the last activity so the operator can reopen the TUI and see the finished
  *   work before the process stops.
  *
- * `ARCANA_DAEMON_IDLE_TIMEOUT_MS=0` (legacy name, now the grace) disables the
+ * Configured by `arcana.json` → `daemon: { grace_ms, work_timeout_ms }` (any
+ * CLI surface that starts the daemon reads it) with env overrides:
+ * ARCANA_DAEMON_GRACE_MS / ARCANA_DAEMON_WORK_TIMEOUT_MS, plus the legacy
+ * ARCANA_DAEMON_IDLE_TIMEOUT_MS name for the grace. A grace of 0 disables the
  * self-destruct entirely.
  */
 
@@ -32,26 +35,33 @@ function envMs(name: string): number | undefined {
 }
 
 /**
- * Resolution order:
- *   ARCANA_DAEMON_GRACE_MS        explicit reconnect grace (config daemon.grace_ms
- *                                 is forwarded into this env by the TUI spawn)
- *   ARCANA_DAEMON_IDLE_TIMEOUT_MS legacy override ("0" disables idle-stop)
- *   10 min                        default
+ * Env-captured overrides. Config (`arcana.json` daemon.grace_ms /
+ * daemon.work_timeout_ms) must never override an explicit operator env:
+ *   ARCANA_DAEMON_GRACE_MS        reconnect grace ("0" disables the self-stop)
+ *   ARCANA_DAEMON_IDLE_TIMEOUT_MS legacy name for the grace
+ *   ARCANA_DAEMON_WORK_TIMEOUT_MS silence fuse while a turn is live
+ * Defaults (used when neither env nor config sets a value): 10 min / 60 min.
  */
-function resolveGraceMs(): number {
-  const explicit = envMs("ARCANA_DAEMON_GRACE_MS")
-  if (explicit !== undefined) return explicit
-  const legacy = envMs("ARCANA_DAEMON_IDLE_TIMEOUT_MS")
-  if (legacy !== undefined) return legacy
-  return RECONNECT_GRACE_MS
-}
+const graceEnvMs = envMs("ARCANA_DAEMON_GRACE_MS") ?? envMs("ARCANA_DAEMON_IDLE_TIMEOUT_MS")
+const workEnvMs = envMs("ARCANA_DAEMON_WORK_TIMEOUT_MS")
 
-function resolveWorkTimeoutMs(): number {
-  return envMs("ARCANA_DAEMON_WORK_TIMEOUT_MS") ?? WORK_TIMEOUT_MS
-}
+let graceMs = graceEnvMs ?? RECONNECT_GRACE_MS
+let workTimeoutMs = workEnvMs ?? WORK_TIMEOUT_MS
 
-let graceMs = resolveGraceMs()
-let workTimeoutMs = resolveWorkTimeoutMs()
+/**
+ * Apply the engine config's daemon lifecycle values at server start. Env wins;
+ * config fills only what the operator did not set in the environment.
+ */
+export function applyDaemonTimeouts(input: { grace_ms?: number; work_timeout_ms?: number } | undefined): void {
+  if (!input) return
+  if (graceEnvMs === undefined && typeof input.grace_ms === "number" && input.grace_ms >= 0) {
+    graceMs = input.grace_ms
+  }
+  if (workEnvMs === undefined && typeof input.work_timeout_ms === "number" && input.work_timeout_ms >= 0) {
+    workTimeoutMs = input.work_timeout_ms
+  }
+  arm()
+}
 
 /** Test-only overrides so fuse behavior is testable without real waits. */
 export function __setIdleTimeoutForTest(ms: number): void {

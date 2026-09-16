@@ -3,6 +3,7 @@ import {
   __setIdleTimeoutForTest,
   __setWorkTimeoutForTest,
   activityStatus,
+  applyDaemonTimeouts,
   armIdle,
   clearIdle,
   holdWork,
@@ -161,5 +162,19 @@ describe("daemon idle activity control", () => {
     expect(activityStatus().reason).toBe("suspended")
     expect(activityStatus().deadlineAt).toBeNull()
     sseDisconnected()
+  })
+
+  it("applyDaemonTimeouts applies config values and leaves unset fields alone", () => {
+    armIdle("L:\\ws", () => {})
+    applyDaemonTimeouts({ grace_ms: 5_000, work_timeout_ms: 9_000 })
+    expect(activityStatus().reconnectGraceMs).toBe(5_000)
+    expect(activityStatus().workTimeoutMs).toBe(9_000)
+
+    applyDaemonTimeouts({ grace_ms: 7_000 })
+    expect(activityStatus().reconnectGraceMs).toBe(7_000)
+    expect(activityStatus().workTimeoutMs).toBe(9_000)
+
+    applyDaemonTimeouts(undefined)
+    expect(activityStatus().reconnectGraceMs).toBe(7_000)
   })
 })

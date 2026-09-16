@@ -1339,6 +1339,17 @@ test("config parser preserves permission order while rejecting unknown top-level
   }
 })
 
+test("daemon lifecycle config decodes and leaves defaults to the runtime", () => {
+  const config = ConfigParse.schema(
+    ConfigV1.Info,
+    { daemon: { grace_ms: 0, work_timeout_ms: 120_000 } },
+    "test",
+  )
+  // grace_ms 0 is a real operator choice (disable the self-stop), not "unset".
+  expect(config.daemon).toEqual({ grace_ms: 0, work_timeout_ms: 120_000 })
+  expect(ConfigParse.schema(ConfigV1.Info, {}, "test").daemon).toBeUndefined()
+})
+
 // MCP config merging tests
 
 it.instance("project config can override MCP server enabled status", () =>
