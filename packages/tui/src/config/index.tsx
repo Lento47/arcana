@@ -216,7 +216,6 @@ export type Resolved = Omit<
   shell: Shell
   lexicon: LexiconVoice
   self_governance: boolean
-  daemon: { grace_ms: number; work_timeout_ms: number }
   attention: {
     enabled: boolean
     notifications: boolean
@@ -279,10 +278,6 @@ export function resolve(input: Info, options: ResolveOptions): Resolved {
       volume: input.attention?.volume ?? 0.4,
       sound_pack: input.attention?.sound_pack ?? "arcana.default",
       sounds: input.attention?.sounds ?? {},
-    },
-    daemon: {
-      grace_ms: input.daemon?.grace_ms ?? 10 * 60 * 1000,
-      work_timeout_ms: input.daemon?.work_timeout_ms ?? 60 * 60 * 1000,
     },
     shell: input.shell ?? "command-spine",
     lexicon: input.lexicon ?? "arcane",

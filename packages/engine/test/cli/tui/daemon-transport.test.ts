@@ -4,6 +4,7 @@ import {
   assertEngineHealthy,
   createDaemonTransport,
   createRecoveringDaemonFetch,
+  daemonSpawnEnv,
   DaemonRequestOutcomeUnknownError,
 } from "@/cli/tui/daemon-transport"
 import type { DaemonLock } from "@/daemon/lock"
@@ -202,8 +203,7 @@ describe("daemon TUI transport", () => {
     await expect(assertEngineHealthy({ url: INITIAL_URL, fetch: malformedFetch })).rejects.toThrow("invalid response")
   })
 
-  test("spawns the daemon detached so it survives the TUI process", async () => {
-    let spawnInput: Record<string, unknown> | undefined
+  test("spawns the daemon detached so it survives the TUI process", async () => {    let spawnInput: Record<string, unknown> | undefined
     const attempt = await createDaemonTransport({
       directory: process.cwd(),
       command: ["arcana", "--daemon"],
@@ -231,5 +231,36 @@ describe("daemon TUI transport", () => {
       ARCANA_DAEMON_GRACE_MS: "600000",
       ARCANA_DAEMON_WORK_TIMEOUT_MS: "3600000",
     })
+  })
+
+  test("daemon spawn env: config forwards, operator env wins, defaults stay in the daemon", () => {
+    // Nothing configured: no lifecycle env at all (daemon defaults apply).
+    expect(daemonSpawnEnv({ config: undefined, env: {} })).toEqual({})
+
+    // Config values are forwarded.
+    expect(daemonSpawnEnv({ config: { grace_ms: 0, work_timeout_ms: 120_000 }, env: {} })).toEqual({
+      ARCANA_DAEMON_GRACE_MS: "0",
+      ARCANA_DAEMON_WORK_TIMEOUT_MS: "120000",
+    })
+
+    // Operator env wins over config — including the legacy grace name.
+    expect(
+      daemonSpawnEnv({
+        config: { grace_ms: 600_000, work_timeout_ms: 120_000 },
+        env: { ARCANA_DAEMON_GRACE_MS: "1000" },
+      }),
+    ).toEqual({ ARCANA_DAEMON_WORK_TIMEOUT_MS: "120000" })
+    expect(
+      daemonSpawnEnv({
+        config: { grace_ms: 600_000 },
+        env: { ARCANA_DAEMON_IDLE_TIMEOUT_MS: "0" },
+      }),
+    ).toEqual({})
+    expect(
+      daemonSpawnEnv({
+        config: { work_timeout_ms: 120_000 },
+        env: { ARCANA_DAEMON_WORK_TIMEOUT_MS: "0" },
+      }),
+    ).toEqual({})
   })
 })

@@ -14,7 +14,7 @@ import { writeHeapSnapshot } from "node:v8"
 import { validateSession } from "../tui/validate-session"
 import { win32InstallCtrlCGuard, win32RestoreTerminal } from "@arcana/tui/terminal-win32"
 import { mark, measure } from "../../cli/profile"
-import { assertEngineHealthy, createDaemonTransport } from "../tui/daemon-transport"
+import { assertEngineHealthy, createDaemonTransport, daemonSpawnEnv } from "../tui/daemon-transport"
 import { DAEMON_LOG, daemonLog } from "../../daemon/log"
 
 declare global {
@@ -224,15 +224,16 @@ export const TuiThreadCommand = cmd({
       const daemonCmd = isCompiled
         ? [process.execPath, "--daemon"]
         : [process.execPath, "--conditions=browser", daemonScript, "--daemon"]
+      // Operator env wins over config: a one-off `ARCANA_DAEMON_GRACE_MS=0`
+      // must not be lost to a config value, and config only forwards values
+      // the operator actually set (defaults live in the daemon).
+      const daemonEnv = daemonSpawnEnv({ config: config.daemon, env: process.env })
       // The engine host owns daemon lifecycle and injects the resulting
       // workspace-bound transport into the presentation package.
       const daemonAttempt = await createDaemonTransport({
         directory: cwd,
         command: daemonCmd,
-        env: {
-          ARCANA_DAEMON_GRACE_MS: String(config.daemon.grace_ms),
-          ARCANA_DAEMON_WORK_TIMEOUT_MS: String(config.daemon.work_timeout_ms),
-        },
+        env: daemonEnv,
       })
       const daemonTransport = daemonAttempt.status === "connected" ? daemonAttempt.transport : undefined
       if (daemonAttempt.status === "unavailable") {

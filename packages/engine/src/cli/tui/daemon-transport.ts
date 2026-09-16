@@ -46,6 +46,29 @@ export interface DaemonTransport {
   readonly fetch: typeof fetch
 }
 
+/**
+ * Lifecycle env for a freshly spawned daemon. Operator env wins over config:
+ * a one-off `ARCANA_DAEMON_GRACE_MS=0` must not be lost to a config value, and
+ * config only forwards values the operator actually set (the daemon owns the
+ * defaults: 10 min reconnect grace / 60 min work fuse).
+ */
+export function daemonSpawnEnv(input: {
+  config?: { grace_ms?: number; work_timeout_ms?: number } | undefined
+  env?: Record<string, string | undefined>
+}): Record<string, string> {
+  const env = input.env ?? {}
+  const out: Record<string, string> = {}
+  const graceEnvSet =
+    env.ARCANA_DAEMON_GRACE_MS !== undefined || env.ARCANA_DAEMON_IDLE_TIMEOUT_MS !== undefined
+  if (!graceEnvSet && input.config?.grace_ms !== undefined) {
+    out.ARCANA_DAEMON_GRACE_MS = String(input.config.grace_ms)
+  }
+  if (env.ARCANA_DAEMON_WORK_TIMEOUT_MS === undefined && input.config?.work_timeout_ms !== undefined) {
+    out.ARCANA_DAEMON_WORK_TIMEOUT_MS = String(input.config.work_timeout_ms)
+  }
+  return out
+}
+
 export type DaemonTransportFailureReason = "invalid_lock" | "spawn_failed" | "health_timeout" | "not_configured"
 
 export type DaemonTransportAttempt =
