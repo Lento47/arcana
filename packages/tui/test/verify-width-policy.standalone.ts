@@ -31,35 +31,49 @@ assert(
   "10-col minimal chat -> 2",
 )
 
-// --- Clamp >= 1, no negatives/NaN ---
-assert(
-  spineProseWidth(0, "wide", "chat") === 1,
-  "0-col wide chat -> 1 (clamp)",
-)
+// --- Clamp >= 1: a present-but-tiny terminal keeps its real (tiny) budget ---
 assert(
   spineProseWidth(1, "minimal", "chat") === 1,
   "1-col minimal chat -> 1",
 )
 assert(
-  spineProseWidth(Number.NaN, "wide", "chat") === 1,
-  "NaN -> 1",
+  spineProseWidth(4, "minimal", "chat") === 1,
+  "4-col minimal chat -> 1 (clamp, not a fallback)",
+)
+
+// --- Unmeasured width is not a narrow terminal: it takes the 80 default ---
+// `useTerminalDimensions` seeds from `renderer.width`, so 0/NaN is the
+// first-paint race. Flooring it to 1 painted a wrap-per-character spine.
+assert(
+  spineProseWidth(0, "wide", "chat") === 72,
+  "0-col (unmeasured) -> 72, not 1",
+)
+assert(
+  spineProseWidth(Number.NaN, "wide", "chat") === 72,
+  "NaN (unmeasured) -> 72, not 1",
 )
 
 // --- Known chrome arithmetic at wide sizes ---
-// minimal: outerPad 0 + gutter 2 + (chat: border1+padL2+padR1) + scrollbar2 = 8
+// outerPad is 0 for every layout.
+// minimal chat: gutter 2 + (chat: border1+padL2+padR1) + scrollbar2 = 8
 assert(
   spineProseWidth(120, "minimal", "chat") === 112,
   "120-col minimal chat -> 112",
 )
-// wide: outerPad 1 + gutter 2 + (think: rail2+1) + scrollbar2 = 8
+// wide think: gutter 2 + (think: rail2+1) + scrollbar2 = 7
 assert(
-  spineProseWidth(120, "wide", "think") === 112,
-  "120-col wide think -> 112",
+  spineProseWidth(120, "wide", "think") === 113,
+  "120-col wide think -> 113",
 )
-// wide chat: outerPad 1 + gutter 2 + (border1+padL2+padR1) + scrollbar2 = 9
+// wide chat: gutter 2 + (border1+padL2+padR1) + scrollbar2 = 8
 assert(
-  spineProseWidth(120, "wide", "chat") === 111,
-  "120-col wide chat -> 111",
+  spineProseWidth(120, "wide", "chat") === 112,
+  "120-col wide chat -> 112",
+)
+// wide inline: gutter 2 + 1 + scrollbar2 = 5
+assert(
+  spineProseWidth(120, "wide", "inline") === 115,
+  "120-col wide inline -> 115",
 )
 
 // --- Layout mapping ---

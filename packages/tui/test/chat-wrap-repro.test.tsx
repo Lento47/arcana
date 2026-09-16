@@ -114,4 +114,45 @@ describe("chat wrap regression", () => {
     expect(frame).toContain("I can help with Arcana project work:")
     expect(frame).not.toContain("I can help with\n")
   })
+
+  /**
+   * Contraction at the wrap boundary.
+   *
+   * Two `.arcana/learned/` notes claim the renderer "treats apostrophes as
+   * word/token boundaries", rendering `here's` as `here` / `'s`. That diagnosis
+   * was inferred, never reproduced — and it does not hold: neither the plain
+   * `wrapMode="word"` text path nor `<markdown>` breaks inside a word at an
+   * apostrophe. This pins the real behaviour so the note cannot quietly become
+   * true later, and so nobody re-diagnoses the same symptom from scratch.
+   *
+   * contentWidth 23 leaves the body 20 columns (minus the 3-cell marker), which
+   * is exactly the adversarial case: 20 columns fit "alpha beta gamma here",
+   * so an apostrophe-breaking wrapper would drop `'s` to the next line.
+   */
+  test("a contraction landing on the wrap boundary is not split at the apostrophe", async () => {
+    const { setText } = await renderChat({ width: 100, contentWidth: 23 })
+    setText("alpha beta gamma here's omega")
+    await pump()
+    const frame = app!.captureCharFrame()
+    const lines = frame.split("\n").map((line) => line.trimEnd())
+
+    // The wrap happened, and it happened after the whole contraction.
+    expect(lines.filter((line) => line.length > 0).length).toBeGreaterThan(1)
+    expect(lines.some((line) => line.includes("here's") && line.includes("omega"))).toBe(true)
+    // The failure shape the notes describe: a line ending at "here" with the
+    // orphaned "'s" opening the next.
+    expect(
+      lines.some((line, i) => line.endsWith("here") && (lines[i + 1] ?? "").trimStart().startsWith("'s")),
+    ).toBe(false)
+  })
+
+  test("a hyphenated compound may break after the hyphen, which is not the same defect", async () => {
+    // Documents where the boundary genuinely is: `well-known` is a legal break
+    // point (both halves stay readable, and it is standard terminal behaviour).
+    // A contraction is not, because the apostrophe is inside the word.
+    const { setText } = await renderChat({ width: 100, contentWidth: 23 })
+    setText("alpha beta gamma well-known omega")
+    await pump()
+    expect(app!.captureCharFrame()).toContain("well-known")
+  })
 })

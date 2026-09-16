@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import {
+  DEFAULT_TERMINAL_WIDTH,
   getSpineLayout,
   SESSION_FRAME_CHROME,
   spineChatCardChrome,
   spineProseWidth,
   spineViewportWidth,
+  terminalColumns,
 } from "../src/shell/command-spine/spine-types"
 
 describe("spineProseWidth", () => {
@@ -17,14 +19,32 @@ describe("spineProseWidth", () => {
     expect(spineProseWidth(10, "minimal", "chat")).toBe(2)
   })
 
-  test("clamps to >= 1 — never negative, never 80", () => {
-    expect(spineProseWidth(0, "wide", "chat")).toBe(1)
+  test("clamps to >= 1 — a present-but-tiny terminal keeps its real budget", () => {
+    // 1 and 4 columns are real measurements, not the first-paint race: they get
+    // the floor, never a fallback that would overflow them.
     expect(spineProseWidth(1, "minimal", "chat")).toBe(1)
     expect(spineProseWidth(4, "minimal", "chat")).toBe(1)
   })
 
-  test("non-finite width degrades to 1 (first paint race), not 80", () => {
-    expect(spineProseWidth(Number.NaN, "wide", "chat")).toBe(1)
+  test("an unmeasured width takes the terminal default, not one column", () => {
+    // `useTerminalDimensions` seeds from `renderer.width`, so 0/NaN is the
+    // first-paint race. Flooring it to 1 painted a wrap-per-character spine for
+    // the frames until the first size report — and for the whole session when
+    // there is no TTY to report one.
+    expect(terminalColumns(0)).toBe(DEFAULT_TERMINAL_WIDTH)
+    expect(terminalColumns(Number.NaN)).toBe(DEFAULT_TERMINAL_WIDTH)
+    expect(terminalColumns(Number.POSITIVE_INFINITY)).toBe(DEFAULT_TERMINAL_WIDTH)
+    expect(terminalColumns(undefined)).toBe(DEFAULT_TERMINAL_WIDTH)
+    expect(spineProseWidth(0, "wide", "chat")).toBe(72)
+    expect(spineProseWidth(Number.NaN, "wide", "chat")).toBe(72)
+  })
+
+  test("a real measurement is never replaced by the default", () => {
+    // The distinction the whole helper rests on: narrow is a measurement.
+    for (const w of [1, 4, 10, 20, 30, 59, 80, 200]) {
+      expect(terminalColumns(w)).toBe(w)
+      expect(spineViewportWidth(w, 0)).toBe(w)
+    }
   })
 
   test("never exceeds the terminal width", () => {

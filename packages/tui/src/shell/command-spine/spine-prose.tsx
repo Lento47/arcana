@@ -183,11 +183,19 @@ export function SpineProse(props: {
   const chatVoice = () => props.chatVoice === true
   const focused = () => props.focused === true
 
-  /** Always a real column count so Code leaves under <markdown> wrap correctly. */
+  /**
+   * Last resort, not the first line of defence. The spine's width chain now
+   * degrades at its root (`terminalColumns` in `spine-types.ts`), so a real
+   * column count always arrives here — a missing one means a caller that
+   * rendered prose without measuring, and 1 is the only value that cannot
+   * overflow whatever it ended up inside.
+   *
+   * Always a real column count so Code leaves under <markdown> wrap correctly.
+   */
   const wrapCols = createMemo(() => {
     const w = props.contentWidth
     // Clamp to >= 1 — never the bare 80 fallback: a present-but-narrow width is
-    // a real budget. Missing width (first paint) degrades to 1, cannot overflow.
+    // a real budget.
     if (typeof w === "number" && Number.isFinite(w)) return Math.max(1, Math.floor(w))
     return 1
   })

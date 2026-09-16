@@ -310,9 +310,36 @@ export function frameChrome(density?: Density): number {
   return framePadding(density) * 2
 }
 
+/**
+ * Columns to assume before the terminal has reported a size.
+ *
+ * `useTerminalDimensions` seeds its signal from `renderer.width` at creation
+ * (`@opentui/solid`), so a shell that mounts ahead of the first size report
+ * legitimately reads 0. Flooring that to 1 is not a graceful degradation: it
+ * paints a wrap-per-character spine, for a frame on a normal run and for the
+ * whole session when there is no TTY to measure. 80 is the conventional
+ * terminal default — wrong-but-plausible at worst, and the next resize event
+ * corrects it.
+ */
+export const DEFAULT_TERMINAL_WIDTH = 80
+
+/**
+ * A real measurement, or the default when the terminal has not been measured.
+ *
+ * One definition so every width derivation in the spine degrades identically.
+ * A *present-but-narrow* terminal is not degenerately sized — 20 columns means
+ * 20 columns and keeps its real budget; only 0/NaN/Infinity mean "not
+ * measured", and those are exactly the first-paint race.
+ *
+ * @param terminalWidth - full terminal columns, possibly unmeasured
+ */
+export function terminalColumns(terminalWidth: number | undefined): number {
+  const width = Math.floor(terminalWidth ?? 0)
+  return Number.isFinite(width) && width > 0 ? width : DEFAULT_TERMINAL_WIDTH
+}
+
 export function spineViewportWidth(terminalWidth: number, chrome: number = SESSION_FRAME_CHROME): number {
-  const term = Number.isFinite(terminalWidth) ? Math.floor(terminalWidth) : 1
-  return Math.max(1, term - chrome)
+  return Math.max(1, terminalColumns(terminalWidth) - chrome)
 }
 
 /**
@@ -373,9 +400,9 @@ export function spineChatCardChrome(): number {
  * Measured content width for chat/think prose (Grok-class wrap width).
  *
  * Terminal columns minus outer pad + gutter + variant chrome + safety,
- * clamped to >= 1. Never a bare 80-column fallback: a present-but-narrow
- * terminal gets its real budget, and a missing/zero width (first paint race)
- * degrades to 1, which cannot overflow the parent.
+ * clamped to >= 1. A present-but-narrow terminal gets its real budget rather
+ * than a fallback — but a *missing* width is the first-paint race, and it takes
+ * `terminalColumns`' default rather than collapsing prose to one column.
  *
  * @param terminalWidth - full terminal columns
  * @param layout - current spine layout
@@ -387,7 +414,7 @@ export function spineProseWidth(
   variant: "chat" | "think" | "inline" = "chat",
   gutterWidth?: number,
 ): number {
-  const term = Number.isFinite(terminalWidth) ? Math.floor(terminalWidth) : 1
+  const term = terminalColumns(terminalWidth)
   // Entry: outer pad + gutter. Chat card: left border + padL + padR.
   // No separate rail sibling on the body anymore (pad/border only).
   const gutter = gutterWidth ?? spineGutterWidth(layout)
@@ -396,7 +423,8 @@ export function spineProseWidth(
     + gutter
     + (variant === "chat" ? spineChatCardChrome() : variant === "think" ? spineRailWidth(layout) + 1 : 1)
     + 2 // scrollbar / safety
-  // Clamp to >= 1 so a tiny/narrow terminal never yields negative or 80-wide prose.
+  // Floor stays for a present-but-tiny terminal (4 columns is still 4 columns);
+  // an unmeasured one never reaches here.
   return Math.max(1, term - chrome)
 }
 
