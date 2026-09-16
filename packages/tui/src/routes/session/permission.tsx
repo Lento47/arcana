@@ -243,7 +243,12 @@ function TextBody(props: { title: string; description?: string; icon?: string })
   )
 }
 
-export function PermissionPrompt(props: { request: PermissionRequest; directory?: string }) {
+export function PermissionPrompt(props: {
+  request: PermissionRequest
+  directory?: string
+  /** Position in the pending gate docket; only the head is rendered. */
+  queue?: { index: number; total: number; next?: string }
+}) {
   const sdk = useSDK()
   const project = useProject()
   const sync = useSync()
@@ -618,6 +623,14 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
                   {current.title}
                 </text>
               </box>
+              <Show when={props.queue && props.queue.total > 1}>
+                <box flexDirection="row" paddingLeft={2} flexShrink={0} minWidth={0}>
+                  <text fg={theme.textMuted} wrapMode="none">
+                    Request {props.queue!.index} of {props.queue!.total}
+                    {props.queue!.next ? ` · next: ${props.queue!.next}` : ""}
+                  </text>
+                </box>
+              </Show>
             </box>
           )
 

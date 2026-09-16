@@ -1,4 +1,4 @@
-import { Show, createEffect } from "solid-js"
+import { Show, createEffect, createMemo } from "solid-js"
 import { PermissionPrompt } from "../../routes/session/permission"
 import { QuestionPrompt } from "../../routes/session/question"
 import { isLocalPermissionRequest } from "./spine-gates"
@@ -14,6 +14,14 @@ export function AuthorityGate(props: {
   questions: unknown[]
 }) {
   const localPermissions = () => props.permissions.filter(isLocalPermissionRequest)
+  // Visible docket: when several local gates are queued the operator should
+  // know how many remain and what is next (only the head is rendered).
+  const permissionQueue = createMemo(() => {
+    const list = localPermissions()
+    if (list.length <= 1) return undefined
+    const next = (list[1] as { permission?: string } | undefined)?.permission
+    return { index: 1, total: list.length, next }
+  })
   // Gate-flicker probe: logs every head-request change. A `gate.head` line
   // with a NEW id and no preceding prompt.dispose/prompt.create pair means
   // the SAME PermissionPrompt instance silently swapped requests (queued-gate
@@ -33,7 +41,7 @@ export function AuthorityGate(props: {
   return (
     <>
       <Show when={localPermissions().length > 0}>
-        <PermissionPrompt request={localPermissions()[0] as any} />
+        <PermissionPrompt request={localPermissions()[0] as any} queue={permissionQueue()} />
       </Show>
       <Show when={localPermissions().length === 0 && props.permissions.length === 0 && props.questions.length > 0}>
         <QuestionPrompt request={props.questions[0] as any} />

@@ -25,6 +25,11 @@ export function SpineToolChip(props: {
   disclosure?: "▸" | "▾" | ""
   layout?: SpineLayout
   contentWidth?: number
+  /**
+   * Think rows carry prose, not a tool outcome: the preview wraps to the full
+   * text instead of being clipped to one line with an ellipsis.
+   */
+  wrapSummary?: boolean
   /** The row body already renders this outcome; suppress the header copy. */
   outcomeHidden?: boolean
   onMouseUp?: (event: MouseEvent) => void
@@ -40,6 +45,7 @@ export function SpineToolChip(props: {
   // affordance as the entry header and session rail.
   const [hovered, setHovered] = createSignal(false)
   const actionable = () => props.onMouseUp !== undefined
+  const [disclosureHover, setDisclosureHover] = createSignal(false)
   const layout = () => props.layout ?? "wide"
   const model = createMemo(() => toolChipModel({
     kind: String(props.kind),
@@ -111,6 +117,7 @@ export function SpineToolChip(props: {
   )
   const preview = createMemo(() => {
     const text = summaryText()
+    if (props.wrapSummary) return text
     const budget = summaryBudget()
     return budget === undefined ? text : truncate(text, budget)
   })
@@ -143,7 +150,15 @@ export function SpineToolChip(props: {
         <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} overflow="hidden" paddingLeft={1}>
           <Show
             when={hasRichSummary()}
-            fallback={<text fg={theme.text} wrapMode="none" truncate>{preview()}</text>}
+            fallback={
+              <text
+                fg={theme.text}
+                wrapMode={props.wrapSummary ? "word" : "none"}
+                truncate={!props.wrapSummary}
+              >
+                {preview()}
+              </text>
+            }
           >
             <text fg={theme.text} wrapMode="none" truncate>{props.children}</text>
           </Show>
@@ -153,7 +168,13 @@ export function SpineToolChip(props: {
         <text fg={statusColor()} wrapMode="none" truncate> · {outcomeText()}</text>
       </Show>
       <Show when={showDisclosure()}>
-        <box flexShrink={0} onMouseUp={props.onDisclosureMouseUp}>
+        <box
+          flexShrink={0}
+          onMouseUp={props.onDisclosureMouseUp}
+          onMouseOver={() => props.onDisclosureMouseUp && setDisclosureHover(true)}
+          onMouseOut={() => setDisclosureHover(false)}
+          backgroundColor={disclosureHover() ? theme.backgroundElement : undefined}
+        >
           <text fg={theme.spineContext} wrapMode="none"> {disclosure()}</text>
         </box>
       </Show>

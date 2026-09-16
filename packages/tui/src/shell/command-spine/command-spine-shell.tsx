@@ -17,6 +17,7 @@ import { useSpineScroll } from "./use-spine-scroll"
 import { useSpineFilters } from "./use-spine-filters"
 import { SpineViewport } from "./spine-viewport"
 import { AuthorityGate } from "./authority-gate"
+import { ApprovalGateActionsContext } from "./spine-approval-gate"
 import { SpineComposer } from "./spine-composer"
 import { SpineHeader } from "./spine-header"
 import { activateSpineEntryDisclosure, canToggleSpineEntry } from "./spine-navigation"
@@ -827,7 +828,14 @@ export function CommandSpineShell(props: ShellProps) {
   }))
 
   return (
-    <Show when={props.session()}>
+    <ApprovalGateActionsContext.Provider
+      value={{
+        approve: () => void authority.approveFocused(),
+        deny: () => void authority.denyFocused(),
+        inspect: () => authority.inspectFocused(),
+      }}
+    >
+      <Show when={props.session()}>
       <ErrorBoundary
         fallback={(error) => (
           <box flexDirection="column" padding={1} flexGrow={1}>
@@ -920,5 +928,6 @@ export function CommandSpineShell(props: ShellProps) {
         </SpineMotionProvider>
       </ErrorBoundary>
     </Show>
+    </ApprovalGateActionsContext.Provider>
   )
 }

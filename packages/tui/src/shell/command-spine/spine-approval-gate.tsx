@@ -1,6 +1,6 @@
-import { For, Show, createMemo } from "solid-js"
+import { For, Show, createContext, createMemo, createSignal, useContext } from "solid-js"
 import { TextAttributes, type RGBA } from "@opentui/core"
-import { useTheme } from "../../context/theme"
+import { selectedForeground, useTheme } from "../../context/theme"
 import type { Theme } from "../../theme"
 import { RoundBorder } from "../../ui/chrome"
 import { truncate } from "../../util/locale"
@@ -23,6 +23,23 @@ function riskColor(risk: string | undefined, theme: Theme) {
   return theme.textMuted
 }
 
+/**
+ * Approval actions made available to the inline gate. The shell provides the
+ * same handlers its a/d/v keyboard bindings use; when no provider is present
+ * (isolated renders/tests) the action chips stay non-clickable key hints.
+ */
+export type ApprovalGateActions = {
+  approve: () => void
+  deny: () => void
+  inspect: () => void
+}
+
+export const ApprovalGateActionsContext = createContext<ApprovalGateActions>()
+
+export function useApprovalGateActions() {
+  return useContext(ApprovalGateActionsContext)
+}
+
 function GateRow(props: { label: string; value?: string; tone?: RGBA; theme: Theme }) {
   const value = props.value?.trim()
   if (!value) return null
@@ -39,23 +56,41 @@ function GateRow(props: { label: string; value?: string; tone?: RGBA; theme: The
 }
 
 function ActionKeys(props: { theme: Theme; layout: SpineLayout }) {
+  const actions = useApprovalGateActions()
+  const [hover, setHover] = createSignal<string>()
   const facts = approvalGateFacts(undefined, props.layout)
+  const onPrimary = () => selectedForeground(props.theme)
+  const handlerFor = (key: string) => {
+    if (!actions) return undefined
+    if (key === "a") return actions.approve
+    if (key === "d") return actions.deny
+    if (key === "v") return actions.inspect
+    return undefined
+  }
   return (
     <box flexDirection="row" flexShrink={0} gap={1} paddingTop={1}>
       <For each={[...facts.keys]}>
-        {(item) => (
-          <box
-            flexShrink={0}
-            paddingLeft={1}
-            paddingRight={1}
-            backgroundColor={props.theme.backgroundElement}
-          >
-            <text wrapMode="none">
-              <span style={{ fg: props.theme.accent }}>{item.key}</span>
-              <span style={{ fg: props.theme.spineContext }}> {item.action}</span>
-            </text>
-          </box>
-        )}
+        {(item) => {
+          const handler = () => handlerFor(item.key)
+          const clickable = () => handler() !== undefined
+          const active = () => clickable() && hover() === item.key
+          return (
+            <box
+              flexShrink={0}
+              paddingLeft={1}
+              paddingRight={1}
+              backgroundColor={active() ? props.theme.primary : props.theme.backgroundElement}
+              onMouseUp={() => handler()?.()}
+              onMouseOver={() => clickable() && setHover(item.key)}
+              onMouseOut={() => setHover(undefined)}
+            >
+              <text wrapMode="none">
+                <span style={{ fg: active() ? onPrimary() : props.theme.accent }}>{item.key}</span>
+                <span style={{ fg: active() ? onPrimary() : props.theme.spineContext }}> {item.action}</span>
+              </text>
+            </box>
+          )
+        }}
       </For>
     </box>
   )
@@ -106,7 +141,7 @@ export function SpineApprovalGate(props: {
       border={true}
       customBorderChars={RoundBorder}
       borderColor={riskColor(risk(), theme)}
-      backgroundColor={theme.backgroundPanel}
+      backgroundColor={props.focused ? (theme.backgroundElement as any) : theme.backgroundPanel}
     >
       <box flexDirection="row" flexShrink={0} alignItems="center" gap={1}>
         <text fg={theme.warning} attributes={TextAttributes.BOLD}>
