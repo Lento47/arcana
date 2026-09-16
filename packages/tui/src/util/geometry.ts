@@ -40,6 +40,25 @@ export function homePromptMaxWidth(termWidth: number): number {
 }
 
 /**
+ * Columns the home footer's directory may occupy: the terminal, less every
+ * other segment of the row and the space between them, floored at 0.
+ *
+ * The footer is one row. Nothing in it is `wrapMode="none"` by accident — the
+ * directory is a single unbreakable token, so when the row overran, yoga shrank
+ * the text and it wrapped *mid-path*: at 40 columns a 25-column working
+ * directory drew five rows (`/tmp/`, `openco`, `de/`, `packag`, `es/tui`),
+ * growing the footer by four rows and pulling the whole home screen up with it.
+ * The directory is the only segment that can give ground, and it gives it from
+ * the left — the leaf and the branch are what tell an operator where they are,
+ * so `Locale.truncateLeft` is what consumes this number.
+ */
+export function footerDirectoryWidth(termWidth: number, reserved: number): number {
+  const width = Number.isFinite(termWidth) ? Math.floor(termWidth) : 0
+  const taken = Number.isFinite(reserved) ? Math.max(0, Math.floor(reserved)) : 0
+  return Math.max(0, width - taken)
+}
+
+/**
  * Dialog top inset: a quarter of the terminal height, integer.
  * B7: the raw `height / 4` produced fractional padding (6.25 at height 25),
  * a classic malformat source in whole-cell terminal renderers.

@@ -9,6 +9,7 @@ import {
   dialogMaxHeight,
   dialogContentMaxHeight,
   dialogWidth,
+  footerDirectoryWidth,
 } from "../src/util/geometry"
 
 describe("geometry.diffPatchPaneWidth (B5)", () => {
@@ -61,6 +62,25 @@ describe("geometry.homePromptMaxWidth (B6)", () => {
     expect(homePromptMaxWidth(107)).toBe(75)
     expect(homePromptMaxWidth(120)).toBe(84)
     expect(homePromptMaxWidth(200)).toBe(140)
+  })
+})
+
+describe("geometry.footerDirectoryWidth", () => {
+  test("gives the directory whatever the rest of the row does not take", () => {
+    expect(footerDirectoryWidth(80, 34)).toBe(46)
+    expect(footerDirectoryWidth(120, 34)).toBe(86)
+    // Wider reserved segments than the terminal: nothing to give, never negative.
+    expect(footerDirectoryWidth(30, 34)).toBe(0)
+    expect(footerDirectoryWidth(1, 999)).toBe(0)
+  })
+
+  test("survives a non-finite measurement rather than propagating NaN", () => {
+    // `NaN` reaches `elidePath`, whose every comparison against `NaN` is false,
+    // and the directory renders as an empty string instead of merely eliding.
+    expect(footerDirectoryWidth(Number.NaN, 34)).toBe(0)
+    expect(footerDirectoryWidth(80, Number.NaN)).toBe(80)
+    // Both sides floor to whole cells before subtracting.
+    expect(footerDirectoryWidth(80.7, 34.2)).toBe(46)
   })
 })
 
