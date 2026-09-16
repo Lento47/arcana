@@ -5,7 +5,7 @@ import type { ApprovalSnapshotDetail } from "../../shell/command-spine/approval-
 import { Glyph } from "../../branding"
 import { useTheme } from "../../context/theme"
 import { useDialog } from "../../ui/dialog"
-import { DialogCloseHint } from "../../ui/dialog-chrome"
+import { DialogPanelHeader } from "../../ui/dialog-chrome"
 export type ApprovalSnapshotStatus = "loading" | "ready" | "missing" | "error" | undefined
 
 /**
@@ -174,23 +174,13 @@ export function ApprovalInspector(props: {
       borderColor={theme.borderActive}
       backgroundColor={theme.background}
     >
-      <box
-        paddingLeft={2}
-        paddingRight={2}
-        backgroundColor={theme.backgroundPanel}
-        border={["bottom"]}
-        borderColor={theme.borderSubtle}
-        flexDirection="row"
-        gap={1}
-        height={1}
-      >
-        <text fg={theme.warning} attributes={TextAttributes.BOLD}>{Glyph.attention} APPROVAL INSPECTOR</text>
-        <text fg={theme.textMuted}>
-          {a().state} · version {a().version}
-        </text>
-        <box flexGrow={1} />
-        <DialogCloseHint onClose={() => dialog.clear()} />
-      </box>
+      <DialogPanelHeader
+        title="APPROVAL INSPECTOR"
+        titleColor={theme.warning}
+        mark={Glyph.attention}
+        detail={`${a().state} · version ${a().version}`}
+        onClose={() => dialog.clear()}
+      />
 
       <scrollbox
         flexGrow={1}

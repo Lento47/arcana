@@ -1,10 +1,9 @@
 import { createMemo, For, onMount } from "solid-js"
-import { TextAttributes } from "@opentui/core"
 import type { PermissionRequest } from "@arcana/sdk/v2"
 import { Glyph } from "../../branding"
 import { useTheme } from "../../context/theme"
 import { useDialog } from "../../ui/dialog"
-import { DialogCloseHint } from "../../ui/dialog-chrome"
+import { DialogPanelHeader } from "../../ui/dialog-chrome"
 
 /**
  * Read-only inspector for a permission ACTION GATE entry.
@@ -32,21 +31,13 @@ export function PermissionInspector(props: { request: PermissionRequest }) {
       borderColor={theme.borderActive}
       backgroundColor={theme.background}
     >
-      <box
-        paddingLeft={2}
-        paddingRight={2}
-        backgroundColor={theme.backgroundPanel}
-        border={["bottom"]}
-        borderColor={theme.borderSubtle}
-        flexDirection="row"
-        gap={1}
-        height={1}
-      >
-        <text fg={theme.warning} attributes={TextAttributes.BOLD}>{Glyph.attention} PERMISSION INSPECTOR</text>
-        <text fg={theme.textMuted}>{request().permission}</text>
-        <box flexGrow={1} />
-        <DialogCloseHint onClose={() => dialog.clear()} />
-      </box>
+      <DialogPanelHeader
+        title="PERMISSION INSPECTOR"
+        titleColor={theme.warning}
+        mark={Glyph.attention}
+        detail={request().permission}
+        onClose={() => dialog.clear()}
+      />
 
       <box
         flexDirection="column"

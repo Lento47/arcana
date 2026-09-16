@@ -74,9 +74,10 @@ test("a rendered surface prints the mark from the brand layer", async () => {
       frame = next
       await Bun.sleep(20)
     }
-    // The mark reaches the surface, and it is the triangle — not the warning
-    // mark the app keeps for statements about behaviour.
-    expect(frame).toContain(Glyph.attention)
+    // The mark reaches the surface, against the panel's name, and it is the
+    // triangle — not the warning mark the app keeps for statements about
+    // behaviour.
+    expect(frame).toContain(`${Glyph.attention} PERMISSION INSPECTOR`)
     expect(frame).not.toContain("⚠")
   } finally {
     app.renderer.destroy()

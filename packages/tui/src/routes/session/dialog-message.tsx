@@ -15,7 +15,7 @@ import { stripPromptPartIDs as strip } from "../../prompt/part"
 import { COPY, Glyph } from "../../branding"
 import { TextAttributes } from "@opentui/core"
 import { promptTextFromPart } from "../../arcana/task"
-import { DialogCloseHint } from "../../ui/dialog-chrome"
+import { DialogCloseHint, DialogPanelHeader } from "../../ui/dialog-chrome"
 
 type Act = {
   key: string
@@ -217,21 +217,7 @@ export function DialogMessage(props: {
       overflow="hidden"
       backgroundColor={theme.background}
     >
-      {/* Header — compact single line */}
-      <box
-        width="100%"
-        minWidth={0}
-        paddingLeft={2} paddingRight={2}
-        backgroundColor={theme.backgroundPanel}
-        border={["bottom"]} borderColor={theme.borderSubtle}
-        flexDirection="row" gap={1}
-        height={1}
-      >
-        <text fg={theme.primary} attributes={TextAttributes.BOLD} flexShrink={0}>Acts</text>
-        <text fg={theme.textMuted} flexShrink={0}>scry…_</text>
-        <box flexGrow={1} />
-        <DialogCloseHint onClose={clear} />
-      </box>
+      <DialogPanelHeader title="Acts" titleColor={theme.primary} detail="scry…_" onClose={clear} />
 
       {/* Body: compact rail timeline */}
       <box width="100%" minWidth={0} minHeight={0} flexGrow={1} flexShrink={1}>

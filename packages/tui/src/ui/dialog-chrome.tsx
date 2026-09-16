@@ -1,5 +1,5 @@
 import { RGBA, TextAttributes } from "@opentui/core"
-import type { ParentProps } from "solid-js"
+import { Show, type ParentProps } from "solid-js"
 import { useTheme } from "../context/theme"
 import { selectedForeground } from "../theme"
 import { contrastingInk } from "../theme/contrast"
@@ -85,6 +85,79 @@ export function DialogTitleRow(props: { title: string; onClose: () => void; clos
       >
         {props.title}
       </text>
+      <DialogCloseHint onClose={props.onClose} label={props.closeLabel} />
+    </box>
+  )
+}
+
+/**
+ * Header for the full-bleed panels that own the whole card — the approval and
+ * permission inspectors, the acts timeline: a title row with a hairline under
+ * it, spanning the card edge to edge rather than sitting inside `DialogColumn`.
+ *
+ * Three panels hand-rolled this row and all three drew the hairline *through*
+ * the title. `border={["bottom"]}` on a box with `height={1}` has no row of its
+ * own to sit on, so it is painted along the row the text occupies: every gap,
+ * every cell of padding and every column the layout left empty came out as `─`,
+ * which reads as a strikethrough with the title punched out of it. The height is
+ * therefore not set — the row sizes to its content and the border lands under it,
+ * which is the two-row header these panels always meant to have.
+ *
+ * The row is also a single-row readout, and the three copies each let it wrap:
+ * at a narrow card the title and the detail stacked into a second row (taller
+ * than the box, so it was clipped) and the `[esc]` hint was pushed off the card
+ * entirely. Everything here is `wrapMode="none"` and the title carries a
+ * truncation mark.
+ *
+ * Title and detail are one text node, not two in a row. Two nodes each carrying
+ * their own truncation fuse when the card is squeezed: a 44-column card printed
+ * `△ PERMIS...INSPECTORco...pt`, because the column the row's `gap` reserved got
+ * spent absorbing the shrink and both labels closed over it — two words with no
+ * mark between them. Inside one node the separator is a literal space, so a
+ * truncated header can lose the middle of either label but never the boundary,
+ * and there is a single elision to read instead of two.
+ *
+ * One node also means one thing to shrink, so the row can never be
+ * over-subscribed: at any width the title yields first and the dismissal stays.
+ * `DialogTitleRow` states the same rule for the card dialogs.
+ */
+export function DialogPanelHeader(props: {
+  /** The panel's name. Upper-case is the panels' own convention, not enforced. */
+  title: string
+  /** Title ink — `theme.warning` on a decision surface, `theme.primary` elsewhere. */
+  titleColor?: RGBA
+  /** Mark drawn against the title, sharing its ink: `Glyph.attention` on a gate. */
+  mark?: string
+  /** Secondary segment beside the title — the state or scope on show. */
+  detail?: string
+  onClose: () => void
+  closeLabel?: string
+}) {
+  const { theme } = useTheme()
+  return (
+    <box
+      width="100%"
+      minWidth={0}
+      paddingLeft={Space.padX}
+      paddingRight={Space.padX}
+      backgroundColor={theme.backgroundPanel}
+      border={["bottom"]}
+      borderColor={theme.borderSubtle}
+      flexDirection="row"
+      gap={Space.gap}
+    >
+      <text
+        fg={props.titleColor ?? theme.text}
+        attributes={TextAttributes.BOLD}
+        wrapMode="none"
+        overflow="hidden"
+        truncate
+        flexShrink={1}
+      >
+        {props.mark ? `${props.mark} ${props.title}` : props.title}
+        <Show when={props.detail}>{(detail) => <span style={{ fg: theme.textMuted }}>{` ${detail()}`}</span>}</Show>
+      </text>
+      <box flexGrow={1} minWidth={0} />
       <DialogCloseHint onClose={props.onClose} label={props.closeLabel} />
     </box>
   )
