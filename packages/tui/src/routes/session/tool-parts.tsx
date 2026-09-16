@@ -729,6 +729,43 @@ export function ToolOutputFields(props: {
   )
 }
 
+/**
+ * The transcript's disclosure row: what a collapsed tool block is hiding, and
+ * how to see it.
+ *
+ * Both expandable blocks — the generic tool and the shell — drew the same two
+ * strings, `Click to expand` and `Click to collapse`, duplicated verbatim, so
+ * the two were free to drift apart. Neither said how much output was hidden
+ * either: a one-line overrun and a five-hundred-line one asked the operator to
+ * expand on identical information, which is the difference between a hint and a
+ * fact.
+ *
+ * The glyphs are `Glyph.chevronClosed` / `chevronOpen` — the disclosure pair the
+ * brand layer already defines and the spine already draws — so a row that opens
+ * is marked the same way everywhere, instead of two blocks in one file inventing
+ * their own wording for it.
+ *
+ * `hiddenLines` is zero when only the character budget cut the preview, since
+ * then no whole line was dropped; the row carries the label alone rather than
+ * claiming `0 more lines`.
+ */
+export function ToolOutputDisclosure(props: { expanded: boolean; hiddenLines: number }) {
+  const { theme } = useTheme()
+  const label = () => {
+    if (props.expanded) return "click to collapse"
+    if (props.hiddenLines <= 0) return "click to expand"
+    const lines = `${props.hiddenLines} more ${props.hiddenLines === 1 ? "line" : "lines"}`
+    return `${lines} · click to expand`
+  }
+  return (
+    // One row, never wrapped: the affordance is a label, and a label that wraps
+    // reads as two rows of output rather than as a control.
+    <text fg={theme.textMuted} wrapMode="none" overflow="hidden">
+      {props.expanded ? Glyph.chevronOpen : Glyph.chevronClosed} {label()}
+    </text>
+  )
+}
+
 function GenericTool(props: ToolProps) {
   /** Strip MCP browser tool prefix for display. Matches any server name,
    *  so renaming the MCP server in arcana.json won't break the display. */
@@ -902,7 +939,7 @@ function GenericTool(props: ToolProps) {
             </Match>
           </Switch>
           <Show when={collapsed().overflow}>
-            <text fg={theme.textMuted}>{expanded() ? "Click to collapse" : "Click to expand"}</text>
+            <ToolOutputDisclosure expanded={expanded()} hiddenLines={collapsed().hiddenLines} />
           </Show>
         </box>
       </BlockTool>
@@ -1246,7 +1283,7 @@ function Shell(props: ToolProps) {
               <text fg={theme.text}>{limited()}</text>
             </Show>
             <Show when={collapsed().overflow}>
-              <text fg={theme.textMuted}>{expanded() ? "Click to collapse" : "Click to expand"}</text>
+              <ToolOutputDisclosure expanded={expanded()} hiddenLines={collapsed().hiddenLines} />
             </Show>
           </box>
         </BlockTool>
