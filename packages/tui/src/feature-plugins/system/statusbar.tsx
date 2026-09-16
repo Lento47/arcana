@@ -36,7 +36,18 @@ const COMPACT_WIDTH = 100
  */
 const MODEL_MIN = 16
 
-interface BarSegment { filled: boolean }
+interface BarSegment { filled: boolean; glyph: string }
+
+/**
+ * The boundary cell's ramp, in the proof-tape's own vocabulary: a dot, then a
+ * dash, then the next block. Ten cells alone quantise the readout to 10%
+ * steps, so a meter that has just moved sat on the same cell as one about to
+ * leave it and the bar looked frozen near the thresholds that matter — the
+ * ones that raise COMPACT SOON and COMPACT NOW. The two tape cells cost
+ * nothing, are already the app's "between" marks, and give the cell four
+ * densities: `▱`, `·`, `–`, `▰`.
+ */
+const PARTIAL_CELLS = ["·", "–"] as const
 
 /**
  * The width the bar lays out for, or `undefined` when there is none to measure.
@@ -55,13 +66,26 @@ export function isCompactWidth(width: number | undefined): boolean {
   return width !== undefined && width < COMPACT_WIDTH
 }
 
-function renderBar(pct: number): BarSegment[] {
+export function renderBar(pct: number): BarSegment[] {
   const clamped = Math.max(0, Math.min(100, pct))
-  const filled = Math.round(clamped / 10)
-  const empty = 10 - filled
+  const cells = clamped / 10
+  const full = Math.floor(cells)
+  const fraction = cells - full
   const segments: BarSegment[] = []
-  for (let i = 0; i < Math.max(0, filled); i++) segments.push({ filled: true })
-  for (let i = 0; i < Math.max(0, empty); i++) segments.push({ filled: false })
+  for (let i = 0; i < 10; i++) {
+    if (i < full) {
+      segments.push({ filled: true, glyph: "▰" })
+      continue
+    }
+    if (i === full && fraction > 0) {
+      // The cell the meter is currently crossing. It counts as fill for colour
+      // so the ramp brightens with the bar rather than flickering between the
+      // fill and empty tokens as it advances.
+      segments.push({ filled: true, glyph: PARTIAL_CELLS[Math.floor(fraction * PARTIAL_CELLS.length)]! })
+      continue
+    }
+    segments.push({ filled: false, glyph: "▱" })
+  }
   return segments
 }
 
@@ -267,7 +291,9 @@ function View(props: { api: TuiPluginApi }) {
           <Show when={usage()}>
             {(u) => (
               <Show when={u().percent !== null}>
-                <text flexShrink={0} wrapMode="none" fg={theme().textMuted}>|</text>
+                {/* The card borders' own rule glyph, dimmed — an ASCII pipe
+                    was the one mark in the line that belonged to no family. */}
+                <text flexShrink={0} wrapMode="none" fg={theme().borderSubtle}>│</text>
                 <text flexShrink={0} wrapMode="none" fg={theme().primary}>
                   <For each={renderBar(u().percent!)}>
                     {(seg) => {
@@ -275,7 +301,7 @@ function View(props: { api: TuiPluginApi }) {
                       const now = compactNowPercent(compaction())
                       const fillColor =
                         u().percent! >= now ? theme().error : u().percent! >= soon ? theme().warning : theme().primary
-                      return <span style={{ fg: seg.filled ? fillColor : theme().textMuted }}>{seg.filled ? "▰" : "▱"}</span>
+                      return <span style={{ fg: seg.filled ? fillColor : theme().textMuted }}>{seg.glyph}</span>
                     }}
                   </For>
                 </text>
@@ -297,10 +323,11 @@ function View(props: { api: TuiPluginApi }) {
                 {/* The space lives inside the run: JSX drops whitespace-only
                     text between elements when it spans a line break, so
                     `{label}` followed by a newline-indented `<span>` rendered
-                    as `glyphs▰` — the meter collided with the word. */}
-                <span style={{ fg: theme().secondary }}>
-                  {" "}{Glyph.meter} {value().percent + "%"}
-                </span>
+                    as `glyphs▰` — the meter collided with the word.
+                    No glyph here: the ten-cell meter a few columns to the left
+                    is the meter, and a lone `▰` in front of a number read as a
+                    one-cell fragment of it. */}
+                <span style={{ fg: theme().secondary }}>{" "}{value().percent + "%"}</span>
               </Show>
               <Show when={!compact()}>
                 <span style={{ fg: compacting() ? theme().warning : theme().textMuted }}>

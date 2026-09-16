@@ -25,6 +25,7 @@ import { Lexicon } from "../src/branding"
 import { Locale } from "../src/util/locale"
 import statusbarPlugin, {
   isCompactWidth,
+  renderBar,
   statusbarWidth,
 } from "../src/feature-plugins/system/statusbar"
 
@@ -220,5 +221,66 @@ describe("responsive gate", () => {
     expect(isCompactWidth(100)).toBe(false)
     // An unmeasured terminal is not treated as narrow: it keeps the full bar.
     expect(isCompactWidth(undefined)).toBe(false)
+  })
+})
+
+/**
+ * Ten cells quantise the readout to 10% steps, so a meter that had just moved
+ * sat on exactly the same cell as one about to leave it. The thresholds that
+ * matter — where COMPACT SOON and COMPACT NOW raise — therefore arrived with no
+ * warning: 81% and 89% drew the same bar. The boundary cell carries the
+ * proof-tape's two "between" marks (`·`, `–`), giving it four densities and the
+ * ramp a 2.5% step.
+ */
+describe("the context meter resolves sub-cell", () => {
+  const glyphs = (pct: number) => renderBar(pct).map((seg) => seg.glyph).join("")
+  const DENSITY: Record<string, number> = { "▱": 0, "·": 1, "–": 2, "▰": 3 }
+
+  test("the cell being crossed has four densities, not two", () => {
+    expect(glyphs(20)).toBe("▰▰▱▱▱▱▱▱▱▱")
+    expect(glyphs(23)).toBe("▰▰·▱▱▱▱▱▱▱")
+    expect(glyphs(25)).toBe("▰▰–▱▱▱▱▱▱▱")
+    // 27% and 25% share a mark; the point is that neither shares one with 20%
+    // or with 30%, which is what the ten cells alone forced.
+    expect(glyphs(27)).toBe("▰▰–▱▱▱▱▱▱▱")
+    expect(glyphs(30)).toBe("▰▰▰▱▱▱▱▱▱▱")
+  })
+
+  test("density never rises again once it has fallen", () => {
+    // The ramp reads left to right as full cells, at most one partial, then
+    // empty — so density is monotone non-increasing. A cell that refilled after
+    // emptying would be a hole in the bar. Sweeping all 101 percentages also
+    // pins the boundary cell as the only partial one, and that `filled` (which
+    // picks the colour) agrees with the mark's density.
+    for (let pct = 0; pct <= 100; pct++) {
+      const segments = renderBar(pct)
+      expect(segments.length).toBe(10)
+      let previous = 3
+      for (const seg of segments) {
+        const density = DENSITY[seg.glyph]
+        expect(density).toBeDefined()
+        expect(density!).toBeLessThanOrEqual(previous)
+        expect(seg.filled).toBe(density! > 0)
+        previous = density!
+      }
+    }
+  })
+
+  test("the range is clamped at both ends", () => {
+    expect(glyphs(0)).toBe("▱▱▱▱▱▱▱▱▱▱")
+    expect(glyphs(100)).toBe("▰▰▰▰▰▰▰▰▰▰")
+    expect(glyphs(-5)).toBe("▱▱▱▱▱▱▱▱▱▱")
+    expect(glyphs(150)).toBe("▰▰▰▰▰▰▰▰▰▰")
+  })
+
+  test("the boundary mark reaches the rendered line", async () => {
+    // The unit assertions above would hold even if the bar dropped the mark and
+    // drew plain cells, so this reads the frame: 50.0K of 200K is 25%.
+    const app = await mountStatusbar(sessionState({ tokens: { input: 49_000, output: 1_000 } }), 100)
+    try {
+      expect(app.captureCharFrame()).toContain("▰▰–▱▱▱▱▱▱▱")
+    } finally {
+      app.renderer.destroy()
+    }
   })
 })
