@@ -33,11 +33,21 @@ export function useSpineScroll(input: {
     input.onRef(r)
   }
 
+  /**
+   * Recompute both cues from the scroll offset.
+   *
+   * `scrollTop` — never `y`. A ScrollBoxRenderable extends BoxRenderable and
+   * neither defines a `y` accessor nor assigns `this.y`, so `y` is the box's
+   * **layout position**: the spine's scrollbox sits below the header, making
+   * `y > 0` permanently, which pinned the ↑ cue on at the top of the content
+   * and left the ↓ cue on at the bottom. `scrollTop` is the offset that
+   * `hasContentAbove`/`hasContentBelow` are written for.
+   */
   const refreshScrollIndicators = () => {
     const s = scroll
     if (!s || s.isDestroyed) return
-    setShowScrollUpButton(hasContentAbove(s.y))
-    setShowScrollDownButton(hasContentBelow(s.scrollHeight, s.y, s.height))
+    setShowScrollUpButton(hasContentAbove(s.scrollTop))
+    setShowScrollDownButton(hasContentBelow(s.scrollHeight, s.scrollTop, s.height))
   }
 
   const handleMouseScroll = (event: MouseEvent) => {

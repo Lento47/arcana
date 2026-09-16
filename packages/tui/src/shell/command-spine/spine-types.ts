@@ -1,5 +1,6 @@
 import type { Theme } from "../../theme"
 import { displayWidth } from "../../util/locale"
+import { Space } from "../../ui/chrome"
 
 export type SpineKind =
   | "ask"
@@ -248,10 +249,17 @@ export function getSpineLayout(width: number, current?: SpineLayout): SpineLayou
 }
 
 /**
- * Outer left inset. Keep small so chat content owns the width.
- * Wide previously used 2; 1 is enough separation from the terminal edge.
+ * The spine's own outer left inset — the first column of the lead contract
+ * `[outer pad][gutter][rail][content]`.
+ *
+ * Currently 0, and that is deliberate rather than unfinished: the session
+ * frame already insets the whole spine by `framePadding(density)` per side
+ * (`SESSION_FRAME_CHROME`), so a second inset here would double it and cost
+ * chat prose two columns on every terminal. Entries, gates and the prompt all
+ * read this value so their leads stay identical; raise it only if the frame
+ * stops providing that inset.
  */
-export function spineOuterPadding(layout: SpineLayout) {
+export function spineOuterPadding(_layout: SpineLayout) {
   return 0
 }
 
@@ -287,11 +295,14 @@ export function nextDensity(current: Density): Density {
   return DENSITIES[(idx + 1) % DENSITIES.length] ?? "cozy"
 }
 
-/** Per-side horizontal padding of the session frame for a density. */
+/**
+ * Per-side horizontal padding of the session frame for a density.
+ * Delegates to `Space.frame` so the density scale has one definition — the
+ * session frame was previously the only consumer, which made re-tuning
+ * density a hunt through the shell.
+ */
 export function framePadding(density?: Density): number {
-  if (density === "compact") return 1
-  if (density === "spacious") return 3
-  return 2
+  return Space.frame(density)
 }
 
 /** Total chrome (padding only) the frame consumes for a density. */

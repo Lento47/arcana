@@ -128,13 +128,18 @@ function ZonedStatusLine(props: {
       { kind: "context" as const, items: parts.context, inner: props.contextSeparator ?? "▸", dot: false },
     ].filter((zone) => zone.items.length > 0)
   })
+  // Both separators use `textMuted`. `borderSubtle` reads quieter but is a
+  // border token: `applyReadabilityFloor` protects it only to a 2.2 contrast
+  // ratio, so as text ink it renders near-invisible — the separator between
+  // zones was effectively missing. `textMuted` is the quietest token the floor
+  // protects as legible text (4.7).
   return (
     <text wrapMode="none">
       <For each={zones()}>
         {(zone, zoneIndex) => (
           <>
             <Show when={zoneIndex() > 0}>
-              <span style={{ fg: props.theme.borderSubtle }}> {ZONE_SEP} </span>
+              <span style={{ fg: props.theme.textMuted }}> {ZONE_SEP} </span>
             </Show>
             <For each={zone.items}>
               {(item, index) => {
@@ -151,7 +156,7 @@ function ZonedStatusLine(props: {
                       <span> </span>
                     </Show>
                     <Show when={index() > 0}>
-                      <span style={{ fg: props.theme.spineDiffMuted }}> {zone.inner} </span>
+                      <span style={{ fg: props.theme.textMuted }}> {zone.inner} </span>
                     </Show>
                     <span style={{ fg: item.fg ?? statusFg(item.tone, props.theme) }}>{text}</span>
                   </>

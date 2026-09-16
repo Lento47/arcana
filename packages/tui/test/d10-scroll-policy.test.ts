@@ -11,7 +11,7 @@
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { hasContentAbove, hasContentBelow, shouldShowScrollButton } from "../src/util/geometry"
+import { hasContentAbove, hasContentBelow, shouldFollowStream, shouldShowScrollButton } from "../src/util/geometry"
 
 const shellSrc = readFileSync(
   join(import.meta.dir, "../src/shell/command-spine/command-spine-shell.tsx"),
@@ -102,6 +102,49 @@ describe("hasContentAbove / hasContentBelow (split scroll indicators)", () => {
   })
 })
 
+describe("shouldFollowStream (stream-follow policy)", () => {
+  test("follows while at the bottom", () => {
+    expect(shouldFollowStream(100, 90, 10)).toBe(true)
+  })
+
+  test("follows within the slack band, not just exactly at the bottom", () => {
+    // 100 - 87 - 10 = 3, inside the default slack.
+    expect(shouldFollowStream(100, 87, 10)).toBe(true)
+  })
+
+  test("stops following once the operator has scrolled up past the slack", () => {
+    expect(shouldFollowStream(100, 86, 10)).toBe(false)
+    expect(shouldFollowStream(100, 0, 10)).toBe(false)
+  })
+
+  test("honours a custom slack", () => {
+    expect(shouldFollowStream(100, 80, 10, 10)).toBe(true)
+    expect(shouldFollowStream(100, 80, 10, 5)).toBe(false)
+  })
+
+  test("never follows on a degenerate viewport", () => {
+    expect(shouldFollowStream(100, 0, 0)).toBe(false)
+  })
+
+  test("does not follow when content fits the viewport", () => {
+    expect(shouldFollowStream(10, 0, 10)).toBe(true)
+  })
+
+  // The bug this replaced: `scrollHeight - y - height` where `y` is the box's
+  // layout position is constant under scrolling, so the distance never changed
+  // and the guard never released — the session route never followed streaming
+  // output. Asserting the scroll-offset reading differs from the layout one.
+  test("uses the scroll offset, not the renderable's layout y", () => {
+    const scrollHeight = 400
+    const viewportHeight = 20
+    const layoutY = 3 // where the box sits in the terminal
+    const scrollTop = 380 // operator at the bottom
+    expect(shouldFollowStream(scrollHeight, scrollTop, viewportHeight)).toBe(true)
+    // The old expression, for contrast: it ignores scrollTop entirely.
+    expect(scrollHeight - layoutY - viewportHeight).toBeGreaterThan(3)
+  })
+})
+
 describe("D10 source contract", () => {
   test("shell no longer polls with scrollPollInterval", () => {
     expect(shellSrc).not.toContain("scrollPollInterval")
@@ -142,5 +185,28 @@ describe("D10 source contract", () => {
     expect(scrollSrc).toContain('frameGate.schedule("scroll-reconcile"')
     expect(scrollSrc).toContain("distance <= 2 && current.scrollTop < current.scrollHeight")
     expect(streamFrameSrc).toContain("batch(() =>")
+  })
+
+  test("the spine computes its cues from scrollTop, not the box's layout y", () => {
+    expect(scrollSrc).toContain("hasContentAbove(s.scrollTop)")
+    expect(scrollSrc).toContain("hasContentBelow(s.scrollHeight, s.scrollTop, s.height)")
+    expect(scrollSrc).not.toContain("hasContentAbove(s.y)")
+  })
+
+  test("the session route follows streaming through the shared policy", () => {
+    const sessionSrc = readFileSync(join(import.meta.dir, "../src/routes/session/index.tsx"), "utf8")
+    expect(sessionSrc).toContain("shouldFollowStream(")
+    // The old expression read the layout y where the scroll offset belongs.
+    expect(sessionSrc).not.toContain("s.scrollHeight - s.y - s.height")
+    expect(sessionSrc).not.toContain("if (s.y < s.scrollHeight)")
+  })
+
+  test("the session route names viewport-space reads for what they are", () => {
+    const sessionSrc = readFileSync(join(import.meta.dir, "../src/routes/session/index.tsx"), "utf8")
+    // `scroll.y` is the viewport's top edge in scrolled layout space (children
+    // already report scrolled positions), so it is correct there — but the
+    // local was called `scrollTop`, which invites a "fix" that inverts it.
+    expect(sessionSrc).toContain("const viewportTop = scroll.y")
+    expect(sessionSrc).not.toContain("const scrollTop = scroll.y")
   })
 })

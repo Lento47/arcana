@@ -21,6 +21,7 @@ import { recordTuiFeedback } from "../../feedback"
 import { Flag } from "@arcana/core/flag/flag"
 import type { AuthorityAffordance } from "@arcana/core/crypto/authority-affordance"
 import { isDefaultTitle, titleFromUserText } from "../../util/session"
+import { shouldFollowStream } from "../../util/geometry"
 import { framePadding, isDensity } from "../../shell/command-spine/spine-types"
 import { useRoute, useRouteData } from "../../context/route"
 import { Lexicon, Glyph, AgentSigil, VerbPool } from "../../branding"
@@ -221,6 +222,9 @@ export function Session() {
           dialog,
           "Overwrite File",
           `${file} already exists. Overwriting it cannot be undone.`,
+          "Cancel",
+          true,
+          "Overwrite",
         )
         if (confirmed !== true) return false
       }
@@ -852,7 +856,11 @@ export function Session() {
 
   const findNextVisibleMessage = (direction: "next" | "prev"): string | null => {
     const children = scroll.getChildren()
-    const scrollTop = scroll.y
+    // A scrollbox's children report their *scrolled* layout position (verified:
+    // content.y tracks the offset), so comparisons against the renderable's own
+    // `y` are in viewport space and already scroll-aware. Named for what it is —
+    // it is not a scroll offset, and reading it as one would invert these.
+    const viewportTop = scroll.y
     const visibleIDs = computeVisibleIDs(children.length)
 
     const visibleMessages = children
@@ -863,10 +871,10 @@ export function Session() {
 
     if (direction === "next") {
       // Find first message below current position
-      return visibleMessages.find((c) => c.y > scrollTop + 10)?.id ?? null
+      return visibleMessages.find((c) => c.y > viewportTop + 10)?.id ?? null
     }
     // Find last message above current position
-    return visibleMessages.findLast((c) => c.y < scrollTop - 10)?.id ?? null
+    return visibleMessages.findLast((c) => c.y < viewportTop - 10)?.id ?? null
   }
 
   // Helper: Scroll to message in direction or fallback to page scroll
@@ -895,9 +903,12 @@ export function Session() {
     streamFrame.schedule("follow", () => {
       if (!scroll || scroll.isDestroyed) return
       const s = scroll
-      const remaining = s.scrollHeight - s.y - s.height
-      if (remaining > 3) return
-      if (s.y < s.scrollHeight) s.scrollTo(s.scrollHeight)
+      // `s.y` is this renderable's layout position, not its scroll offset:
+      // using it made `remaining` constant (independent of scrolling), so the
+      // guard never released and streaming never followed. Policy lives in
+      // `util/geometry` so this and the spine's reconcile cannot diverge.
+      if (!shouldFollowStream(s.scrollHeight, s.scrollTop, s.height)) return
+      if (s.scrollTop < s.scrollHeight) s.scrollTo(s.scrollHeight)
     })
   }
 
