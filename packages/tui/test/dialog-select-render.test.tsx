@@ -104,16 +104,23 @@ test("the picker never paints a horizontal scrollbar row", async () => {
   }
 })
 
-test("the picker card stays inside the dialog height budget", async () => {
+test("the card spends its whole budget and pins the footer inside it", async () => {
   // The root is capped at the body's own budget so the list wrapper — the only
-  // flexible child — absorbs the difference. An uncapped root is what made the
-  // host scroll instead of the list.
-  const lines = await capture(96, 20)
-  const top = rowOf(lines, "╭")
-  const bottom = rowOf(lines, "╰")
-  expect(top).toBeGreaterThanOrEqual(0)
-  expect(bottom).toBeGreaterThan(top)
-  expect(bottom - top + 1).toBe(dialogMaxHeight(20))
+  // flexible child — absorbs the difference. The cap is a ceiling, not a
+  // target: the card hugs its content and only reaches the budget once the
+  // content overflows it. An uncapped root still left the card the right
+  // height — it was the content inside it that moved — so the footer is
+  // asserted by position, and the ceiling is asserted so a future "fix" cannot
+  // buy room for the footer by shrinking the card instead.
+  for (const height of [20, 24, 40]) {
+    const lines = await capture(96, height)
+    const bottom = rowOf(lines, "╰")
+    const top = rowOf(lines, "╭")
+    expect(bottom - top + 1).toBeLessThanOrEqual(dialogMaxHeight(height))
+    const footer = rowOf(lines, "enter select")
+    expect(footer).toBe(bottom - 2)
+    expect(rowOf(lines, "esc close")).toBe(footer)
+  }
 })
 
 test("the card insets its title by exactly one blank row", async () => {
