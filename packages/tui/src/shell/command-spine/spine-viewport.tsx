@@ -10,12 +10,13 @@ import type { StreamFrameGate } from "../../util/stream-frame"
 /**
  * Scroll/visible-region rendering container for the spine.
  *
- * Renders the <scrollbox> plus two independent scroll indicators: a `↑`
- * when content is hidden above the viewport (click to scroll to top) and
- * a `↓` when content is hidden below (click to scroll to bottom). Each
- * hides when there's nothing to reveal in its direction. Rows are a
- * keyed <For> over stable ids; the binding resolves the current entry
- * object per render (streaming updates swap content without remounting).
+ * Renders the <scrollbox> plus two independent scroll cues: a `↑` when
+ * content is hidden above the viewport (click to scroll to top) and a `↓`
+ * when content is hidden below (click to scroll to bottom). The cues live in
+ * a permanently reserved 1-cell right gutter so they can never sit on row
+ * text, and they yield to the scrollbar thumb when the scrollbar is on.
+ * Rows are a keyed <For> over stable ids; the binding resolves the current
+ * entry object per render (streaming updates swap content without remounting).
  */
 export function SpineViewport(props: {
   visibleEntryIDs: Accessor<readonly string[]>
@@ -56,7 +57,10 @@ export function SpineViewport(props: {
       <scrollbox
         ref={(r) => props.setScrollRef(r as unknown as ScrollBoxRenderable)}
         viewportOptions={{
-          paddingRight: props.showScrollbar ? 1 : 0,
+          // The right gutter is always reserved: scroll cues render in it, so
+          // they never land on row text (right={4} used to glue "↑" to the
+          // row's chevron/elapsed meta).
+          paddingRight: 1,
         }}
         verticalScrollbarOptions={{
           paddingLeft: 1,
@@ -122,13 +126,16 @@ export function SpineViewport(props: {
           }}
         </For>
       </scrollbox>
-      <Show when={props.showScrollUpButton}>
+      {/* Cues are contextual: they appear only when that direction has hidden
+          content and the scrollbar is off (the thumb already maps position,
+          and overlaying it would replace thumb cells). */}
+      <Show when={!props.showScrollbar && props.showScrollUpButton}>
         <box
           position="absolute"
-          top={1}
-          right={4}
+          top={0}
+          right={0}
           zIndex={50}
-          width={2}
+          width={1}
           height={1}
           onMouseUp={props.onScrollToTop}
           onMouseOver={() => setUpHover(true)}
@@ -138,13 +145,13 @@ export function SpineViewport(props: {
           <text fg={theme.accent}>↑</text>
         </box>
       </Show>
-      <Show when={props.showScrollDownButton}>
+      <Show when={!props.showScrollbar && props.showScrollDownButton}>
         <box
           position="absolute"
-          bottom={1}
-          right={4}
+          bottom={0}
+          right={0}
           zIndex={50}
-          width={2}
+          width={1}
           height={1}
           onMouseUp={props.onScrollToBottom}
           onMouseOver={() => setDownHover(true)}
