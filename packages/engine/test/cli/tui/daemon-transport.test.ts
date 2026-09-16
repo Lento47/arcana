@@ -201,4 +201,29 @@ describe("daemon TUI transport", () => {
     const malformedFetch = (async () => Response.json({ status: "ok" })) as unknown as typeof fetch
     await expect(assertEngineHealthy({ url: INITIAL_URL, fetch: malformedFetch })).rejects.toThrow("invalid response")
   })
+
+  test("spawns the daemon detached so it survives the TUI process", async () => {
+    let spawnInput: Record<string, unknown> | undefined
+    const attempt = await createDaemonTransport({
+      directory: process.cwd(),
+      command: ["arcana", "--daemon"],
+      connectAttempts: 0,
+      dependencies: {
+        readLock: () => null,
+        isLockStale: () => false,
+        health: async () => false,
+        spawn: (input) => {
+          spawnInput = input as unknown as Record<string, unknown>
+          return {}
+        },
+      },
+    })
+
+    expect(attempt).toEqual({ status: "unavailable", reason: "health_timeout" })
+    // Bun kills non-detached children on parent exit; the daemon must outlive
+    // the TUI so a running turn keeps going after Ctrl+C.
+    expect(spawnInput?.detached).toBe(true)
+    expect(spawnInput?.stdio).toEqual(["ignore", "ignore", "ignore"])
+    expect(spawnInput?.env).toMatchObject({ ARCANA_DAEMON: "1" })
+  })
 })

@@ -5,6 +5,7 @@ import { NonNegativeInt } from "@arcana/core/schema"
 import { Effect, Layer, Context, Schema } from "effect"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { EventV2 } from "@arcana/core/event"
+import { holdWork, releaseWork } from "@/daemon/activity"
 
 export const Info = Schema.Union([
   Schema.Struct({
@@ -87,8 +88,14 @@ export const layer = Layer.effect(
       if (status.type === "idle") {
         yield* events.publish(Event.Idle, { sessionID })
         data.delete(sessionID)
+        // A settled session releases its daemon work hold so the reconnect
+        // grace starts counting for the operator coming back.
+        releaseWork(sessionID)
         return
       }
+      // Any live turn holds the daemon alive across TUI exits (Ctrl+C): the
+      // model keeps running in the background until the turn settles.
+      holdWork(sessionID)
       data.set(sessionID, status)
     })
 

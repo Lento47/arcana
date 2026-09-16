@@ -18,6 +18,11 @@ export interface DaemonTransportDependencies {
     cwd: string
     env: Record<string, string>
     stdio: ["ignore", "ignore", "ignore"]
+    /**
+     * The daemon must outlive the TUI: Bun kills non-detached children when
+     * the parent exits, so Ctrl+C / quit would abandon a running turn.
+     */
+    detached: true
   }) => SpawnedProcess
   readonly sleep: (ms: number) => Promise<void>
 }
@@ -277,6 +282,9 @@ export async function createDaemonTransport(options: DaemonTransportOptions): Pr
             ARCANA_DAEMON: "1",
             ARCANA_DAEMON_CWD: directory,
           },
+          // Detach so the daemon survives the TUI process (Ctrl+C / quit) and
+          // keeps running live session turns in the background.
+          detached: true,
         })
         proc.unref?.()
       }

@@ -30,6 +30,29 @@ function reportStartupFailure(error: unknown): void {
   process.exitCode = 1
 }
 
+/**
+ * Reconnect grace advertised by the daemon (/health). The daemon is detached,
+ * so work started here survives the TUI; this tells the operator how long they
+ * have to come back once the work settles. Best-effort: undefined on any error.
+ */
+async function daemonReconnectGraceMs(url: string): Promise<number | undefined> {
+  try {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 1_500)
+    try {
+      const response = await fetch(`${url}/health`, { signal: controller.signal })
+      if (!response.ok) return undefined
+      const body = (await response.json()) as { daemon?: { reconnectGraceMs?: unknown } }
+      const grace = body.daemon?.reconnectGraceMs
+      return typeof grace === "number" && Number.isFinite(grace) && grace >= 0 ? grace : undefined
+    } finally {
+      clearTimeout(timer)
+    }
+  } catch {
+    return undefined
+  }
+}
+
 function createWorkerFetch(client: RpcClient): typeof fetch {
   const fn = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const request = new Request(input, init)
@@ -354,6 +377,18 @@ export const TuiThreadCommand = cmd({
         process.exitCode = 1
       } finally {
         await stop()
+      }
+
+      // The daemon is detached: sessions started here keep running after the
+      // TUI closes (Ctrl+C). Say so once, with the reconnect window.
+      if (daemonTransport) {
+        const grace = await daemonReconnectGraceMs(daemonTransport.url)
+        if (grace !== undefined) {
+          const minutes = Math.max(1, Math.round(grace / 60_000))
+          UI.println(
+            `Arcana keeps working in the background. Reopen the TUI here to reconnect — the daemon waits ~${minutes}m after work settles.`,
+          )
+        }
       }
     } finally {
       try {

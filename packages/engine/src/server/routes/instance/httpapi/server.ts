@@ -2,6 +2,7 @@ import { Config as EffectConfig, ConfigProvider, Context, Effect, Layer } from "
 import { HttpApiBuilder, OpenApi } from "effect/unstable/httpapi"
 import { HttpClient, HttpMiddleware, HttpRouter, HttpServer, HttpServerResponse } from "effect/unstable/http"
 import * as Socket from "effect/unstable/socket/Socket"
+import { activityStatus } from "@/daemon/activity"
 import { FSUtil } from "@arcana/core/fs-util"
 import * as Observability from "@arcana/core/observability"
 import { Account } from "@/account/account"
@@ -194,7 +195,13 @@ const docResponse = lazy(() => HttpServerResponse.jsonUnsafe(OpenApi.fromApi(Pub
 
 const healthRoute = HttpRouter.use((router) =>
   router.add("GET", "/health", () =>
-    HttpServerResponse.json({ status: "ok", version: process.env.ARCANA_VERSION || "0.0.0-dev" }),
+    HttpServerResponse.json({
+      status: "ok",
+      version: process.env.ARCANA_VERSION || "0.0.0-dev",
+      // Liveness detail for the TUI: whether the daemon is holding live work
+      // and how long the operator has to reconnect after it settles.
+      daemon: activityStatus(),
+    }),
   ),
 )
 
