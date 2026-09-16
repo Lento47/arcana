@@ -10,6 +10,8 @@ import {
   dialogContentMaxHeight,
   dialogWidth,
   footerDirectoryWidth,
+  fitSegments,
+  rendererWidth,
 } from "../src/util/geometry"
 
 describe("geometry.diffPatchPaneWidth (B5)", () => {
@@ -81,6 +83,58 @@ describe("geometry.footerDirectoryWidth", () => {
     expect(footerDirectoryWidth(80, Number.NaN)).toBe(80)
     // Both sides floor to whole cells before subtracting.
     expect(footerDirectoryWidth(80.7, 34.2)).toBe(46)
+  })
+})
+
+describe("geometry.rendererWidth", () => {
+  test("measures a laid-out renderer and refuses an unmeasured one", () => {
+    expect(rendererWidth({ width: 120 })).toBe(120)
+    expect(rendererWidth(undefined)).toBeUndefined()
+    expect(rendererWidth({})).toBeUndefined()
+    // Zero and negatives are the pre-layout states of a live renderer, not a
+    // terminal one cell wide: a budget built on them hides every segment.
+    expect(rendererWidth({ width: 0 })).toBeUndefined()
+    expect(rendererWidth({ width: -1 })).toBeUndefined()
+    expect(rendererWidth({ width: Number.NaN })).toBeUndefined()
+    expect(rendererWidth({ width: Number.POSITIVE_INFINITY })).toBeUndefined()
+  })
+})
+
+describe("geometry.fitSegments", () => {
+  test("keeps a prefix: a segment is whole or absent, never cut", () => {
+    // 1 + 9 fits in 11; the next needs 1 + 6 more.
+    expect(fitSegments(11, [9, 6, 24])).toBe(1)
+    expect(fitSegments(17, [9, 6, 24])).toBe(2)
+    expect(fitSegments(42, [9, 6, 24])).toBe(3)
+    expect(fitSegments(41, [9, 6, 24])).toBe(2)
+  })
+
+  test("counts a gap before the first segment as well as between them", () => {
+    expect(fitSegments(9, [9])).toBe(0)
+    expect(fitSegments(10, [9])).toBe(1)
+    expect(fitSegments(0, [9])).toBe(0)
+    // A zero-width segment still costs its gap, so it cannot ride along free.
+    expect(fitSegments(0, [0])).toBe(0)
+  })
+
+  test("a budget it cannot measure keeps nothing rather than everything", () => {
+    expect(fitSegments(Number.NaN, [9])).toBe(0)
+    expect(fitSegments(-5, [9])).toBe(0)
+  })
+
+  test("a fractional width cannot overrun the budget it was measured against", () => {
+    // Ceiled, not floored: a segment needing 11.5 columns is not an 11-column
+    // segment, and flooring is how a row ends up one column over and shrinks.
+    expect(fitSegments(12, [11.5])).toBe(0)
+    expect(fitSegments(13, [11.5])).toBe(1)
+  })
+
+  test("a segment that could not be measured costs its gap, not the row", () => {
+    // `NaN` reaches here from a `displayWidth` over an unset field. Dropping it
+    // would hide a segment that has content; charging it nothing but the gap is
+    // the conservative read, and the row still clips rather than grows.
+    expect(fitSegments(6, [Number.NaN])).toBe(1)
+    expect(fitSegments(0, [Number.NaN])).toBe(0)
   })
 })
 

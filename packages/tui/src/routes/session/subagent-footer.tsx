@@ -1,16 +1,53 @@
-import { createMemo, createSignal, For, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js"
+import { useRenderer } from "@opentui/solid"
+import { CliRenderEvents } from "@opentui/core"
 import { useRouteData } from "../../context/route"
 import { useSync } from "../../context/sync"
 import { useTheme } from "../../context/theme"
 import type { AssistantMessage } from "@arcana/sdk/v2"
 import { Locale } from "../../util/locale"
 import { contextUsageFor, hasContextUsage } from "../../util/context-pressure"
+import { fitSegments, rendererWidth } from "../../util/geometry"
 import { useCommandShortcut, useOpencodeKeymap } from "../../keymap"
+
+/**
+ * Columns the identity group keeps when the row has to give ground — `mesh` and
+ * the beginning of the agent's name, which is the part that makes two subagents
+ * telling apart possible at all. With `minWidth={0}` the group was one of five
+ * flexible segments and the deficit was shared among them evenly, so the group
+ * that answers "which agent is this" lost letters while `· ctx 45.0K / 23%`
+ * kept its columns: at 80 columns the footer read `mesGild◎`.
+ *
+ * It is also what the width budget reserves for the group, so the segments
+ * beside it are measured against a floor rather than a name that happens to be
+ * short today.
+ */
+const IDENTITY_MIN = 11
+
+/** Row chrome: the outer box's `paddingLeft` 2 + `paddingRight` 1. */
+const ROW_PADDING = 3
+/** Also the column between every segment, so a measurement and the layout agree. */
+const GAP = 1
+
+const ACTIONS = [
+  { name: "parent", label: "parent", command: "session.parent" },
+  { name: "prev", label: "prev", command: "session.child.previous" },
+  { name: "next", label: "next", command: "session.child.next" },
+] as const
+
+type ActionName = (typeof ACTIONS)[number]["name"]
+/** The row's droppable segments, left to right. The identity is not one. */
+type SegmentKey = "run" | "status" | "usage" | "actions"
 
 function compactTailText(message: unknown) {
   const item = message as { role?: string; toolName?: string; content?: string }
   const raw = item.role === "tool" ? `tool ${item.toolName ?? "call"}` : `${item.content ?? ""}`
   return raw.replace(/\s+/g, " ").trim()
+}
+
+/** The context run exactly as it is drawn — measured and rendered from one string. */
+function usageText(item: { context: string; pressure?: string; cost?: string }): string {
+  return `· ctx ${item.context}${item.pressure ? ` · ${item.pressure}` : ""}${item.cost ? ` · ${item.cost}` : ""}`
 }
 
 export function SubagentFooter() {
@@ -74,10 +111,12 @@ export function SubagentFooter() {
   const { theme } = useTheme()
   const t = theme as Record<string, unknown>
   const keymap = useOpencodeKeymap()
-  const parentShortcut = useCommandShortcut("session.parent")
-  const previousShortcut = useCommandShortcut("session.child.previous")
-  const nextShortcut = useCommandShortcut("session.child.next")
-  const [hoverZone, setHoverZone] = createSignal<"parent" | "prev" | "next" | null>(null)
+  const shortcuts: Record<ActionName, () => string> = {
+    parent: useCommandShortcut("session.parent"),
+    prev: useCommandShortcut("session.child.previous"),
+    next: useCommandShortcut("session.child.next"),
+  }
+  const [hoverZone, setHoverZone] = createSignal<ActionName | null>(null)
   const [hover, setHover] = createSignal(false)
 
   const statusColor = () => {
@@ -86,12 +125,78 @@ export function SubagentFooter() {
     return (t.spineContext ?? theme.textMuted) as any
   }
 
-  const actionBg = (name: "parent" | "prev" | "next") =>
+  const actionBg = (name: ActionName) =>
     hoverZone() === name ? ((t.backgroundElement ?? theme.backgroundElement) as any) : undefined
 
-  function Action(props: { name: "parent" | "prev" | "next"; label: string; shortcut: string; command: string }) {
+  /**
+   * The terminal, watched rather than sampled once: a footer still laid out for
+   * the width it was mounted at either clips a resize away or hides segments a
+   * wider terminal had room for. `rendererWidth` returns undefined until the
+   * renderer has been laid out, which is why every consumer below treats an
+   * unmeasured width as "keep everything" instead of "keep nothing".
+   */
+  const renderer = useRenderer()
+  const [termWidth, setTermWidth] = createSignal(rendererWidth(renderer))
+  createEffect(() => {
+    const update = () => setTermWidth(rendererWidth(renderer))
+    update()
+    renderer.on(CliRenderEvents.RESIZE, update)
+    onCleanup(() => renderer.off(CliRenderEvents.RESIZE, update))
+  })
+
+  /** Two columns of padding around a label, plus the space and the shortcut. */
+  const chipWidth = (label: string, shortcut: string) =>
+    Locale.displayWidth(label) + 2 + (shortcut.length > 0 ? GAP + Locale.displayWidth(shortcut) : 0)
+
+  const actionsWidth = createMemo(() =>
+    ACTIONS.reduce(
+      (sum, action, index) => sum + chipWidth(action.label, shortcuts[action.name]()) + (index > 0 ? GAP : 0),
+      0,
+    ),
+  )
+
+  /**
+   * The row's segments in the order they are drawn, which is also the order they
+   * are given up in: `run`, `status`, the context run, then the action chips.
+   * The chips go last and go whole — at 60 columns a terminal is being read for
+   * state, and the chips advertise shortcuts that the keyboard dispatch reaches
+   * without them, while `· ctx 45.0K / 23%` has no other home in this shell.
+   */
+  const segments = createMemo(() => {
+    const items: Array<{ key: SegmentKey; width: number }> = []
+    const info = subagentInfo()
+    if (info.total > 0) {
+      items.push({ key: "run", width: Locale.displayWidth(`· run ${info.index}/${info.total}`) })
+    }
+    items.push({ key: "status", width: Locale.displayWidth(`· ${status().label}`) })
+    const used = usage()
+    if (used) items.push({ key: "usage", width: Locale.displayWidth(usageText(used)) })
+    items.push({ key: "actions", width: actionsWidth() })
+    return items
+  })
+
+  /** What the identity group actually occupies: `mesh`, the name, the glyph. */
+  const identityWidth = createMemo(() => {
+    const info = subagentInfo()
+    return Math.max(IDENTITY_MIN, Locale.displayWidth(`mesh ${info.label} ${status().glyph}`))
+  })
+
+  const shows = (key: SegmentKey) => {
+    const width = termWidth()
+    const all = segments()
+    if (width === undefined) return true
+    // Reserved at its real width, not at the floor: reserving 11 while the
+    // group occupies 13 left the row one column over at 80 and yoga shrank the
+    // group, which loses the literal spaces rather than the last letter
+    // (`meshGilded◎`).
+    const kept = fitSegments(width - ROW_PADDING - identityWidth(), all.map((item) => item.width), GAP)
+    return all.slice(0, kept).some((item) => item.key === key)
+  }
+
+  function Action(props: { name: ActionName; label: string; command: string }) {
     return (
       <box
+        flexDirection="row"
         paddingLeft={1}
         paddingRight={1}
         backgroundColor={actionBg(props.name)}
@@ -99,45 +204,81 @@ export function SubagentFooter() {
         onMouseOut={() => setHoverZone(null)}
         onMouseUp={() => keymap.dispatchCommand(props.command)}
       >
-        <text fg={(t.spineBrand ?? theme.text) as any}>{props.label}</text>
-        <text fg={(t.spineContext ?? theme.textMuted) as any}> {props.shortcut}</text>
+        <text wrapMode="none" fg={(t.spineBrand ?? theme.text) as any}>
+          {props.label}
+        </text>
+        <Show when={shortcuts[props.name]()}>
+          <text wrapMode="none" fg={(t.spineContext ?? theme.textMuted) as any}> {shortcuts[props.name]()}</text>
+        </Show>
       </box>
     )
-}
+  }
   return (
     <box flexDirection="column" flexShrink={0} paddingLeft={2} paddingRight={1}>
       <box border={["top"]} borderColor={(t.spineRail ?? theme.borderSubtle) as any} flexShrink={0} />
-      <box flexDirection="row" justifyContent="space-between" gap={1} flexShrink={0} minHeight={1}>
-        <box flexDirection="row" gap={1} minWidth={0} flexShrink={1}>
+      {/*
+        One content row, and only one, at every width.
+
+        Two defects lived in this row. The `mesh` group and each `Action` were
+        column boxes — OpenTUI's default — so the three spans inside them stacked
+        and the footer drew four rows (`mesh` / ` Gilded` / ` ◎` / the rest)
+        instead of the one line it reads as.
+
+        The second was what happened once it did fit on one row but not in the
+        columns available. Yoga shares a deficit among every shrinkable child, so
+        the identity group lost letters while the telemetry kept its own
+        (`mesGild◎`, then `· ctx 45.0...3%`); with the row too narrow to hold
+        anything, the segments painted over each other and over the chips
+        (`/ 2parent0.04prev`). Segments are therefore whole or absent — chosen by
+        `fitSegments` — and the row clips at its right edge as a last resort.
+      */}
+      <box
+        flexDirection="row"
+        justifyContent="space-between"
+        gap={GAP}
+        flexShrink={0}
+        minHeight={1}
+        overflow="hidden"
+      >
+        <box flexDirection="row" gap={GAP} minWidth={0} flexShrink={1}>
           <box
+            flexDirection="row"
+            flexShrink={1}
+            minWidth={IDENTITY_MIN}
             onMouseOver={() => setHover(true)}
             onMouseOut={() => setHover(false)}
           >
-            <text fg={(t.spineContext ?? theme.textMuted) as any}>mesh</text>
-            <text fg={(t.spineBrand ?? theme.text) as any}> {subagentInfo().label}</text>
-            <text fg={statusColor()}> {status().glyph}</text>
+            <text wrapMode="none" fg={(t.spineContext ?? theme.textMuted) as any}>mesh</text>
+            <text wrapMode="none" fg={(t.spineBrand ?? theme.text) as any}> {subagentInfo().label}</text>
+            <text wrapMode="none" fg={statusColor()}> {status().glyph}</text>
           </box>
-          <Show when={subagentInfo().total > 0}>
-            <text fg={(t.spineDiffMuted ?? theme.textMuted) as any}>
+          <Show when={shows("run")}>
+            <text flexShrink={0} wrapMode="none" fg={(t.spineDiffMuted ?? theme.textMuted) as any}>
               · run {subagentInfo().index}/{subagentInfo().total}
             </text>
           </Show>
-          <text fg={statusColor()}>· {status().label}</text>
-          <Show when={usage()}>
+          <Show when={shows("status")}>
+            <text flexShrink={0} wrapMode="none" fg={statusColor()}>· {status().label}</text>
+          </Show>
+          <Show when={shows("usage") ? usage() : undefined}>
             {(item) => (
-              <text fg={(item().urgent ? t.spineFail : t.spineContext ?? theme.textMuted) as any} wrapMode="none" truncate>
-                · ctx {item().context}
-                <Show when={item().pressure}> · {item().pressure}</Show>
-                <Show when={item().cost}> · {item().cost}</Show>
+              <text
+                flexShrink={0}
+                fg={(item().urgent ? t.spineFail : t.spineContext ?? theme.textMuted) as any}
+                wrapMode="none"
+              >
+                {usageText(item())}
               </text>
             )}
           </Show>
         </box>
-          <box flexDirection="row" gap={1} flexShrink={0}>
-            <Action name="parent" label="parent" shortcut={parentShortcut()} command="session.parent" />
-            <Action name="prev" label="prev" shortcut={previousShortcut()} command="session.child.previous" />
-            <Action name="next" label="next" shortcut={nextShortcut()} command="session.child.next" />
+        <Show when={shows("actions")}>
+          <box flexDirection="row" gap={GAP} flexShrink={0}>
+            <For each={ACTIONS}>
+              {(action) => <Action name={action.name} label={action.label} command={action.command} />}
+            </For>
           </box>
+        </Show>
       </box>
       <Show when={hover() && tailMessages().length > 0}>
         <scrollbox maxHeight={3} flexShrink={0} paddingLeft={1} scrollbarOptions={{ visible: false }}>

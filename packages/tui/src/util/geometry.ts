@@ -59,6 +59,44 @@ export function footerDirectoryWidth(termWidth: number, reserved: number): numbe
 }
 
 /**
+ * The renderer's width, or `undefined` when it has not been laid out yet.
+ *
+ * `useTerminalDimensions()` is not a substitute: it is undefined outside a live
+ * terminal, which leaves a readout's budget unmeasured in exactly the rendering
+ * tests that are meant to pin its narrow-width behaviour. The statusbar and the
+ * home footer each grew a private copy of this guard before it existed here and
+ * are the next two callers.
+ */
+export function rendererWidth(renderer: { width?: number } | undefined): number | undefined {
+  const width = renderer?.width
+  return typeof width === "number" && Number.isFinite(width) && width > 0 ? width : undefined
+}
+
+/**
+ * How many of `widths` fit in `budget`, taken in the order given — most
+ * important first — with `gap` columns between each and `gap` before the first.
+ *
+ * Returns a prefix length, never a partial width, because a readout segment is
+ * whole or absent. Letting yoga shrink them instead is what produced `ctx
+ * 45.0...3%` and then, once the row overran outright, segments painted over one
+ * another (`/ 2parent0.04prev`): a cut segment is not read, it is decoded.
+ * Widths are ceiled so a fractional measurement cannot overrun the budget.
+ */
+export function fitSegments(budget: number, widths: readonly number[], gap = 1): number {
+  const room = Number.isFinite(budget) ? Math.max(0, Math.floor(budget)) : 0
+  let used = 0
+  let kept = 0
+  for (const raw of widths) {
+    const width = Number.isFinite(raw) ? Math.max(0, Math.ceil(raw)) : 0
+    const next = used + gap + width
+    if (next > room) break
+    used = next
+    kept++
+  }
+  return kept
+}
+
+/**
  * Dialog top inset: a quarter of the terminal height, integer.
  * B7: the raw `height / 4` produced fractional padding (6.25 at height 25),
  * a classic malformat source in whole-cell terminal renderers.
