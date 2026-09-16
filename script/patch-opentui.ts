@@ -490,6 +490,47 @@ const DIFF_ERROR_PATCH = `${DIFF_ERROR_SIGNATURE}
         drawUnstyledText: false, ${DIFF_FRAME_MARKER}`
 
 /**
+ * Fourth pass: a highlight that FAILS (or succeeds with zero highlights) must
+ * keep painting plain text on every later update. Without this, each content
+ * update re-entered the styled-first deferral, so a streamed body whose parser
+ * was unavailable alternated blank -> plain -> blank ("the code blanks and
+ * returns"). Both failure paths now set the same monotonic fallback flag as the
+ * deadline; a later styled commit clears it.
+ */
+const FAILED_FALLBACK_MARKER = "// [arcana] failed highlight keeps plain text (patch-opentui.ts)"
+const CODE_CATCH_V22_FROM = `      this._arcanaClearDeadline(); ${STYLED_FIRST_FRAME_MARKER}
+      if (!this._arcanaHasStyledFrame) {`
+const CODE_CATCH_V22_TO = `      this._arcanaClearDeadline(); ${STYLED_FIRST_FRAME_MARKER}
+      this._arcanaFirstFrameFallback = true; ${FAILED_FALLBACK_MARKER}
+      if (!this._arcanaHasStyledFrame) {`
+const CODE_ZERO_HIGHLIGHT_V22_FROM = `      } else {
+        this.textBuffer.setText(content);
+        this.setRenderedLineSources(undefined);
+        this._arcanaClearStyledFrame();
+      }`
+const CODE_ZERO_HIGHLIGHT_V22_TO = `      } else {
+        this.textBuffer.setText(content);
+        this.setRenderedLineSources(undefined);
+        this._arcanaClearStyledFrame();
+        this._arcanaFirstFrameFallback = true; ${FAILED_FALLBACK_MARKER}
+      }`
+
+/**
+ * Fifth pass: bound any remaining blank window. The deadline previously waited
+ * 500ms before painting the plain frame — content could stay invisible for
+ * ~30 frames when a highlight was slow or never resolved. 120ms (~7 frames)
+ * keeps the styled-first intent for a warm worker while making a blank
+ * imperceptible; the failure paths above keep it from returning.
+ */
+const SHORT_DEADLINE_MARKER = "// [arcana] short first-frame deadline (patch-opentui.ts)"
+const CODE_DEADLINE_V23_FROM = `      this._shouldRenderTextBuffer = true;
+      this.requestRender();
+    }, 500);`
+const CODE_DEADLINE_V23_TO = `      this._shouldRenderTextBuffer = true;
+      this.requestRender();
+    }, 120); ${SHORT_DEADLINE_MARKER}`
+
+/**
  * Third pass: keep the fallback monotonic. Once the deadline has painted plain
  * text (broken/slow parser), later content updates must keep the leaf visible
  * instead of re-deferring into a blank block. The flag is cleared by the first
@@ -681,6 +722,26 @@ function patchCodeRenderable(source: string): string | undefined {
       }
       code = code.replace(from, to)
     }
+  }
+
+  if (!code.includes(FAILED_FALLBACK_MARKER)) {
+    const failedFallbackFixes: Array<[string, string]> = [
+      [CODE_CATCH_V22_FROM, CODE_CATCH_V22_TO],
+      [CODE_ZERO_HIGHLIGHT_V22_FROM, CODE_ZERO_HIGHLIGHT_V22_TO],
+    ]
+    for (const [from, to] of failedFallbackFixes) {
+      if (!code.includes(from)) {
+        throw new Error(`CodeRenderable failed-fallback anchor missing: ${from.slice(0, 80)}`)
+      }
+      code = code.replace(from, to)
+    }
+  }
+
+  if (!code.includes(SHORT_DEADLINE_MARKER)) {
+    if (!code.includes(CODE_DEADLINE_V23_FROM)) {
+      throw new Error(`CodeRenderable short-deadline anchor missing: ${CODE_DEADLINE_V23_FROM.slice(0, 80)}`)
+    }
+    code = code.replace(CODE_DEADLINE_V23_FROM, CODE_DEADLINE_V23_TO)
   }
 
   if (!code.includes(CODE_FRAME_RELEASE_MARKER)) {

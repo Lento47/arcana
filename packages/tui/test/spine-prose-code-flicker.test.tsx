@@ -226,6 +226,52 @@ test("diff bodies never paint unstyled text before the first highlight", async (
   expect(openTuiPatchSource).toContain("existingRenderable.drawUnstyledText = false")
 })
 
+test("failed highlight keeps streamed content visible on every update", async () => {
+  // Root cause of "the code blanks and returns": a leaf whose highlight FAILS
+  // painted plain once, but the next content update re-entered the styled-first
+  // deferral — blank -> plain -> blank on every delta while the parser stayed
+  // unavailable. The failure paths now set the monotonic fallback flag.
+  const pending: Array<{ resolve: (value: unknown) => void; reject: (error: Error) => void }> = []
+  const treeSitterClient = {
+    highlightOnce: () => new Promise<unknown>((resolve, reject) => pending.push({ resolve, reject })),
+  }
+  const [content, setContent] = createSignal(["export function answer(): number {", "  return 42", "}"].join("\n"))
+
+  app = await testRender(
+    () => (
+      <code
+        content={content()}
+        filetype="typescript"
+        syntaxStyle={highlightedSyntaxStyle}
+        treeSitterClient={treeSitterClient as never}
+        drawUnstyledText={false}
+        width={72}
+      />
+    ),
+    { width: 80, height: 14 },
+  )
+
+  const frameAfter = async () => {
+    await app!.renderOnce()
+    await app!.flush()
+    return app!.captureCharFrame()
+  }
+
+  // Fail the first highlight: the leaf paints plain and must STAY visible.
+  await app.renderOnce()
+  await app.flush()
+  expect(pending.length).toBeGreaterThan(0)
+  pending.shift()?.reject(new Error("no parser"))
+  expect(await frameAfter()).toContain("export function answer")
+
+  for (const lines of [2, 3, 4]) {
+    setContent(["export function answer(): number {", ...Array.from({ length: lines }, (_, i) => `  const v${i} = ${i}`), "}"].join("\n"))
+    expect(await frameAfter(), `update ${lines}`).toContain("export function answer")
+    pending.shift()?.reject(new Error("no parser"))
+    expect(await frameAfter(), `update ${lines} after failure`).toContain("export function answer")
+  }
+})
+
 test("retains the last styled frame when a refresh fails", async () => {
   const initial = "const stable = true"
   const next = "const changed = false"
