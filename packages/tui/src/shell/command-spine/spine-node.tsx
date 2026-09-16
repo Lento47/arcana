@@ -154,6 +154,17 @@ export function SpineNode(props: {
   const showLabel = createMemo(
     () => isTool() || (!!label() && layout() !== "minimal" && kind() !== "think"),
   )
+
+  /**
+   * Dismiss is a leaf affordance inside a clickable row, and OpenTUI mouse
+   * events bubble to every ancestor (`Renderable.processMouseEvent`), so
+   * without this the row's own handler toggles the entry on the way back up:
+   * one click on the dismiss glyph dismissed the row *and* expanded it.
+   */
+  const handleDismissMouseUp = (event: MouseEvent) => {
+    event.stopPropagation?.()
+    props.onDismiss?.()
+  }
   const showActor = createMemo(() => !!actor() && actor() === "you")
 
   const thinkChrome = createMemo(() =>
@@ -288,7 +299,7 @@ export function SpineNode(props: {
               <box
                 flexShrink={0}
                 paddingLeft={1}
-                onMouseUp={() => props.onDismiss?.()}
+                onMouseUp={handleDismissMouseUp}
                 onMouseOver={() => setDismissHover(true)}
                 onMouseOut={() => setDismissHover(false)}
                 backgroundColor={dismissHover() ? theme.backgroundElement : undefined}
@@ -367,7 +378,7 @@ export function SpineNode(props: {
                 <box
                   flexShrink={0}
                   paddingLeft={1}
-                  onMouseUp={() => props.onDismiss?.()}
+                  onMouseUp={handleDismissMouseUp}
                   onMouseOver={() => setDismissHover(true)}
                   onMouseOut={() => setDismissHover(false)}
                   backgroundColor={dismissHover() ? theme.backgroundElement : undefined}
@@ -391,7 +402,7 @@ export function SpineNode(props: {
           contentWidth={props.contentWidth}
           outcomeHidden={props.outcomeHidden}
           onDisclosureMouseUp={props.onDisclosureMouseUp}
-          onMouseUp={props.onDismiss ? () => props.onDismiss?.() : undefined}
+          onMouseUp={props.onDismiss ? handleDismissMouseUp : undefined}
         />
       </Show>
     </Show>
