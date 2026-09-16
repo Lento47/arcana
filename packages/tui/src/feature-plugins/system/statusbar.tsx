@@ -64,6 +64,28 @@ export function isCompactWidth(width: number | undefined): boolean {
   return width !== undefined && width < COMPACT_WIDTH
 }
 
+/**
+ * The retry segment's text: `retry 2 in 4s`, or `retry 2 now` once the wait is
+ * over.
+ *
+ * It carried a `↻`, which is the cache-*write* mark in the metrics bar's legend
+ * — `↺`/`↻` is that legend's read/write pair — and the metrics bar sits inside
+ * the prompt directly above this row, so one glyph meant two things on one
+ * screen. The spine spells retry in words as well (`retry 2/3 in 4s`), which
+ * makes words the house vocabulary for it.
+ *
+ * The provider's message is deliberately absent for the same reason the attempt
+ * count is present: this is a one-row instrument, and a sentence belongs in the
+ * spine or the retry dialog, both of which already carry it.
+ */
+export function retryLabel(status: { attempt?: number; next?: number } | undefined, now: number): string {
+  const attempt = status?.attempt
+  const head = attempt === undefined ? "retry" : `retry ${attempt}`
+  if (status?.next === undefined) return head
+  const seconds = Math.max(0, Math.ceil((status.next - now) / 1000))
+  return seconds > 0 ? `${head} in ${seconds}s` : `${head} now`
+}
+
 export function renderBar(pct: number): BarSegment[] {
   const clamped = Math.max(0, Math.min(100, pct))
   const cells = clamped / 10
@@ -186,6 +208,24 @@ function View(props: { api: TuiPluginApi }) {
     return undefined
   })
 
+  const retry = createMemo(() => {
+    const value = status()
+    return value?.type === "retry" ? value : undefined
+  })
+
+  /**
+   * The countdown is the only thing on this bar that moves without the session
+   * sending anything, so it keeps its own clock — and only while a retry is
+   * actually pending: a bar that re-renders every second for no reason repaints
+   * the whole screen every second.
+   */
+  const [now, setNow] = createSignal(Date.now())
+  createEffect(() => {
+    if (!retry()) return
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    onCleanup(() => clearInterval(timer))
+  })
+
   const busyVerb = createMemo(() => {
     // Compaction is already announced by the chip below, in the same line and
     // in the warning colour. The shimmer used to repeat it as prose, so one
@@ -267,8 +307,10 @@ function View(props: { api: TuiPluginApi }) {
             </box>
           )}
         </Show>
-        <Show when={status()?.type === "retry"}>
-          <text flexShrink={0} wrapMode="none" fg={theme().warning}>↻ retry</text>
+        <Show when={retry()}>
+          {(value) => (
+            <text flexShrink={0} wrapMode="none" fg={theme().warning}>{retryLabel(value(), now())}</text>
+          )}
         </Show>
         <Show when={model()}>
           {(value) => (

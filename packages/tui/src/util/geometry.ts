@@ -63,9 +63,8 @@ export function footerDirectoryWidth(termWidth: number, reserved: number): numbe
  *
  * `useTerminalDimensions()` is not a substitute: it is undefined outside a live
  * terminal, which leaves a readout's budget unmeasured in exactly the rendering
- * tests that are meant to pin its narrow-width behaviour. The statusbar and the
- * home footer each grew a private copy of this guard before it existed here and
- * are the next two callers.
+ * tests that are meant to pin its narrow-width behaviour. The statusbar, the
+ * home footer and the subagent footer all measure through here.
  */
 export function rendererWidth(renderer: { width?: number } | undefined): number | undefined {
   const width = renderer?.width

@@ -26,6 +26,7 @@ import { Locale } from "../src/util/locale"
 import statusbarPlugin, {
   isCompactWidth,
   renderBar,
+  retryLabel,
   statusbarWidth,
 } from "../src/feature-plugins/system/statusbar"
 
@@ -191,10 +192,20 @@ test("context pressure is announced in both shells", async () => {
   }
 })
 
-test("a retry is announced", async () => {
-  const app = await mountStatusbar(sessionState({ status: { type: "retry" } }), 100)
+test("a retry is announced with its attempt and its wait", async () => {
+  const app = await mountStatusbar(
+    sessionState({ status: { type: "retry", attempt: 2, message: "provider unavailable", next: Date.now() + 5_000 } }),
+    100,
+  )
   try {
-    expect(app.captureCharFrame()).toContain("retry")
+    const frame = app.captureCharFrame()
+    // The attempt count and the countdown, not just the word: the retry is the
+    // one thing on this bar that moves on its own clock, and "when" is what an
+    // operator waiting on it is reading for.
+    expect(frame).toContain("retry 2 in ")
+    expect(frame).not.toContain("↻")
+    // The provider's message stays out of a one-row instrument.
+    expect(frame).not.toContain("provider unavailable")
   } finally {
     app.renderer.destroy()
   }
@@ -206,6 +217,58 @@ test("a retry is announced", async () => {
  * propagate: the model budget became `NaN`, `Locale.truncate` answers `NaN`
  * with an empty string, and the name vanished from the bar.
  */
+/**
+ * The retry segment. `↺`/`↻` is the metrics legend's cache read/write pair and
+ * the metrics bar is on screen directly above this row, so the rotation mark
+ * this segment used to carry meant two things at once.
+ */
+describe("retry label", () => {
+  const NOW = 1_000_000
+
+  test("the countdown on screen actually counts down", async () => {
+    // The wait is the only number on this bar that moves without the session
+    // sending anything, so it is the only one whose tick has to be proven
+    // rather than assumed: a formatter that computes a countdown nobody
+    // re-renders is a still image of a countdown.
+    const app = await mountStatusbar(
+      sessionState({ status: { type: "retry", attempt: 2, next: Date.now() + 30_000 } }),
+      100,
+    )
+    try {
+      const wait = (frame: string) => Number.parseInt(/retry 2 in (\d+)s/.exec(frame)?.[1] ?? "", 10)
+      const before = wait(app.captureCharFrame())
+      expect(before).toBeGreaterThan(20)
+      await Bun.sleep(1_200)
+      await app.renderOnce()
+      const after = wait(app.captureCharFrame())
+      // Ranged rather than pinned: the assertion that matters is that the
+      // number the operator reads went down, not how far in one sleep.
+      expect(after).toBeLessThan(before)
+      expect(after).toBeGreaterThan(before - 4)
+    } finally {
+      app.renderer.destroy()
+    }
+  })
+
+  test("counts down to the next attempt, then says it is due", () => {
+    expect(retryLabel({ attempt: 2, next: NOW + 4_400 }, NOW)).toBe("retry 2 in 5s")
+    expect(retryLabel({ attempt: 2, next: NOW + 4_000 }, NOW)).toBe("retry 2 in 4s")
+    // A wait that has elapsed, or a clock that has overtaken it, is not a
+    // countdown into the negatives.
+    expect(retryLabel({ attempt: 2, next: NOW }, NOW)).toBe("retry 2 now")
+    expect(retryLabel({ attempt: 2, next: NOW - 30_000 }, NOW)).toBe("retry 2 now")
+  })
+
+  test("says only what the status actually carries", () => {
+    // The attempt count and the deadline are both optional in practice: an
+    // older engine sends neither, and a `retry 1 in 0s` invented here would be
+    // a claim about the provider the bar cannot support.
+    expect(retryLabel(undefined, NOW)).toBe("retry")
+    expect(retryLabel({}, NOW)).toBe("retry")
+    expect(retryLabel({ attempt: 3 }, NOW)).toBe("retry 3")
+  })
+})
+
 describe("responsive gate", () => {
   test("an unmeasured renderer has no width", () => {
     expect(statusbarWidth(undefined)).toBeUndefined()
