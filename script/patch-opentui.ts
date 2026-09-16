@@ -26,9 +26,18 @@
  * `setText()` on every content/style invalidation before the async highlight
  * completes. That is the source of the visible syntax-color flash. The
  * CodeRenderable patch below retains the last committed styled frame and
- * swaps in a new frame only after highlighting succeeds. A first frame is
- * still visible immediately as plain text, and a failed refresh keeps the
- * last good frame.
+ * swaps in a new frame only after highlighting succeeds. A failed refresh
+ * keeps the last good frame.
+ *
+ * Arcana also refuses to paint an unstyled first frame for content whose
+ * colors are still being computed. Markdown leaves paint their synchronous
+ * `initialStyledText` chunks instead (inline emphasis/codespans are built from
+ * the same content before the worker is asked), and code/tool leaves defer the
+ * first paint until the async highlight lands, keeping the layout measured in
+ * the meantime. A bounded deadline paints plain text only when highlighting
+ * never resolves (broken parser/worker) — and once that fallback fires the
+ * leaf stays visible, so a slow parser cannot blink content on every update.
+ * The visible downgrade therefore cannot happen on the normal streaming path.
  *
  * Version-pinned to @opentui/core 0.5.9. Re-run after `bun install`
  * (wired as the root `postinstall` script).
@@ -276,6 +285,239 @@ const MARKDOWN_STREAMING_PATCH = `  set streaming(value) {
     }
   }`
 
+/**
+ * Second-generation CodeRenderable patch ("paint styled first frame").
+ *
+ * Updates the v1 retained-frame patch in place:
+ * - Markdown leaves paint `initialStyledText` synchronously on the first frame
+ *   (no worker wait, no plain flash).
+ * - Leaves whose colors can only come from the async worker defer the first
+ *   paint entirely instead of showing plain text; the layout stays measured.
+ * - A 500ms deadline (unref'd) paints plain text only if highlighting never
+ *   resolves, so content can never stay invisible.
+ */
+const STYLED_FIRST_FRAME_MARKER = "// [arcana] paint styled first frame (patch-opentui.ts)"
+const CODE_FIELDS_V2 = `${CODE_FRAME_FIELDS}
+  ${STYLED_FIRST_FRAME_MARKER}
+  _arcanaDeadlineTimer;`
+const CODE_CTOR_V1 = `    if (this._content.length > 0) {
+${CODE_CONSTRUCTOR_BUFFER_PATCH}
+      this.updateTextInfo();
+${CODE_CONSTRUCTOR_VISIBILITY_PATCH}
+    }`
+const CODE_CTOR_V2 = `    if (this._content.length > 0) {
+      this._arcanaPaintFirstFrame(this._content); ${STYLED_FIRST_FRAME_MARKER}
+    }`
+const CODE_CONTENT_V1 = `  set content(value) {
+    if (this._content !== value) {
+      this._content = value;
+      this.invalidateHighlights();
+      if (value.length > 0 && this._arcanaHasStyledFrame && this._filetype) {
+        this._arcanaKeepStyledFrame();
+        this.requestRender();
+        return;
+      }
+      this._arcanaClearStyledFrame();
+      if (this._initialStyledText && this._drawUnstyledText) {
+        this.textBuffer.setStyledText(this._initialStyledText);
+        this._arcanaCommitStyledFrame(this._initialStyledText, value, undefined);
+      } else {
+        this.textBuffer.setText(value);
+      }
+      this.setRenderedLineSources(undefined);
+      this.updateTextInfo();
+    }
+  }`
+const CODE_CONTENT_V2 = `  set content(value) {
+    if (this._content !== value) {
+      this._content = value;
+      this.invalidateHighlights();
+      if (value.length > 0 && this._arcanaHasStyledFrame && this._filetype) {
+        this._arcanaKeepStyledFrame();
+        this.requestRender();
+        return;
+      }
+      if (value.length > 0) {
+        this._arcanaPaintFirstFrame(value); ${STYLED_FIRST_FRAME_MARKER}
+        return;
+      }
+      this._arcanaClearStyledFrame();
+      this.textBuffer.setText(value);
+      this.setRenderedLineSources(undefined);
+      this.updateTextInfo();
+      this._shouldRenderTextBuffer = false;
+    }
+  }`
+const CODE_ENSURE_V1 = `  ensureVisibleTextBeforeHighlight() {
+    if (this.isDestroyed)
+      return;
+    const content = this._content;
+    if (!this._filetype) {
+      this._shouldRenderTextBuffer = true;
+      return;
+    }
+    if (this._arcanaKeepStyledFrame()) {
+      return;
+    }
+    const isInitialContent = this._streaming && !this._hadInitialContent;
+    const shouldDrawUnstyledNow = this._streaming ? isInitialContent && this._drawUnstyledText : this._drawUnstyledText;
+    if (this._streaming && !isInitialContent) {
+      this._shouldRenderTextBuffer = true;
+    } else if (shouldDrawUnstyledNow) {
+      if (this._initialStyledText) {
+        this.textBuffer.setStyledText(this._initialStyledText);
+      } else {
+        this.textBuffer.setText(content);
+      }
+      this.setRenderedLineSources(undefined);
+      this._shouldRenderTextBuffer = true;
+    } else {
+      this.textBuffer.setText(content);
+      this.setRenderedLineSources(undefined);
+      this._shouldRenderTextBuffer = true;
+    }
+  }`
+const CODE_ENSURE_V2 = `  ensureVisibleTextBeforeHighlight() {
+    if (this.isDestroyed)
+      return;
+    const content = this._content;
+    if (!this._filetype) {
+      this._shouldRenderTextBuffer = true;
+      return;
+    }
+    if (this._arcanaKeepStyledFrame()) {
+      return;
+    }
+    this._arcanaPaintFirstFrame(content); ${STYLED_FIRST_FRAME_MARKER}
+  }`
+const CODE_HELPERS_V2 = `  ${CODE_FRAME_MARKER}
+  _arcanaCommitStyledFrame(styledText, content, lineSources) {
+    this._arcanaClearDeadline();
+    this._arcanaLastStyledText = styledText;
+    this._arcanaLastStyledContent = content;
+    this._arcanaLastRenderedLineSources = lineSources;
+    this._arcanaHasStyledFrame = true;
+  }
+  _arcanaKeepStyledFrame() {
+    if (!this._arcanaHasStyledFrame || !this._arcanaLastStyledText) return false;
+    this._shouldRenderTextBuffer = true;
+    return true;
+  }
+  _arcanaClearStyledFrame() {
+    this._arcanaClearDeadline();
+    this._arcanaLastStyledText = undefined;
+    this._arcanaLastStyledContent = "";
+    this._arcanaLastRenderedLineSources = undefined;
+    this._arcanaHasStyledFrame = false;
+  }
+  ${STYLED_FIRST_FRAME_MARKER}
+  _arcanaPaintFirstFrame(content) {
+    if (this.isDestroyed) return;
+    if (this._initialStyledText) {
+      this.textBuffer.setStyledText(this._initialStyledText);
+      this.setRenderedLineSources(undefined);
+      this.updateTextInfo();
+      this._arcanaCommitStyledFrame(this._initialStyledText, content, undefined);
+      this._shouldRenderTextBuffer = true;
+      this.requestRender();
+      return;
+    }
+    this.textBuffer.setText(content);
+    this.setRenderedLineSources(undefined);
+    this.updateTextInfo();
+    if (this._filetype && !this._drawUnstyledText) {
+      // Colors are computed asynchronously: keep the layout measured but paint
+      // nothing until the first styled frame arrives.
+      this._shouldRenderTextBuffer = false;
+      this._arcanaArmDeadline();
+      this.requestRender();
+      return;
+    }
+    this._shouldRenderTextBuffer = true;
+    this.requestRender();
+  }
+  _arcanaArmDeadline() {
+    if (this._arcanaDeadlineTimer !== undefined) return;
+    const timer = setTimeout(() => {
+      this._arcanaDeadlineTimer = undefined;
+      if (this.isDestroyed || this._arcanaHasStyledFrame) return;
+      this._shouldRenderTextBuffer = true;
+      this.requestRender();
+    }, 500);
+    if (timer && typeof timer.unref === "function") timer.unref();
+    this._arcanaDeadlineTimer = timer;
+  }
+  _arcanaClearDeadline() {
+    const timer = this._arcanaDeadlineTimer;
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    this._arcanaDeadlineTimer = undefined;
+  }
+`
+const CODE_ERROR_DEADLINE_V1 = `      if (this.isDestroyed)
+        return;
+      if (!this._arcanaHasStyledFrame) {
+        this.textBuffer.setText(content);
+        this.setRenderedLineSources(undefined);
+      }`
+const CODE_ERROR_DEADLINE_V2 = `      if (this.isDestroyed)
+        return;
+      this._arcanaClearDeadline(); ${STYLED_FIRST_FRAME_MARKER}
+      if (!this._arcanaHasStyledFrame) {
+        this.textBuffer.setText(content);
+        this.setRenderedLineSources(undefined);
+      }`
+
+/**
+ * Third pass: keep the fallback monotonic. Once the deadline has painted plain
+ * text (broken/slow parser), later content updates must keep the leaf visible
+ * instead of re-deferring into a blank block. The flag is cleared by the first
+ * styled commit, which restores normal deferral for any later unstyled state.
+ */
+const FIRST_FRAME_FALLBACK_MARKER = "// [arcana] keep first-frame fallback stable (patch-opentui.ts)"
+const CODE_FIELDS_V21_ANCHOR = "  _arcanaDeadlineTimer;"
+const CODE_FIELDS_V21 = `  _arcanaDeadlineTimer;
+  ${FIRST_FRAME_FALLBACK_MARKER}
+  _arcanaFirstFrameFallback = false;`
+const CODE_COMMIT_V21_FROM = `  _arcanaCommitStyledFrame(styledText, content, lineSources) {
+    this._arcanaClearDeadline();`
+const CODE_COMMIT_V21_TO = `  _arcanaCommitStyledFrame(styledText, content, lineSources) {
+    this._arcanaClearDeadline();
+    this._arcanaFirstFrameFallback = false;`
+const CODE_DEADLINE_V21_FROM = `  _arcanaArmDeadline() {
+    if (this._arcanaDeadlineTimer !== undefined) return;
+    const timer = setTimeout(() => {
+      this._arcanaDeadlineTimer = undefined;
+      if (this.isDestroyed || this._arcanaHasStyledFrame) return;
+      this._shouldRenderTextBuffer = true;
+      this.requestRender();
+    }, 500);`
+const CODE_DEADLINE_V21_TO = `  _arcanaArmDeadline() {
+    if (this._arcanaDeadlineTimer !== undefined) return;
+    const timer = setTimeout(() => {
+      this._arcanaDeadlineTimer = undefined;
+      if (this.isDestroyed || this._arcanaHasStyledFrame) return;
+      this._arcanaFirstFrameFallback = true;
+      this._shouldRenderTextBuffer = true;
+      this.requestRender();
+    }, 500);`
+const CODE_DEFER_V21_FROM = `    if (this._filetype && !this._drawUnstyledText) {
+      // Colors are computed asynchronously: keep the layout measured but paint
+      // nothing until the first styled frame arrives.
+      this._shouldRenderTextBuffer = false;
+      this._arcanaArmDeadline();
+      this.requestRender();
+      return;
+    }`
+const CODE_DEFER_V21_TO = `    if (this._filetype && !this._drawUnstyledText && !this._arcanaFirstFrameFallback) {
+      // Colors are computed asynchronously: keep the layout measured but paint
+      // nothing until the first styled frame arrives.
+      this._shouldRenderTextBuffer = false;
+      this._arcanaArmDeadline();
+      this.requestRender();
+      return;
+    }`
+
 function coreDirs(): string[] {
   const out = new Set<string>()
   const roots = ["node_modules", "packages/tui/node_modules", "packages/engine/node_modules"]
@@ -382,6 +624,41 @@ function patchCodeRenderable(source: string): string | undefined {
         throw new Error(`CodeRenderable patch signature missing: ${signature.slice(0, 80)}`)
       }
       code = code.replace(signature, replacement)
+    }
+  }
+
+  // Upgrade a first-generation retained-frame patch in place. Markdown leaves
+  // paint their synchronous styled chunks; code/tool leaves defer the first
+  // paint until the async highlight lands instead of flashing plain text.
+  if (!code.includes(STYLED_FIRST_FRAME_MARKER)) {
+    const upgrades: Array<[string, string]> = [
+      [CODE_FRAME_FIELDS, CODE_FIELDS_V2],
+      [CODE_CTOR_V1, CODE_CTOR_V2],
+      [CODE_CONTENT_V1, CODE_CONTENT_V2],
+      [CODE_ENSURE_V1, CODE_ENSURE_V2],
+      [CODE_HELPERS, CODE_HELPERS_V2],
+      [CODE_ERROR_DEADLINE_V1, CODE_ERROR_DEADLINE_V2],
+    ]
+    for (const [from, to] of upgrades) {
+      if (!code.includes(from)) {
+        throw new Error(`CodeRenderable styled-first-frame anchor missing: ${from.slice(0, 80)}`)
+      }
+      code = code.replace(from, to)
+    }
+  }
+
+  if (!code.includes(FIRST_FRAME_FALLBACK_MARKER)) {
+    const fallbackUpgrades: Array<[string, string]> = [
+      [CODE_FIELDS_V21_ANCHOR, CODE_FIELDS_V21],
+      [CODE_COMMIT_V21_FROM, CODE_COMMIT_V21_TO],
+      [CODE_DEADLINE_V21_FROM, CODE_DEADLINE_V21_TO],
+      [CODE_DEFER_V21_FROM, CODE_DEFER_V21_TO],
+    ]
+    for (const [from, to] of fallbackUpgrades) {
+      if (!code.includes(from)) {
+        throw new Error(`CodeRenderable first-frame fallback anchor missing: ${from.slice(0, 80)}`)
+      }
+      code = code.replace(from, to)
     }
   }
 

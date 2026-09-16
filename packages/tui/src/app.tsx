@@ -31,6 +31,7 @@ import {
   For,
 } from "solid-js"
 import { useTuiStartup } from "./context/runtime"
+import { scheduleTreeSitterPrewarm } from "./util/tree-sitter-prewarm"
 import { ArcanaMetricLine, ArcanaSection, ArcanaSurface, ArcanaTapeItem } from "./ui/arcana"
 import { PluginRouteMissing } from "./component/plugin-route-missing"
 import { useProject } from "./context/project"
@@ -234,6 +235,12 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
         }),
       )
       yield* Effect.addFinalizer(() => Effect.sync(TuiAudio.dispose))
+      // Warm the tree-sitter worker right after boot so the first streamed
+      // code/diff body paints its styled frame without a cold-start hold.
+      yield* Effect.acquireRelease(
+        Effect.sync(() => scheduleTreeSitterPrewarm()),
+        (cancel) => Effect.sync(cancel),
+      )
       const shutdown = yield* Deferred.make<unknown>()
       const onSighup = () => destroyRenderer(renderer)
       yield* Effect.acquireRelease(

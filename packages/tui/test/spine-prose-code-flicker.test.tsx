@@ -59,15 +59,16 @@ test("thought prose bypasses syntax highlighting and stays plain", () => {
   expect(resolveProseMode({ kind: "think", text: "**muted reasoning**" })).toBe("plain")
 })
 
-test("read preview remains visible while Tree-sitter highlighting is pending", async () => {
+test("deferred first paint: code shows no unstyled frame before the first highlight", async () => {
   treeSitter = new MockTreeSitterClient()
+  treeSitter.setMockResult({ highlights: [[0, 6, "keyword"]] })
 
   app = await testRender(
     () => (
       <code
         content={SOURCE}
         filetype="typescript"
-        syntaxStyle={syntaxStyle}
+        syntaxStyle={highlightedSyntaxStyle}
         treeSitterClient={treeSitter}
         drawUnstyledText={false}
         width={72}
@@ -77,11 +78,16 @@ test("read preview remains visible while Tree-sitter highlighting is pending", a
   )
   await app.renderOnce()
 
-  // With drawUnstyledText={false}, the first frame is still visible
-  // (Arcana's OpenTUI patch retains the last styled frame).
-  const pendingFrame = app.captureCharFrame()
-  expect(pendingFrame).toContain("export function answer")
-  expect(pendingFrame.split("export function answer")).toHaveLength(2)
+  // The leaf measures the text but paints nothing until the async highlight
+  // lands: no plain frame is ever visible before the first styled frame.
+  await app.waitFor(() => treeSitter?.isHighlighting() === true)
+  expect(app.captureCharFrame()).not.toContain("export function answer")
+
+  treeSitter.resolveHighlightOnce()
+  await app.flush()
+  await app.renderOnce()
+  expect(app.captureCharFrame()).toContain("export function answer")
+  expect(colorOf(findSpanContaining(app.captureSpans(), "export"))).toBe(RGBA.fromHex("#ff5f87").toString())
   expect(spineProseSource).toMatch(/filetype=\{ft\(\)\}[\s\S]{0,300}drawUnstyledText=\{false\}/)
 })
 
@@ -107,14 +113,15 @@ test("retains the last styled frame while content and theme colors re-highlight"
     { width: 80, height: 8 },
   )
 
-  // The first frame is visible even when a caller opts out of the upstream
-  // unstyled gate; Arcana only uses that gate as a first-frame fallback.
+  // The first paint is deferred until the async highlight lands; no unstyled
+  // frame is visible for content whose colors are still being computed.
   await app.renderOnce()
-  expect(app.captureCharFrame()).toContain(initial)
+  expect(app.captureCharFrame()).not.toContain(initial)
   await app.waitFor(() => treeSitter?.isHighlighting() === true)
   treeSitter.resolveHighlightOnce()
   await app.flush()
   await app.renderOnce()
+  expect(app.captureCharFrame()).toContain(initial)
 
   const styled = app.captureSpans()
   const styledSpan = findSpanContaining(styled, "export")
@@ -140,6 +147,73 @@ test("retains the last styled frame while content and theme colors re-highlight"
   const recoloredColor = colorOf(findSpanContaining(recolored, "export"))
   expect(recoloredColor).toBeDefined()
   expect(recoloredColor).not.toBe(initialColor)
+})
+
+test("streaming markdown paints its synchronous styled chunks before the first highlight", async () => {
+  const strongColor = "#ff5f87"
+  const strongSyntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromHex("#ffffff") },
+    "markup.strong": { fg: RGBA.fromHex(strongColor), bold: true },
+  })
+  treeSitter = new MockTreeSitterClient()
+
+  app = await testRender(
+    () => (
+      <markdown
+        width={40}
+        content={"plain **bold** tail"}
+        syntaxStyle={strongSyntaxStyle}
+        treeSitterClient={treeSitter}
+        streaming={true}
+        internalBlockMode="top-level"
+        conceal={true}
+      />
+    ),
+    { width: 60, height: 12 },
+  )
+  await app.renderOnce()
+  await app.flush()
+  await app.renderOnce()
+
+  // No worker result yet: the paragraph is already visible with its inline
+  // emphasis colored from the synchronous chunks, so there is no plain frame
+  // to flash away later.
+  expect(app.captureCharFrame()).toContain("plain bold tail")
+  expect(app.captureCharFrame()).not.toContain("**")
+  const span = findSpanContaining(app.captureSpans(), "bold")
+  expect(span?.fg.toString()).toBe(RGBA.fromHex(strongColor).toString())
+})
+
+test("first-frame deadline keeps content visible when highlighting never resolves", async () => {
+  const [content, setContent] = createSignal(SOURCE)
+  treeSitter = new MockTreeSitterClient() // never resolved during this test
+
+  app = await testRender(
+    () => (
+      <code
+        content={content()}
+        filetype="typescript"
+        syntaxStyle={highlightedSyntaxStyle}
+        treeSitterClient={treeSitter}
+        drawUnstyledText={false}
+        width={72}
+      />
+    ),
+    { width: 80, height: 12 },
+  )
+  await app.renderOnce()
+  expect(app.captureCharFrame()).not.toContain("export function answer")
+
+  // The bounded fallback paints the content plain once the deadline passes.
+  await Bun.sleep(650)
+  await app.renderOnce()
+  expect(app.captureCharFrame()).toContain("export function answer")
+
+  // Once the fallback has fired the leaf must stay visible: updates paint
+  // immediately instead of re-deferring into a blank block.
+  setContent(SOURCE + "\nexport const fallback = true")
+  await app.renderOnce()
+  expect(app.captureCharFrame()).toContain("export const fallback = true")
 })
 
 test("retains the last styled frame when a refresh fails", async () => {
@@ -187,7 +261,7 @@ test("retains the last styled frame when a refresh fails", async () => {
   expect(colorOf(findSpanContaining(app.captureSpans(), "const"))).toBe(styledColor)
 })
 
-test("streaming fenced code keeps its visible fallback across review updates", async () => {
+test("streaming fenced code keeps its leaf and content across review updates", async () => {
   const initial = [
     "Reviewing the change:",
     "",
@@ -247,6 +321,8 @@ test("streaming fenced code keeps its visible fallback across review updates", a
   expect(code?.drawUnstyledText).toBe(false)
   expect(code?.content).toContain("export const reviewed")
   expect(openTuiPatchSource).toContain("retain last styled code frame")
+  expect(openTuiPatchSource).toContain("paint styled first frame")
+  expect(openTuiPatchSource).toContain("_arcanaPaintFirstFrame")
   expect(openTuiPatchSource).toContain("chunk-node-")
   expect(openTuiPatchSource).toContain("drawUnstyledText: false")
   expect(openTuiPatchSource).toContain("renderable.drawUnstyledText = false")
