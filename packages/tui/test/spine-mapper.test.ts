@@ -2762,6 +2762,57 @@ describe("display output caps", () => {
     })
     const entry = result.find((e) => e.kind === "inspect")!
     expect(entry.body).toBe(small)
-    expect(entry.body).not.toContain("more —")
+    expect(entry.body).not.toContain("more -")
+  })
+})
+
+describe("entry stabilization", () => {
+  // Settled rows must keep their entry object across projection passes: the
+  // mapper rebuilds payload objects (reminders/diff/receipt/report/table) with
+  // fresh arrays on every pass, and reference comparison marked every row as
+  // changed — re-rendering its body on each stream event (visible flicker).
+  test("equal rebuilds reuse the previous entry despite fresh payload objects", () => {
+    const build = () => {
+      const { messages } = makeAssistantMessage("a-stable", { finish: "stop", completed: 2000 })
+      const parts: Part[] = [
+        {
+          id: "p-tool",
+          sessionID: "sess-1",
+          messageID: "a-stable",
+          type: "tool",
+          callID: "c1",
+          tool: "bash",
+          state: {
+            status: "completed",
+            input: { command: "echo hi" },
+            output: "hi",
+            title: "bash",
+            metadata: {},
+            time: { start: 1000, end: 1500 },
+          },
+        } as Part,
+        { id: "p-text", sessionID: "sess-1", messageID: "a-stable", type: "text", text: "done" } as Part,
+      ]
+      return { messages, getParts: partsLookup(parts) }
+    }
+
+    const base = {
+      getPartRevision: () => 1,
+      assistantDuration: new Map<string, number>(),
+      expandThinking: false,
+      sessionStatusType: "idle",
+    } as const
+
+    const first = messagesToSpineEntriesCached({ ...build(), ...base })
+    const second = messagesToSpineEntriesCached({
+      ...build(),
+      ...base,
+      previousEntries: first.entries,
+    })
+
+    expect(second.entries.length).toBe(first.entries.length)
+    second.entries.forEach((entry, index) => {
+      expect(entry, `entry ${index} (${entry.id})`).toBe(first.entries[index]!)
+    })
   })
 })

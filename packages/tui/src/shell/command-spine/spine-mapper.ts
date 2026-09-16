@@ -2238,6 +2238,29 @@ function childrenStable(a: SpineEntry[] | undefined, b: SpineEntry[] | undefined
 }
 
 /**
+ * Structural equality for mapper-built payloads. `reminders`, `diff`,
+ * `receipt`, `report`, and `table` are rebuilt on every projection pass with
+ * fresh arrays/objects holding equal content; comparing them by reference
+ * marked every settled row as changed, returning a new entry (and re-rendering
+ * its body) on each stream event — visible as flicker while the agent works.
+ */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false
+    return a.every((item, index) => sameValue(item, b[index]))
+  }
+  if (a && b && typeof a === "object" && typeof b === "object") {
+    const left = a as Record<string, unknown>
+    const right = b as Record<string, unknown>
+    const keys = Object.keys(left)
+    if (keys.length !== Object.keys(right).length) return false
+    return keys.every((key) => sameValue(left[key], right[key]))
+  }
+  return false
+}
+
+/**
  * Preserve Solid list identity when entry content is unchanged — critical for
  * scroll/render perf. Changed entries return a NEW object so <For> detects the
  * reference shift and re-renders the child. Mutating in place would leave stale
@@ -2266,11 +2289,11 @@ function stabilizeEntries(next: SpineEntry[], previous: SpineEntry[] | undefined
       prev.bodyLabel === entry.bodyLabel &&
       prev.thinking === entry.thinking &&
       childrenStable(prev.children, entry.children) &&
-      prev.receipt === entry.receipt &&
-      prev.diff === entry.diff &&
-      prev.reminders === entry.reminders &&
-      prev.report === entry.report &&
-      prev.table === entry.table
+      sameValue(prev.receipt, entry.receipt) &&
+      sameValue(prev.diff, entry.diff) &&
+      sameValue(prev.reminders, entry.reminders) &&
+      sameValue(prev.report, entry.report) &&
+      sameValue(prev.table, entry.table)
     ) {
       return prev
     }
