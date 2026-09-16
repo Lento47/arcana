@@ -1292,6 +1292,7 @@ function toolPartToEntries(
       elapsedMs: elapsed.ms,
       startMs,
       streaming: running,
+      background: state.status === "running" && state.metadata?.background === true,
       timestamp: formatTimestamp(message.time?.created),
       kind: finalKind,
       label:

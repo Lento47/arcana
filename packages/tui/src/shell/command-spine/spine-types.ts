@@ -187,6 +187,8 @@ export type SpineEntry = {
   hidden?: boolean
   /** True when the content is still actively streaming (think entries show spinner). */
   streaming?: boolean
+  /** Running task part moved to the background (Ctrl+B) — no longer blocks the turn. */
+  background?: boolean
   /** Verb text from preceding think entry — merged into the tool row. */
   thinking?: string
   /** Live preliminary output while running (subagent text stream). Each update

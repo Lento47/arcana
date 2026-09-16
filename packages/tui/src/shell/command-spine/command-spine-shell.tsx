@@ -564,6 +564,8 @@ export function CommandSpineShell(props: ShellProps) {
       approval: Boolean(approval),
       canApprove: Boolean(approval && authority.canApprove()),
       canDeny: Boolean(approval && authority.canDeny()),
+      streaming: entry.streaming === true,
+      background: entry.background === true,
     })
   })
 

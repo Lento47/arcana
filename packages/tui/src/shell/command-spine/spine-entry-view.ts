@@ -150,6 +150,8 @@ export type SubagentEntry = SpineEntryViewBase & {
   elapsed?: string
   startMs?: number
   streaming?: boolean
+  /** Running task part moved to the background (Ctrl+B). */
+  background?: boolean
   body?: string
   bodyLabel?: string
   bodyHint?: string
@@ -313,6 +315,7 @@ export function toSpineEntryView(entry: SpineEntry, ctx: {
       elapsed: entry.elapsed,
       startMs: entry.startMs,
       streaming: entry.streaming === true,
+      background: entry.background === true,
       body: entry.body,
       bodyLabel: entry.bodyLabel,
       bodyHint: entry.bodyHint,

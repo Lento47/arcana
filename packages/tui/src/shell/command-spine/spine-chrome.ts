@@ -437,6 +437,10 @@ export function focusedEntryActionHint(input: {
   approval?: boolean
   canApprove?: boolean
   canDeny?: boolean
+  /** Agent row is still running (controls its own progress affordances). */
+  streaming?: boolean
+  /** Running agent was already detached with Ctrl+B — the hint must not lie. */
+  background?: boolean
 }): string {
   const actions: string[] = []
   if (input.approval) {
@@ -449,6 +453,10 @@ export function focusedEntryActionHint(input: {
     const action = input.expanded ? "collapse" : "expand"
     actions.push(input.agent ? `space ${action}` : `enter/space ${action}`)
   }
+  // Foreground subagents block the turn; Ctrl+B detaches them so the session
+  // can proceed. The command is hidden from the palette, so the focused card is
+  // its only discoverable home.
+  if (input.agent && input.streaming === true && input.background !== true) actions.push("^b background")
   if (input.hasDetails) actions.push("o details")
   if (input.hasDiff) actions.push("d diff")
   if (!input.agent && input.hasSession) actions.push("g session")

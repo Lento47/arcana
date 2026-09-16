@@ -73,6 +73,31 @@ describe("focusedEntryActionHint", () => {
       expanded: false,
     })).toBe("enter/space expand · y copy")
   })
+
+  test("surfaces the background control on a foreground running subagent", () => {
+    expect(focusedEntryActionHint({
+      layout: "wide",
+      agent: true,
+      streaming: true,
+      background: false,
+      hasSession: true,
+      toggleable: true,
+      expanded: false,
+      hasDetails: true,
+    })).toBe("enter open · space expand · ^b background · o details · y copy")
+  })
+
+  test("drops the background control once the subagent is detached", () => {
+    expect(focusedEntryActionHint({
+      layout: "wide",
+      agent: true,
+      streaming: true,
+      background: true,
+      hasSession: true,
+      toggleable: true,
+      expanded: false,
+    })).toBe("enter open · space expand · y copy")
+  })
 })
 
 describe("toolChipModel", () => {

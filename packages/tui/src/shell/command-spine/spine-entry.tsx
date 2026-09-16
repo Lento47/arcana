@@ -19,7 +19,7 @@ import { SpineToolChip } from "./spine-tool-chip"
 import { SpineReceipt } from "./spine-receipt"
 import { SpineDiff } from "./spine-diff"
 import { SpineRail } from "./spine-rail"
-import { SpineProse } from "./spine-prose"
+import { SpineProse, stripMarkdownEmphasis } from "./spine-prose"
 import { SpineReport } from "./spine-report"
 import { SpineListArtifact } from "./spine-list-artifact"
 import { SpineListing } from "./spine-listing"
@@ -45,6 +45,16 @@ import {
   type SubagentEntry,
   type ToolEntry,
 } from "./spine-entry-view"
+
+/**
+ * Subagent card policy. The live ticker shows only the newest lines — a panel
+ * that grows with every delta would shift the card and bury the stream point —
+ * and the returned step list is capped so a busy subagent cannot turn its
+ * receipt into a wall of rows. Everything beyond the cap stays reachable by
+ * diving into the child session.
+ */
+const LIVE_OUTPUT_LINES = 2
+const MAX_CARD_STEPS = 6
 
 /**
  * S7: single source of truth for a row's expand/toggle affordances.
@@ -1042,12 +1052,19 @@ export function SpineEntry(props: {
                 if (!hasToolBody() && v().body?.trim()) return v().body
                 return ""
               }
-              // Live streaming text from the child (preliminary tool result).
+              // Live streaming text from the child (preliminary tool result),
+              // bounded to the newest lines (see LIVE_OUTPUT_LINES).
               const liveWorkingText = () => v().liveOutput?.trim() || ""
-              const statusLine = () =>
-                `${v().streaming ? "•" : "✓"} ${chrome().cue}${chrome().childHint ? ` · ${chrome().childHint}` : ""}` +
-                `${v().streaming && v().elapsed ? ` · ${v().elapsed}` : ""}` +
-                `${v().streaming && childSessionID() ? " · ↵ enter its context" : ""}`
+              const liveLines = createMemo(() => {
+                const raw = liveWorkingText()
+                if (!raw) return { lines: [] as string[], clipped: false }
+                const all = raw
+                  .split("\n")
+                  .map((line) => line.trimEnd())
+                  .filter((line) => line.trim().length > 0)
+                const lines = all.slice(-LIVE_OUTPUT_LINES)
+                return { lines, clipped: all.length > lines.length }
+              })
               // Completed step list: the child session's tool calls, read from the
               // workspace-wide sync projection so the returned card shows what the
               // subagent did without navigating into its session.
@@ -1069,6 +1086,44 @@ export function SpineEntry(props: {
                 }
                 return steps
               })
+              const visibleSteps = createMemo(() => childSteps().slice(0, MAX_CARD_STEPS))
+              const hiddenStepCount = createMemo(() => Math.max(0, childSteps().length - MAX_CARD_STEPS))
+              // One-line outcome preview for the collapsed returned card: the
+              // report is scannable from the row, and expanding still renders the
+              // full markdown body (progressive disclosure). Heading/list markers
+              // are stripped so the preview reads as prose.
+              const reportPreview = createMemo(() => {
+                const body = cardBody()?.trim()
+                if (!body) return ""
+                const first = body
+                  .split("\n")
+                  .map((line) => line.trim())
+                  .find((line) => line.length > 0 && !line.startsWith("```"))
+                if (!first) return ""
+                const clean = stripMarkdownEmphasis(first)
+                  .replace(/^#{1,6}\s+/, "")
+                  .replace(/^[-*+]\s+/, "")
+                  .replace(/^\d+\.\s+/, "")
+                  .trim()
+                if (!clean) return ""
+                return truncate(clean, Math.max(16, Math.floor((props.contentWidth ?? 80) - 4)))
+              })
+              // Status line: handover state + progress + the dive affordance. The
+              // header chip already owns the live dot and elapsed time, so neither
+              // is repeated here; the hint bar owns the full key legend, so the
+              // inline affordance stays terse.
+              const stepSummary = () => {
+                const completed = childSteps().length
+                if (completed > 0) return `${completed} ${completed === 1 ? "step" : "steps"}`
+                return chrome().childHint
+              }
+              const statusLine = () => {
+                const segments = [chrome().cue]
+                const steps = stepSummary()
+                if (steps) segments.push(steps)
+                if (childSessionID()) segments.push("↵ open")
+                return segments.join(" · ")
+              }
               // Hydrate the child session's messages/parts once the session is
               // resolvable, so the step list renders without navigating away.
               // Mirrors the legacy subagent route's onMount sync.
@@ -1111,31 +1166,54 @@ export function SpineEntry(props: {
                         <text fg={v().streaming ? theme.accent : theme.spineOk} wrapMode="none">
                           {statusLine()}
                         </text>
-                        {/* Completed step list — what the subagent actually did. */}
+                        {/* Collapsed outcome preview — one line of the returned report
+                            so the card is scannable without expanding it. */}
+                        <Show when={!v().streaming && !bodyExpanded() && !!reportPreview()}>
+                          <text fg={theme.spineContext} wrapMode="none">
+                            {reportPreview()}
+                          </text>
+                        </Show>
+                        {/* Completed step list — what the subagent actually did,
+                            capped so a busy subagent cannot flood the spine. */}
                         <Show when={!v().streaming && bodyExpanded() && childSteps().length > 0}>
                           <box flexDirection="column" paddingTop={1}>
-                            <For each={childSteps()}>
+                            <For each={visibleSteps()}>
                               {(step) => (
                                 <text fg={step.status === "fail" ? theme.spineFail : theme.spineContext} wrapMode="word">
                                   {step.status === "fail" ? "✗" : "✓"} {step.label}
                                 </text>
                               )}
                             </For>
+                            <Show when={hiddenStepCount() > 0}>
+                              <text fg={theme.spineGutterElapsed as any} wrapMode="none">
+                                … {hiddenStepCount()} more {hiddenStepCount() === 1 ? "step" : "steps"}
+                              </text>
+                            </Show>
                           </box>
                         </Show>
                         {/* Working panel while delegated — its own context, not shared.
-                            When the engine relays live preliminary text (streaming subagent
-                            progress), show that; otherwise fall back to the static hint. */}
+                            The engine relays live preliminary text (streaming subagent
+                            progress); the newest line is the brightest so the stream
+                            point is obvious, and an older-line ellipsis marks the cut. */}
                         <Show when={v().streaming}>
-                          <Show when={!!liveWorkingText()} fallback={
-                            <text fg={theme.spineContext} wrapMode="word">
-                              Working in the {v().label || "subagent"} context… no streamed output
-                              yet · Enter or click to watch it think.
-                            </text>
-                          }>
-                            <text fg={theme.spineContext} wrapMode="word">
-                              {liveWorkingText()}
-                            </text>
+                          <Show
+                            when={liveLines().lines.length > 0}
+                            fallback={
+                              <text fg={theme.spineContext} wrapMode="word">
+                                Working in the {v().label || "subagent"} context…
+                              </text>
+                            }
+                          >
+                            <For each={liveLines().lines}>
+                              {(line, i) => (
+                                <text
+                                  fg={i() === liveLines().lines.length - 1 ? theme.text : theme.spineContext}
+                                  wrapMode="word"
+                                >
+                                  {i() === 0 && liveLines().clipped ? `… ${line}` : line}
+                                </text>
+                              )}
+                            </For>
                           </Show>
                         </Show>
                         {/* Returned report/body when expanded. */}
