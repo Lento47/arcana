@@ -61,7 +61,7 @@ export function DialogTag(props: { onSelect?: (value: string) => void }) {
                 {files.loading
                   ? "Searching files…"
                   : store.filter
-                    ? "No matching files."
+                    ? "No matching files — try a shorter query."
                     : "Type to search files."}
               </text>
             </box>

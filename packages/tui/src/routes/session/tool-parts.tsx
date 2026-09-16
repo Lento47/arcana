@@ -679,9 +679,9 @@ function GenericTool(props: ToolProps) {
 
   const badge = createMemo(() => {
     const fmt = formattedOutput()
-    if (fmt.type === "todos") return `${fmt.items.length} todos`
-    if (fmt.type === "table") return `${fmt.rows.length} rows`
-    if (fmt.type === "kv") return `${fmt.entries.length} fields`
+    if (fmt.type === "todos") return `${fmt.items.length} todo${fmt.items.length === 1 ? "" : "s"}`
+    if (fmt.type === "table") return `${fmt.rows.length} row${fmt.rows.length === 1 ? "" : "s"}`
+    if (fmt.type === "kv") return `${fmt.entries.length} field${fmt.entries.length === 1 ? "" : "s"}`
     return ""
   })
 

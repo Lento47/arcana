@@ -71,8 +71,8 @@ describe("PermissionPrompt keymap layer", () => {
   test("contract admission defaults Enter to confirmed persistent activation", () => {
     expect(canRememberPermission(contractRequest)).toBe(true)
     expect(permissionDecisionOptions(contractRequest)).toEqual({
-      always: "Always activate",
-      once: "Activate once",
+      always: "Always Activate",
+      once: "Activate Once",
       reject: "Decline",
     })
     expect(Object.keys(permissionDecisionOptions({ ...contractRequest, always: [] }))).toEqual(["once", "reject"])

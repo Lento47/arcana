@@ -58,7 +58,7 @@ export function DialogSkill(props: DialogSkillProps) {
               <text fg={loadError() ? theme.error : theme.textMuted}>
                 {loadError()
                   ? `Failed to load skills — ${errorMessage(loadError())}. Press Esc and reopen to retry.`
-                  : "No skills found."}
+                  : "No skills found — add skill files under .arcana/skills, then reopen."}
               </text>
             </box>
           }

@@ -66,7 +66,7 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
     setStatus(
       message ||
         (result.exitCode === 0
-          ? "No learning status was returned."
+          ? "No learning status reported yet."
           : "Could not load learning status — close this dialog and reopen to retry."),
     )
   }

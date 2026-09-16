@@ -296,14 +296,14 @@ const DEFAULT_COPY = {
   inscribedToClipboard: "Inscribed to clipboard",
   riteComplete: "The rite is complete",
   noEchoesFound: "No echoes found",
-  chronicleEmpty: "The chronicle is empty",
+  chronicleEmpty: "The chronicle is empty — send a prompt from Home to begin.",
 } as const
 
 export const PLAIN_COPY = {
   inscribedToClipboard: "Copied to clipboard",
   riteComplete: "Done",
   noEchoesFound: "No matches found",
-  chronicleEmpty: "No sessions yet",
+  chronicleEmpty: "No sessions yet — send a prompt from Home to start one.",
 } as const
 
 export let COPY: typeof DEFAULT_COPY | typeof PLAIN_COPY = DEFAULT_COPY

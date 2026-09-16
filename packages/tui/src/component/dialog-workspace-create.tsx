@@ -127,7 +127,7 @@ export async function warpWorkspaceSession(input: {
       await DialogAlert.show(
         input.dialog,
         "Unable to Warp Session",
-        "Unable to apply file changes to this workspace. It has existing changes that conflict or is based off a different branch. Session has not been warped.",
+        "Nothing was changed — the workspace has conflicting changes or is based on a different branch. Resolve the conflict in the workspace, then retry.",
       )
       return false
     }

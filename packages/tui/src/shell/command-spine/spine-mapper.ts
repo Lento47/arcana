@@ -299,7 +299,7 @@ function formatInspectFileSummary(path: string, meta: Pick<ParsedReadBody, "line
     if (lineStart === lineEnd) return `${path} · L${lineStart}`
     return `${path} · L${lineStart}–${lineEnd}`
   }
-  if (totalLines !== undefined) return `${path} · ${totalLines} lines`
+  if (totalLines !== undefined) return `${path} · ${totalLines} line${totalLines === 1 ? "" : "s"}`
   return path
 }
 
@@ -1469,7 +1469,7 @@ function patchPartToEntry(
   const filesLabel =
     fileList.join(", ")
     || (hasDiff && body ? diffFilesFromBody(body, "").join(", ") : "")
-    || `${fileCount} files`
+    || `${fileCount} file${fileCount === 1 ? "" : "s"}`
 
   return {
     id: `${message.id}:${part.id}:patch`,

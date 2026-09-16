@@ -1,4 +1,4 @@
-import { Show, createMemo } from "solid-js"
+import { Show, createMemo, createSignal } from "solid-js"
 import type { MouseEvent } from "@opentui/core"
 import { useTheme } from "../../context/theme"
 import { Glyph } from "../../branding"
@@ -88,6 +88,10 @@ export function SpineNode(props: {
 }) {
   const { theme } = useTheme()
   const motion = useSpineMotion()
+  // Inline affordances (chevron, dismiss "×") are pointer targets: give them
+  // the same hover tint as the entry header, scoped to the glyph cell.
+  const [disclosureHover, setDisclosureHover] = createSignal(false)
+  const [dismissHover, setDismissHover] = createSignal(false)
 
   const kind = () => props.kind
   const layout = () => props.layout
@@ -205,7 +209,13 @@ export function SpineNode(props: {
         </Show>
       </box>
       <Show when={disclosure()}>
-        <box flexShrink={0} onMouseUp={props.onDisclosureMouseUp}>
+        <box
+          flexShrink={0}
+          onMouseUp={props.onDisclosureMouseUp}
+          onMouseOver={() => setDisclosureHover(true)}
+          onMouseOut={() => setDisclosureHover(false)}
+          backgroundColor={disclosureHover() ? theme.backgroundElement : undefined}
+        >
           <text fg={summaryColor()} wrapMode="none"> {disclosure()}</text>
         </box>
       </Show>
@@ -256,12 +266,25 @@ export function SpineNode(props: {
               {summary()}
             </text>
             <Show when={disclosure()}>
-              <box flexShrink={0} onMouseUp={props.onDisclosureMouseUp}>
+              <box
+                flexShrink={0}
+                onMouseUp={props.onDisclosureMouseUp}
+                onMouseOver={() => setDisclosureHover(true)}
+                onMouseOut={() => setDisclosureHover(false)}
+                backgroundColor={disclosureHover() ? theme.backgroundElement : undefined}
+              >
                 <text fg={summaryColor()} wrapMode="none"> {disclosure()}</text>
               </box>
             </Show>
             <Show when={props.onDismiss}>
-              <box flexShrink={0} paddingLeft={1} onMouseUp={() => props.onDismiss?.()}>
+              <box
+                flexShrink={0}
+                paddingLeft={1}
+                onMouseUp={() => props.onDismiss?.()}
+                onMouseOver={() => setDismissHover(true)}
+                onMouseOut={() => setDismissHover(false)}
+                backgroundColor={dismissHover() ? theme.backgroundElement : undefined}
+              >
                 <text fg={theme.textMuted} wrapMode="none">×</text>
               </box>
             </Show>
@@ -316,7 +339,13 @@ export function SpineNode(props: {
                 <text fg={summaryColor()} wrapMode="word">{summary()}</text>
               </box>
               <Show when={disclosure()}>
-                <box flexShrink={0} onMouseUp={props.onDisclosureMouseUp}>
+                <box
+                  flexShrink={0}
+                  onMouseUp={props.onDisclosureMouseUp}
+                  onMouseOver={() => setDisclosureHover(true)}
+                  onMouseOut={() => setDisclosureHover(false)}
+                  backgroundColor={disclosureHover() ? theme.backgroundElement : undefined}
+                >
                   <text fg={summaryColor()} wrapMode="none">{disclosure()}</text>
                 </box>
               </Show>
@@ -327,7 +356,14 @@ export function SpineNode(props: {
                 <box flexShrink={0}><text fg={metaColor()} wrapMode="none"> · {timestampText()}</text></box>
               </Show>
               <Show when={props.onDismiss}>
-                <box flexShrink={0} paddingLeft={1} onMouseUp={() => props.onDismiss?.()}>
+                <box
+                  flexShrink={0}
+                  paddingLeft={1}
+                  onMouseUp={() => props.onDismiss?.()}
+                  onMouseOver={() => setDismissHover(true)}
+                  onMouseOut={() => setDismissHover(false)}
+                  backgroundColor={dismissHover() ? theme.backgroundElement : undefined}
+                >
                   <text fg={theme.textMuted} wrapMode="none">×</text>
                 </box>
               </Show>

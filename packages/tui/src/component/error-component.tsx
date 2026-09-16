@@ -43,6 +43,11 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
     }
   })
   const [copied, setCopied] = createSignal(false)
+  // Buttons are the only interactive elements on the fatal screen; invert the
+  // primary fill on hover so the target is unmistakable.
+  const [hover, setHover] = createSignal<string>()
+  const buttonBg = (id: string) => (hover() === id ? colors.primaryText : colors.primary)
+  const buttonFg = (id: string) => (hover() === id ? colors.primary : colors.primaryText)
 
   const issueURL = new URL(BUG_URL)
 
@@ -72,8 +77,14 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
         <text attributes={TextAttributes.BOLD} fg={colors.text}>
           Arcana encountered a fatal error and needs to restart.
         </text>
-        <box onMouseUp={copyIssueURL} backgroundColor={colors.primary} padding={1}>
-          <text attributes={TextAttributes.BOLD} fg={colors.primaryText}>
+        <box
+          onMouseUp={copyIssueURL}
+          onMouseOver={() => setHover("copy")}
+          onMouseOut={() => setHover(undefined)}
+          backgroundColor={buttonBg("copy")}
+          padding={1}
+        >
+          <text attributes={TextAttributes.BOLD} fg={buttonFg("copy")}>
             Copy Issue URL (exception info pre-filled)
           </text>
         </box>
@@ -81,11 +92,23 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
       </box>
       <box flexDirection="row" gap={2} alignItems="center">
         <text fg={colors.text}>Press Reset TUI to restart, or Exit to close Arcana.</text>
-        <box onMouseUp={props.reset} backgroundColor={colors.primary} padding={1}>
-          <text fg={colors.primaryText}>Reset TUI</text>
+        <box
+          onMouseUp={props.reset}
+          onMouseOver={() => setHover("reset")}
+          onMouseOut={() => setHover(undefined)}
+          backgroundColor={buttonBg("reset")}
+          padding={1}
+        >
+          <text fg={buttonFg("reset")}>Reset TUI</text>
         </box>
-        <box onMouseUp={() => void exit()} backgroundColor={colors.primary} padding={1}>
-          <text fg={colors.primaryText}>Exit</text>
+        <box
+          onMouseUp={() => void exit()}
+          onMouseOver={() => setHover("exit")}
+          onMouseOut={() => setHover(undefined)}
+          backgroundColor={buttonBg("exit")}
+          padding={1}
+        >
+          <text fg={buttonFg("exit")}>Exit</text>
         </box>
       </box>
       <text fg={colors.muted} attributes={TextAttributes.BOLD}>Technical details (for bug reports):</text>

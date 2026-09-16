@@ -1,5 +1,5 @@
 import { MouseButton, type MouseEvent } from "@opentui/core"
-import { createMemo } from "solid-js"
+import { createMemo, createSignal } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { compactSpineElapsed, formatElapsedMs, type SpineLayout } from "./spine-types"
 import type { ActivityEntry } from "./spine-entry-view"
@@ -32,6 +32,9 @@ export function ActivityReel(props: {
 }) {
   const { theme } = useTheme()
   const motion = useSpineMotion()
+  // Header row is clickable (collapse/expand). Hover feedback mirrors the
+  // entry header and session rail: interactive states must be visible.
+  const [hovered, setHovered] = createSignal(false)
 
   // The shared tick only invalidates the live duration. It must never choose
   // a different child or otherwise animate the activity summary.
@@ -83,6 +86,9 @@ export function ActivityReel(props: {
       flexShrink={0}
       minWidth={0}
       onMouseUp={toggleFromHeader}
+      onMouseOver={() => setHovered(true)}
+      onMouseOut={() => setHovered(false)}
+      backgroundColor={hovered() ? theme.backgroundElement : undefined}
     >
       <SpineRail
         layout={props.layout}

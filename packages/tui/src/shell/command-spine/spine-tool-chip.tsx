@@ -1,4 +1,4 @@
-import { Show, createMemo, useContext, type JSX } from "solid-js"
+import { Show, createMemo, createSignal, useContext, type JSX } from "solid-js"
 import type { MouseEvent } from "@opentui/core"
 import { ThemeContext } from "../../context/theme"
 import type { Theme } from "../../theme"
@@ -54,6 +54,10 @@ export function SpineToolChip(props: {
 }) {
   const themeContext = useContext(ThemeContext)
   const theme = themeContext?.theme ?? FALLBACK_CHIP_THEME
+  // Chip rows are clickable when a handler is supplied; show the same hover
+  // affordance as the entry header and session rail.
+  const [hovered, setHovered] = createSignal(false)
+  const actionable = () => props.onMouseUp !== undefined
   const layout = () => props.layout ?? "wide"
   const model = createMemo(() => toolChipModel({
     kind: String(props.kind),
@@ -138,6 +142,9 @@ export function SpineToolChip(props: {
       flexShrink={1}
       overflow="hidden"
       onMouseUp={props.onMouseUp}
+      onMouseOver={() => actionable() && setHovered(true)}
+      onMouseOut={() => setHovered(false)}
+      backgroundColor={actionable() && hovered() ? theme.backgroundElement : undefined}
     >
       <box
         flexShrink={0}

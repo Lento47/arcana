@@ -44,12 +44,12 @@ export function permissionDecisionOptions(request: PermissionRequest): Record<st
   const remember = canRememberPermission(request)
   if (isContractAdmissionRequest(request)) {
     return remember
-      ? { always: "Always activate", once: "Activate once", reject: "Decline" }
-      : { once: "Activate once", reject: "Decline" }
+      ? { always: "Always Activate", once: "Activate Once", reject: "Decline" }
+      : { once: "Activate Once", reject: "Decline" }
   }
   return remember
-    ? { once: "Allow once", always: "Allow always", reject: "Reject" }
-    : { once: "Allow once", reject: "Reject" }
+    ? { once: "Allow Once", always: "Allow Always", reject: "Reject" }
+    : { once: "Allow Once", reject: "Reject" }
 }
 
 export function createPermissionOptionBindings<T extends string>(input: {
@@ -327,8 +327,8 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
       setStore(
         "error",
         contractAdmission()
-          ? "Preference was not saved; choose Activate once or try again."
-          : "Permission was not saved; choose Allow once or try again.",
+          ? "Preference was not saved; choose Activate Once or try again."
+          : "Permission was not saved; choose Allow Once or try again.",
       )
     })
   }
@@ -337,7 +337,7 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
     <Switch>
       <Match when={store.stage === "always"}>
         <Prompt
-          title={contractAdmission() ? "Always activate" : "Always allow"}
+          title={contractAdmission() ? "Always Activate" : "Always Allow"}
           busy={store.busy}
           body={
             <Switch>

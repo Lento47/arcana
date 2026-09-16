@@ -350,8 +350,8 @@ export function useAppEffects(props: {
 
       toast.show({
         variant: "error",
-        message,
-        duration: 5000,
+        message: `${message} — retry the prompt, or run /status for details.`,
+        duration: 8000,
       })
     }),
   )

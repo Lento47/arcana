@@ -141,7 +141,7 @@ export function DialogTools(props: { sessionID: string }) {
             <text fg={loadError() ? theme.error : theme.textMuted}>
               {loadError()
                 ? `Failed to load tools — ${loadError()}. Reopen this dialog to retry.`
-                : "No tools are available for this model."}
+                : "No tools are available for this model — switch models, or connect an MCP server."}
             </text>
           </box>
         </Show>
