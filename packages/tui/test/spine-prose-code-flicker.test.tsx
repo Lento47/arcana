@@ -216,6 +216,16 @@ test("first-frame deadline keeps content visible when highlighting never resolve
   expect(app.captureCharFrame()).toContain("export const fallback = true")
 })
 
+test("diff bodies never paint unstyled text before the first highlight", async () => {
+  // DiffRenderable builds its inner CodeRenderable through a helper that used
+  // the upstream `drawUnstyledText: true` default, so edit-tool diffs painted a
+  // plain frame before Tree-sitter colors landed. The runtime policy is covered
+  // by the diff-viewer render suite; this guards the patch generation itself.
+  expect(openTuiPatchSource).toContain("diff leaves never paint unstyled text")
+  expect(openTuiPatchSource).toContain("class DiffRenderable")
+  expect(openTuiPatchSource).toContain("existingRenderable.drawUnstyledText = false")
+})
+
 test("retains the last styled frame when a refresh fails", async () => {
   const initial = "const stable = true"
   const next = "const changed = false"

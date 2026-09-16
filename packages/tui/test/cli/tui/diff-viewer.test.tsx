@@ -2,6 +2,7 @@
 import { expect, test } from "bun:test"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { DiffRenderable, type Renderable, ScrollBoxRenderable } from "@opentui/core"
+import { MockTreeSitterClient } from "@opentui/core/testing"
 import { testRender, useRenderer } from "@opentui/solid"
 import { createSignal } from "solid-js"
 import type { TuiPluginApi, TuiPluginMeta, TuiRouteCurrent, TuiRouteDefinition } from "@arcana/plugin/tui"
@@ -38,6 +39,19 @@ test("closing the diff viewer returns to the route it opened from", async () => 
   }
 })
 
+async function pumpUntilFrame(app: Awaited<ReturnType<typeof testRender>>, needle: string) {
+  // Diff leaves defer their first paint until highlighting resolves, and the
+  // mock client resolves on a macrotask. Frame-predicate pumps can starve
+  // timers, so yield to the event loop between frames.
+  for (let attempt = 0; attempt < 40; attempt++) {
+    if (app.captureCharFrame().includes(needle)) return
+    await Bun.sleep(10)
+    await app.renderOnce()
+    await app.flush()
+  }
+  throw new Error(`frame never contained ${JSON.stringify(needle)}`)
+}
+
 test("brackets navigate diff hunks", async () => {
   const viewer = await renderDiffViewer(
     [
@@ -68,7 +82,7 @@ test("brackets navigate diff hunks", async () => {
     12,
   )
   try {
-    await viewer.app.waitForFrame((frame) => frame.includes("const first"))
+    await pumpUntilFrame(viewer.app, "const first")
     await viewer.app.waitFor(() => Boolean(findScrollBox(viewer.app.renderer.root)))
     await viewer.app.flush()
     const scroll = findScrollBox(viewer.app.renderer.root)!
@@ -186,6 +200,10 @@ async function renderDiffViewer(
   height = 20,
   loadDiff?: (input: unknown, call: number) => unknown[] | Promise<unknown[]>,
 ) {
+  // Diff leaves defer their first paint until the first styled frame lands
+  // (no plain-text flash). Keep highlighting deterministic in tests.
+  const bag = ((globalThis as any)[Symbol.for("@opentui/core/singleton")] ??= {})
+  bag["tree-sitter-client"] = new MockTreeSitterClient({ autoResolveTimeout: 0 })
   const commands = new Map<
     string,
     NonNullable<Parameters<TuiPluginApi["keymap"]["registerLayer"]>[0]["commands"]>[number]
@@ -266,6 +284,9 @@ async function renderDiffViewer(
   }
 
   const app = await testRender(() => <Harness />, { width: 80, height })
+  // Let the mock highlight timer fire before frame-predicate pumps (diff
+  // leaves defer their first paint until the styled frame lands).
+  await Bun.sleep(30)
   await waitForCommand(app, commands, "diff.close")
   return {
     app,

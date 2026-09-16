@@ -469,6 +469,27 @@ const CODE_ERROR_DEADLINE_V2 = `      if (this.isDestroyed)
       }`
 
 /**
+ * DiffRenderable creates its inner CodeRenderable with the upstream default
+ * `drawUnstyledText: true`, so an edit-tool diff still painted a plain frame
+ * before Tree-sitter colors landed. Force the Arcana policy on every diff
+ * leaf: never paint unstyled text, defer until the first styled frame (the
+ * CodeRenderable deadline still paints plain if highlighting never resolves).
+ */
+const DIFF_FRAME_MARKER = "// [arcana] diff leaves never paint unstyled text (patch-opentui.ts)"
+const DIFF_CREATE_SIGNATURE = "        ...drawUnstyledText !== undefined && { drawUnstyledText },"
+const DIFF_CREATE_PATCH = `        drawUnstyledText: false, ${DIFF_FRAME_MARKER}`
+const DIFF_UPDATE_SIGNATURE = `      if (drawUnstyledText !== undefined) {
+        existingRenderable.drawUnstyledText = drawUnstyledText;
+      }`
+const DIFF_UPDATE_PATCH = `      existingRenderable.drawUnstyledText = false; ${DIFF_FRAME_MARKER}`
+const DIFF_ERROR_SIGNATURE = `        filetype: "diff",
+        syntaxStyle: this._syntaxStyle ?? SyntaxStyle.create(),
+        wrapMode: this._wrapMode,
+        conceal: this._conceal,`
+const DIFF_ERROR_PATCH = `${DIFF_ERROR_SIGNATURE}
+        drawUnstyledText: false, ${DIFF_FRAME_MARKER}`
+
+/**
  * Third pass: keep the fallback monotonic. Once the deadline has painted plain
  * text (broken/slow parser), later content updates must keep the leaf visible
  * instead of re-deferring into a blank block. The flag is cleared by the first
@@ -943,6 +964,44 @@ for (const bundle of collectEntryBundles()) {
   streamingPatched++
 }
 
+let diffTargets = 0
+let diffReady = 0
+let diffPatched = 0
+
+for (const bundle of collectEntryBundles()) {
+  const version = versionOf(bundle)
+  if (version !== TARGET_VERSION) {
+    skipped++
+    continue
+  }
+  const source = readFileSync(bundle, "utf-8")
+  if (!source.includes("class DiffRenderable")) continue
+  diffTargets++
+  if (source.includes(DIFF_FRAME_MARKER)) {
+    console.log(`[patch-opentui] diff unstyled frames already patched ${bundle}`)
+    diffReady++
+    skipped++
+    continue
+  }
+  if (
+    !source.includes(DIFF_CREATE_SIGNATURE) ||
+    !source.includes(DIFF_UPDATE_SIGNATURE) ||
+    !source.includes(DIFF_ERROR_SIGNATURE)
+  ) {
+    console.error(`[patch-opentui] diff unstyled frame signatures incomplete in ${bundle}`)
+    process.exitCode = 1
+    continue
+  }
+  const next = source
+    .replace(DIFF_CREATE_SIGNATURE, DIFF_CREATE_PATCH)
+    .replace(DIFF_UPDATE_SIGNATURE, DIFF_UPDATE_PATCH)
+    .replace(DIFF_ERROR_SIGNATURE, DIFF_ERROR_PATCH)
+  writeFileSync(bundle, next, "utf-8")
+  console.log(`[patch-opentui] patched diff unstyled frames ${bundle}`)
+  diffReady++
+  diffPatched++
+}
+
 if (targets === 0) {
   console.log(`[patch-opentui] no @opentui/core ${TARGET_VERSION} chunks found to patch`)
 } else if (ready === 0) {
@@ -979,6 +1038,12 @@ if (streamingTargets === 0) {
   console.error(`[patch-opentui] patched ${streamingReady}/${streamingTargets} markdown streaming flip bundle(s)`)
   process.exitCode = 1
 }
+if (diffTargets === 0) {
+  console.log(`[patch-opentui] no @opentui/core ${TARGET_VERSION} entry bundles found for diff unstyled frames`)
+} else if (diffReady !== diffTargets) {
+  console.error(`[patch-opentui] patched ${diffReady}/${diffTargets} diff unstyled frame bundle(s)`)
+  process.exitCode = 1
+}
 console.log(
-  `[patch-opentui] loader_patched=${patched} markdown_patched=${markdownPatched} code_patched=${codePatched} parse_patched=${parsePatched} tsclient_patched=${tsClientPatched} streaming_patched=${streamingPatched} skipped=${skipped}`,
+  `[patch-opentui] loader_patched=${patched} markdown_patched=${markdownPatched} code_patched=${codePatched} parse_patched=${parsePatched} tsclient_patched=${tsClientPatched} streaming_patched=${streamingPatched} diff_patched=${diffPatched} skipped=${skipped}`,
 )
