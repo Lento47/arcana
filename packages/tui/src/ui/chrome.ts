@@ -71,17 +71,28 @@ export const DashBorder = {
 /** Heavy vertical rule used for message role rails. */
 export const RAIL = "┃"
 
-/** Standard spacing scale (terminal cells). */
+/**
+ * Standard spacing scale (terminal cells).
+ *
+ * `frame()` is the one definition of the user's `density` preference:
+ * `spine-types.framePadding()` delegates here so a density change moves every
+ * consumer instead of only the session frame.
+ */
 export const Space = {
   padX: 2,
   padY: 1,
   gap: 1,
   gapWide: 2,
+  /** Per-side horizontal padding of the session frame for a density. */
+  frame(density?: "compact" | "cozy" | "spacious"): number {
+    if (density === "compact") return 1
+    if (density === "spacious") return 3
+    return 2
+  },
 } as const
 
 /** Layout widths / breakpoints previously hardcoded across components. */
 export const Size = {
-  sidebarWidth: 42,
   wideBreakpoint: 120,
   promptMaxWidth: 75,
   dialogMedium: 60,

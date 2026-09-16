@@ -7,7 +7,8 @@ import {
 } from "@opentui/core"
 import { extend, useRenderer } from "@opentui/solid"
 import { onCleanup, onMount } from "solid-js"
-import { tint, useTheme } from "../context/theme"
+import { useTheme } from "../context/theme"
+import { logoInk } from "../theme/emphasis"
 import { useKV } from "../context/kv"
 import { GoUpsellArtPainter } from "./bg-pulse-render"
 
@@ -126,7 +127,7 @@ export function BgPulse() {
       height="100%"
       backgroundPanel={theme.backgroundPanel}
       primary={theme.primary}
-      logoBase={tint(theme.background, theme.text, 0.62)}
+      logoBase={logoInk(theme)}
       live={animationsEnabled()}
       animated={animationsEnabled()}
     />

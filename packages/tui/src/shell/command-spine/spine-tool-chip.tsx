@@ -1,33 +1,11 @@
 import { Show, createMemo, createSignal, useContext, type JSX } from "solid-js"
 import type { MouseEvent } from "@opentui/core"
 import { ThemeContext } from "../../context/theme"
-import type { Theme } from "../../theme"
+import { fallbackTheme } from "../../theme"
 import type { SpineKind, SpineLayout, SpineReceipt } from "./spine-types"
 import { spineTone } from "./spine-types"
 import { displayWidth, truncate } from "../../util/locale"
 import { toolCategoryLabel, toolChipModel, type ToolChipLifecycle } from "./spine-chrome"
-
-// InlineToolRow has historically been usable in isolated render tests and by
-// plugin surfaces that do not mount ThemeProvider. Keep that contract while
-// using the real palette whenever the provider is present.
-const FALLBACK_CHIP_THEME = {
-  backgroundElement: "#252a33",
-  text: "#e6eaf0",
-  textMuted: "#727b8b",
-  accent: "#83a8d8",
-  spineFail: "#d97777",
-  warning: "#d6ad62",
-  spineOk: "#8ab07a",
-  spineRun: "#c58ad8",
-  spineThink: "#b39ddb",
-  spineContext: "#8d96a6",
-  spineGutterElapsed: "#727b8b",
-  spinePatch: "#d6ad62",
-  spineSubagent: "#8fb4e8",
-  spineAsk: "#d28bd2",
-  spineInspect: "#83a8d8",
-  info: "#83a8d8",
-} as unknown as Theme
 
 /**
  * Shared semantic tool chip.  The status/category cell is fixed and never
@@ -53,7 +31,11 @@ export function SpineToolChip(props: {
   onDisclosureMouseUp?: (event: MouseEvent) => void
 }) {
   const themeContext = useContext(ThemeContext)
-  const theme = themeContext?.theme ?? FALLBACK_CHIP_THEME
+  // InlineToolRow stays usable in isolated render tests and on plugin surfaces
+  // that mount before ThemeProvider. The fallback is the real `arcana` theme
+  // resolved through the normal path, so it cannot drift from the live palette
+  // the way a hand-maintained partial one did.
+  const theme = themeContext?.theme ?? fallbackTheme()
   // Chip rows are clickable when a handler is supplied; show the same hover
   // affordance as the entry header and session rail.
   const [hovered, setHovered] = createSignal(false)

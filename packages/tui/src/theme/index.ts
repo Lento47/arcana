@@ -1,5 +1,7 @@
 import { SyntaxStyle, RGBA, type TerminalColors } from "@opentui/core"
-import { ensureMinContrast } from "./contrast"
+import { contrastingInk, ensureMinContrast } from "./contrast"
+import { bgLuminance, isLightBg, tint } from "./emphasis"
+export { tint } from "./emphasis"
 import arcana from "./assets/arcana.json" with { type: "json" }
 import arctic from "./assets/arctic.json" with { type: "json" }
 import bloodmoon from "./assets/bloodmoon.json" with { type: "json" }
@@ -122,9 +124,7 @@ export function selectedForeground(
   // For transparent backgrounds, calculate contrast based on the actual bg (or fallback to primary)
   if (theme.background.a === 0) {
     const targetColor = bg ?? theme.primary
-    const { r, g, b } = targetColor
-    const luminance = 0.299 * r + 0.587 * g + 0.114 * b
-    return luminance > 0.5 ? RGBA.fromInts(0, 0, 0) : RGBA.fromInts(255, 255, 255)
+    return contrastingInk(targetColor)
   }
 
   // Fall back to background color
@@ -429,6 +429,29 @@ export function resolveTheme(theme: ThemeJson, mode: "dark" | "light") {
   } as Theme
 }
 
+/**
+ * Fully-resolved `arcana` theme for surfaces that render outside a
+ * ThemeProvider — isolated render tests, plugin routes mounted ahead of the
+ * provider, and the fatal error screen.
+ *
+ * Derived from the shipped theme JSON through the same `resolveTheme` path as a
+ * live theme, so the fallback can never drift from the real palette. Two
+ * hand-maintained partial palettes used to live in `spine-tool-chip.tsx` and
+ * `error-component.tsx`, and had already drifted from it.
+ *
+ * Cached per mode: `resolveTheme` resolves refs and runs the contrast floor,
+ * and this sits on cold-start paths.
+ */
+const fallbackThemes = new Map<"dark" | "light", Theme>()
+
+export function fallbackTheme(mode: "dark" | "light" = "dark"): Theme {
+  const cached = fallbackThemes.get(mode)
+  if (cached) return cached
+  const resolved = resolveTheme(DEFAULT_THEMES.arcana!, mode)
+  fallbackThemes.set(mode, resolved)
+  return resolved
+}
+
 function ansiToRgba(code: number): RGBA {
   // Standard ANSI colors (0-15)
   if (code < 16) {
@@ -472,13 +495,6 @@ function ansiToRgba(code: number): RGBA {
 
   // Fallback for invalid codes
   return RGBA.fromInts(0, 0, 0)
-}
-
-export function tint(base: RGBA, overlay: RGBA, alpha: number): RGBA {
-  const r = base.r + (overlay.r - base.r) * alpha
-  const g = base.g + (overlay.g - base.g) * alpha
-  const b = base.b + (overlay.b - base.b) * alpha
-  return RGBA.fromInts(Math.round(r * 255), Math.round(g * 255), Math.round(b * 255))
 }
 
 function applyReadabilityFloor(theme: Partial<Record<ThemeColor, RGBA>>) {
@@ -572,8 +588,7 @@ function applyReadabilityFloor(theme: Partial<Record<ThemeColor, RGBA>>) {
 export function terminalMode(colors: TerminalColors): "dark" | "light" | undefined {
   const bg = colors.defaultBackground
   if (!bg) return
-  const { r, g, b } = RGBA.fromHex(bg)
-  return 0.299 * r + 0.587 * g + 0.114 * b > 0.5 ? "light" : "dark"
+  return isLightBg(RGBA.fromHex(bg)) ? "light" : "dark"
 }
 
 export function generateSystem(colors: TerminalColors, mode: "dark" | "light"): ThemeJson {
@@ -591,6 +606,13 @@ export function generateSystem(colors: TerminalColors, mode: "dark" | "light"): 
   // Generate gray scale based on terminal background
   const grays = generateGrayScale(bg, isDark)
   const textMuted = generateMutedTextColor(bg, isDark)
+
+  // Desaturate an ANSI slot toward the terminal's own muted gray. The spine's
+  // fail/ok/diff colors used to be fixed hex, so every `system` theme rendered
+  // the same red and green no matter what palette the terminal reported.
+  // `applyReadabilityFloor` still lifts the result to its contrast minimum,
+  // so softening can never push these below legibility.
+  const soften = (color: RGBA, amount = 0.45) => tint(color, textMuted, amount)
 
   // ANSI color references
   const ansiColors = {
@@ -690,12 +712,12 @@ export function generateSystem(colors: TerminalColors, mode: "dark" | "light"): 
       spinePlan: ansiColors.magenta,
       spinePatch: ansiColors.magenta,
       spineRun: ansiColors.magenta,
-      spineFail: RGBA.fromHex("#C47A7A"),
+      spineFail: soften(ansiColors.red),
       spineFix: ansiColors.yellow,
-      spineOk: RGBA.fromHex("#8AB07A"),
+      spineOk: soften(ansiColors.green),
       spinePrompt: ansiColors.magenta,
-      spineDiffAdd: RGBA.fromHex("#7AA07A"),
-      spineDiffRemove: RGBA.fromHex("#B87A7A"),
+      spineDiffAdd: soften(ansiColors.green, 0.3),
+      spineDiffRemove: soften(ansiColors.red, 0.3),
       spineDiffMuted: textMuted,
       spineGutterElapsed: textMuted,
       spineGutterTimestamp: textMuted,
@@ -722,7 +744,7 @@ function generateGrayScale(bg: RGBA, isDark: boolean): Record<number, RGBA> {
   const bgG = bg.g * 255
   const bgB = bg.b * 255
 
-  const luminance = 0.299 * bgR + 0.587 * bgG + 0.114 * bgB
+  const luminance = bgLuminance(bg) * 255
 
   for (let i = 1; i <= 12; i++) {
     const factor = i / 12.0
@@ -769,12 +791,8 @@ function generateGrayScale(bg: RGBA, isDark: boolean): Record<number, RGBA> {
 }
 
 function generateMutedTextColor(bg: RGBA, isDark: boolean): RGBA {
-  // RGBA stores floats in range 0-1, convert to 0-255
-  const bgR = bg.r * 255
-  const bgG = bg.g * 255
-  const bgB = bg.b * 255
-
-  const bgLum = 0.299 * bgR + 0.587 * bgG + 0.114 * bgB
+  // RGBA stores floats in range 0-1; the thresholds below are 8-bit.
+  const bgLum = bgLuminance(bg) * 255
 
   let grayValue: number
 

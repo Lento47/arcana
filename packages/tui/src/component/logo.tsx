@@ -11,6 +11,7 @@ import {
 import { useRenderer } from "@opentui/solid"
 import { For, batch, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { useTheme, tint } from "../context/theme"
+import { inkPeak, logoInk } from "../theme/emphasis"
 import { useKV } from "../context/kv"
 import { go, logo } from "../logo"
 
@@ -181,8 +182,7 @@ function ramp(t: number, start: number, end: number) {
 }
 
 function peakFor(ink: RGBA): RGBA {
-  const lum = 0.299 * ink.r + 0.587 * ink.g + 0.114 * ink.b
-  return lum > 0.5 ? RGBA.fromInts(0, 0, 0) : RGBA.fromInts(255, 255, 255)
+  return inkPeak(ink)
 }
 
 function glow(base: RGBA, theme: ReturnType<typeof useTheme>["theme"], n: number, peak: RGBA) {
@@ -976,6 +976,5 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean } = 
 
 export function GoLogo() {
   const { theme } = useTheme()
-  const base = tint(theme.background, theme.text, 0.62)
-  return <Logo shape={go} ink={base} idle />
+  return <Logo shape={go} ink={logoInk(theme)} idle />
 }

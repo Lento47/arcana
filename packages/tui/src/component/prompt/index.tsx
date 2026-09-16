@@ -17,6 +17,7 @@ import { PROMPT_FRAME, Glyph, AgentSigil, Lexicon } from "../../branding"
 import { Flag } from "@arcana/core/flag/flag"
 import { toolsOverrideKey, toolsPayload } from "../../util/tools-override"
 import { tint, useTheme } from "../../context/theme"
+import { fade } from "../../theme/emphasis"
 import { RoundBorder } from "../../ui/chrome"
 import { useTuiPaths, useTuiTerminalEnvironment } from "../../context/runtime"
 import { useClipboard } from "../../context/clipboard"
@@ -34,7 +35,7 @@ import { useExit } from "../../context/exit"
 import { promptOffsetWidth } from "../../prompt/display"
 import { createStore, produce, unwrap } from "solid-js/store"
 import { usePromptHistory, type PromptInfo } from "../../prompt/history"
-import { runGoalCommand, runLoopCommand } from "./slash-goal"
+import { GOAL_KICKOFF_INSTRUCTION, runGoalCommand, runLoopCommand } from "./slash-goal"
 import { computePromptTraits } from "../../prompt/traits"
 import { expandPastedTextPlaceholders, expandTrackedPastedText } from "../../prompt/part"
 import { usePromptStash } from "../../prompt/stash"
@@ -131,10 +132,6 @@ const DRAFT_RETENTION_MIN_CHARS = 20
 function randomIndex(count: number) {
   if (count <= 0) return 0
   return Math.floor(Math.random() * count)
-}
-
-function fadeColor(color: RGBA, alpha: number) {
-  return RGBA.fromValues(color.r, color.g, color.b, color.a * alpha)
 }
 
 function hasEditorRangeSelection(selection: EditorSelection["ranges"][number]) {
@@ -1452,6 +1449,43 @@ export function Prompt(props: PromptProps) {
     }
     const targetSessionID = sessionID
 
+    /**
+     * /goal and /loop start the self-driven turn: recording the goal and
+     * stopping left the operator waiting for work they already asked for.
+     * The marker metadata lets the engine drive a plan-only first response.
+     */
+    const submitGoalKickoff = (task: string) => {
+      const toolsOverride = toolsPayload(kv.get(toolsOverrideKey(targetSessionID)) as Record<string, boolean> | undefined)
+      const payload: QueuedPromptPayload = {
+        sessionID: targetSessionID,
+        messageID,
+        agent: agent.name,
+        model: {
+          providerID: selectedModel.providerID,
+          modelID: selectedModel.modelID,
+        },
+        variant,
+        ...(toolsOverride ? { tools: toolsOverride } : {}),
+        parts: [
+          {
+            type: "text",
+            text: GOAL_KICKOFF_INSTRUCTION,
+            synthetic: true,
+          },
+          {
+            type: "text",
+            text: task,
+            metadata: {
+              arcana: {
+                goal_kickoff: true,
+              },
+            },
+          },
+        ],
+      }
+      void promptQueue.submit(payload, task)
+    }
+
     if (store.mode === "shell") {
       move.startSubmit()
       void sdk.client.session.shell({
@@ -1484,7 +1518,9 @@ export function Prompt(props: PromptProps) {
           dialog,
           `Approve /${arcanaPromptCommand.command}`,
           `${risk.level.toUpperCase()} risk Arcana task. ${risk.reasons.join(" ")}`,
-          "keep editing",
+          "Keep Editing",
+          false,
+          "Approve",
         )
         if (!approved) return false
       }
@@ -1544,16 +1580,28 @@ export function Prompt(props: PromptProps) {
         ],
       }
       void promptQueue.submit(payload, task)
-    // ── /goal — standalone goal setter (does NOT require /loop) ──
+    // ── /goal — standalone goal setter; records the goal AND starts driving ──
     } else if (inputText.startsWith("/goal ")) {
       move.startSubmit()
-      const handled = runGoalCommand({ inputText, targetSessionID, agentName: agent.name, toast })
+      const handled = runGoalCommand({
+        inputText,
+        targetSessionID,
+        agentName: agent.name,
+        toast,
+        onKickoff: submitGoalKickoff,
+      })
       if (handled) return true
 
     // ── /loop — autonomous loop hub (independent of /goal, matches CLI behavior) ──
     } else if (inputText.startsWith("/loop")) {
       move.startSubmit()
-      const handled = runLoopCommand({ inputText, targetSessionID, agentName: agent.name, toast })
+      const handled = runLoopCommand({
+        inputText,
+        targetSessionID,
+        agentName: agent.name,
+        toast,
+        onKickoff: submitGoalKickoff,
+      })
       if (handled) return true
     } else if (
       inputText.startsWith("/") &&
@@ -2149,7 +2197,7 @@ export function Prompt(props: PromptProps) {
                       position="absolute"
                       top={intentGhostRow()}
                       left={intentGhostCol()}
-                      fg={fadeColor(theme.textMuted, 0.55)}
+                      fg={fade(theme.textMuted, 0.55)}
                     >
                       {Locale.truncate(ghost(), Math.max(8, dimensions().width - intentGhostCol() - 2))}
                     </text>
@@ -2164,29 +2212,29 @@ export function Prompt(props: PromptProps) {
                   {(agent) => (
                     <>
                       <Show when={!isCommandSpine()}>
-                        <text fg={fadeColor(theme.accent, agentMetaAlpha())}>
+                        <text fg={fade(theme.accent, agentMetaAlpha())}>
                           {`${Glyph.sigil} ${store.mode === "shell" ? "shell" : agent().name.toLowerCase()}`}
                         </text>
                       </Show>
                       {/* Command-spine shell: single mode caption (Grok "Run shell command"). */}
                       <Show when={isCommandSpine() && store.mode === "shell"}>
-                        <text fg={fadeColor(theme.primary, agentMetaAlpha())}>shell</text>
+                        <text fg={fade(theme.primary, agentMetaAlpha())}>shell</text>
                       </Show>
                       {/* Command-spine normal: model first; agent only when non-default. */}
                       <Show when={store.mode === "normal"}>
                         <box flexDirection="row" gap={1}>
                           <Show when={isCommandSpine() && isNonDefaultAgent()}>
-                            <text fg={fadeColor(theme.spinePrompt, agentMetaAlpha())}>
+                            <text fg={fade(theme.spinePrompt, agentMetaAlpha())}>
                               {agent().name.toLowerCase()}
                             </text>
-                            <text fg={fadeColor(theme.spineRailActive, modelMetaAlpha())}>·</text>
+                            <text fg={fade(theme.spineRailActive, modelMetaAlpha())}>·</text>
                           </Show>
                           <Show when={!isCommandSpine()}>
-                            <text fg={fadeColor(theme.accent, modelMetaAlpha())}>◆</text>
+                            <text fg={fade(theme.accent, modelMetaAlpha())}>◆</text>
                           </Show>
                           <text
                             flexShrink={0}
-                            fg={fadeColor(
+                            fg={fade(
                               leader()
                                 ? theme.textMuted
                                 : isCommandSpine()
@@ -2198,13 +2246,13 @@ export function Prompt(props: PromptProps) {
                             {displayModelId()}
                           </text>
                           <Show when={currentProviderLabel()}>
-                            <text fg={fadeColor(theme.textMuted, modelMetaAlpha())}>·</text>
-                            <text fg={fadeColor(theme.textMuted, modelMetaAlpha())}>{currentProviderLabel()}</text>
+                            <text fg={fade(theme.textMuted, modelMetaAlpha())}>·</text>
+                            <text fg={fade(theme.textMuted, modelMetaAlpha())}>{currentProviderLabel()}</text>
                           </Show>
                           <Show when={showVariant()}>
-                            <text fg={fadeColor(theme.textMuted, variantMetaAlpha())}>·</text>
+                            <text fg={fade(theme.textMuted, variantMetaAlpha())}>·</text>
                             <text>
-                              <span style={{ fg: fadeColor(theme.warning, variantMetaAlpha()), bold: true }}>
+                              <span style={{ fg: fade(theme.warning, variantMetaAlpha()), bold: true }}>
                                 {local.model.variant.current()}
                               </span>
                             </text>

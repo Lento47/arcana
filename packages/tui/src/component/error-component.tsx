@@ -7,26 +7,23 @@ import { InstallationVersion } from "@arcana/core/installation/version"
 import { useExit } from "../context/exit"
 import { APP_NAME, BUG_URL } from "../branding"
 import { selectedForeground, ThemeContext, type Theme } from "../context/theme"
+import { fallbackTheme } from "../theme"
 import { arcanaDitherPattern } from "../ui/arcana"
 
+/**
+ * Colors for the fatal screen. Prefers the mounted theme; outside a provider
+ * (the crash that took the provider down with it, or a render test) it uses
+ * the real `arcana` palette rather than a bespoke emergency set — a crash
+ * screen is the worst place to discover the fallback colors drifted.
+ */
 function emergencyPalette(theme: Theme | undefined, mode?: "dark" | "light") {
-  if (theme) {
-    return {
-      bg: theme.background,
-      text: theme.text,
-      muted: theme.textMuted,
-      primary: theme.primary,
-      primaryText: selectedForeground(theme, theme.primary),
-    }
-  }
-
-  const isLight = mode === "light"
+  const source = theme ?? fallbackTheme(mode ?? "dark")
   return {
-    bg: RGBA.fromHex(isLight ? "#ffffff" : "#0a0a0a"),
-    text: RGBA.fromHex(isLight ? "#1a1a1a" : "#eeeeee"),
-    muted: RGBA.fromHex(isLight ? "#8a8a8a" : "#808080"),
-    primary: RGBA.fromHex(isLight ? "#3b7dd8" : "#fab283"),
-    primaryText: RGBA.fromHex(isLight ? "#ffffff" : "#0a0a0a"),
+    bg: source.background,
+    text: source.text,
+    muted: source.textMuted,
+    primary: source.primary,
+    primaryText: selectedForeground(source, source.primary),
   }
 }
 

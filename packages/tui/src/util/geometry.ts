@@ -7,6 +7,8 @@
  * feed fractional padding to a whole-cell grid.
  */
 
+import { Size } from "../ui/chrome"
+
 /**
  * Diff patch pane width: terminal minus file-tree + border chrome.
  * B5: the unclamped `termWidth - (tree ? 33 : 0) - 4` went negative at
@@ -28,13 +30,13 @@ export function diffViewerFileTreeVisible(termWidth: number, enabled: boolean, f
 }
 
 /**
- * Home prompt "auto" max width: 70% of the terminal, floor 75 — but never
- * wider than the terminal itself. B6: the bare 75-floor exceeded the screen
- * on any width < 75 (e.g. 75 at a 60-col terminal).
+ * Home prompt "auto" max width: 70% of the terminal, floor `Size.promptMaxWidth`
+ * — but never wider than the terminal itself. B6: the bare floor exceeded the
+ * screen on any width below it (e.g. 75 at a 60-col terminal).
  */
 export function homePromptMaxWidth(termWidth: number): number {
   const term = Math.max(1, Math.floor(termWidth))
-  return Math.min(term, Math.max(75, Math.floor(term * 0.7)))
+  return Math.min(term, Math.max(Size.promptMaxWidth, Math.floor(term * 0.7)))
 }
 
 /**
@@ -54,6 +56,13 @@ export function dialogMaxWidth(termWidth: number): number {
   return Math.max(1, termWidth - 2)
 }
 
+/** Width caps per dialog size — the tokens, not a second copy of the numbers. */
+const DIALOG_WIDTH_CAP = {
+  medium: Size.dialogMedium,
+  large: Size.dialogLarge,
+  xlarge: Size.dialogXLarge,
+} as const
+
 /**
  * Responsive dialog card width. A fixed xlarge card looked like a full-screen
  * pane on ordinary terminals; keep the established size caps while reserving
@@ -65,7 +74,7 @@ export function dialogWidth(
   size: "medium" | "large" | "xlarge",
 ): number {
   const term = Number.isFinite(termWidth) ? Math.max(1, Math.floor(termWidth)) : 1
-  const cap = size === "xlarge" ? 116 : size === "large" ? 88 : 60
+  const cap = DIALOG_WIDTH_CAP[size]
   const minimum = size === "xlarge" ? 64 : size === "large" ? 48 : 40
   const ratio = size === "xlarge" ? 0.86 : size === "large" ? 0.78 : 0.72
   const responsive = Math.max(minimum, Math.floor(term * ratio))
@@ -135,4 +144,25 @@ export function hasContentBelow(
 ): boolean {
   if (viewportHeight <= 0) return false
   return scrollHeight - scrollTop - viewportHeight > 0
+}
+
+/**
+ * Stream-follow policy: pin the viewport to the newest content only while the
+ * operator is already at the bottom (within `slack` rows, so a couple of rows
+ * of drift does not stop following). Never true for a degenerate viewport.
+ *
+ * Same comparison as `use-spine-scroll`'s reconcile (`distance <= 2`), lifted
+ * here so the session route and the spine cannot drift apart. Note the third
+ * argument is the **scroll offset** (`scrollTop`), never the renderable's `y`:
+ * `y` is the box's layout position, which makes the distance constant and the
+ * guard unreachable — the bug this extraction fixes.
+ */
+export function shouldFollowStream(
+  scrollHeight: number,
+  scrollTop: number,
+  viewportHeight: number,
+  slack = 3,
+): boolean {
+  if (viewportHeight <= 0) return false
+  return scrollHeight - scrollTop - viewportHeight <= slack
 }

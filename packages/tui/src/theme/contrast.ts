@@ -17,7 +17,7 @@ function linearChannel(value: number) {
 }
 
 /** Relative luminance in [0, 1] — the WCAG 2.x luminance of a color. */
-function relativeLuminance(color: RGBA) {
+export function relativeLuminance(color: RGBA) {
   return 0.2126 * linearChannel(color.r) + 0.7152 * linearChannel(color.g) + 0.0722 * linearChannel(color.b)
 }
 
@@ -26,6 +26,24 @@ function contrastRatio(foreground: RGBA, background: RGBA) {
   const lighter = Math.max(relativeLuminance(foreground), relativeLuminance(background))
   const darker = Math.min(relativeLuminance(foreground), relativeLuminance(background))
   return (lighter + 0.05) / (darker + 0.05)
+}
+
+/**
+ * Pick the ink (black or white) that maximizes contrast against `background`.
+ *
+ * Not the same question as "is this surface light?" (`emphasis.isLightBg`),
+ * and the two have genuinely different answers. White's contrast against a
+ * background of luminance L is `1.05 / (L + 0.05)` and black's is
+ * `(L + 0.05) / 0.05`; those cross where `(L + 0.05)² = 0.0525`, i.e. at
+ * **L ≈ 0.179** — far below the 0.5 polarity midpoint. For a surface in
+ * between (L 0.179–0.5) the BT.601 test picks white and lands on the *worse*
+ * of the two inks. This uses the WCAG curve so the chosen ink is the
+ * higher-contrast one by construction.
+ */
+export function contrastingInk(background: RGBA): RGBA {
+  const dark = RGBA.fromInts(0, 0, 0)
+  const light = RGBA.fromInts(255, 255, 255)
+  return contrastRatio(dark, background) >= contrastRatio(light, background) ? dark : light
 }
 
 /** Linear RGB (0–1) → HSL. Hue in degrees [0, 360); s/l in [0, 1]. */
