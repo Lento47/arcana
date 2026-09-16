@@ -6,7 +6,7 @@ import { useTuiPaths } from "../../context/runtime"
 import { useHomeSessionDestination } from "../../routes/home/session-destination"
 import { Glyph } from "../../branding"
 import { Locale } from "../../util/locale"
-import { footerDirectoryWidth } from "../../util/geometry"
+import { footerDirectoryWidth, rendererWidth } from "../../util/geometry"
 import { CliRenderEvents } from "@opentui/core"
 
 const id = "internal:home-footer"
@@ -20,17 +20,6 @@ const PADDING = 2
  * and the glyph that is measured, so the budget cannot drift from the render.
  */
 const MCP_MARK = "⊙"
-
-/**
- * The width the footer lays out for, or `undefined` when there is none to
- * measure. A plugin is handed the renderer, and arithmetic on a missing
- * measurement silently becomes `NaN` — which `Locale.truncateLeft` answers with
- * an empty string, i.e. a directory that vanishes rather than one that elides.
- */
-function footerWidth(renderer: { width?: number } | undefined): number | undefined {
-  const width = renderer?.width
-  return typeof width === "number" && Number.isFinite(width) && width > 0 ? width : undefined
-}
 
 function Directory(props: { api: TuiPluginApi; budget: number | undefined }) {
   const theme = () => props.api.theme.current
@@ -120,12 +109,16 @@ function View(props: { api: TuiPluginApi }) {
    * hook: a plugin is given the renderer, and `useTerminalDimensions()` is
    * undefined outside a live terminal, which would leave the budget unmeasured.
    * The subscription keeps it honest across a resize.
+   *
+   * An unmeasured width is not an empty directory: arithmetic on it becomes
+   * `NaN`, which `Locale.truncateLeft` answers with an empty string, so the
+   * guard has to happen here, before the budget exists.
    */
-  const [termWidth, setTermWidth] = createSignal(footerWidth(props.api.renderer))
+  const [termWidth, setTermWidth] = createSignal(rendererWidth(props.api.renderer))
   createEffect(() => {
     const renderer = props.api.renderer
     if (!renderer) return
-    const update = () => setTermWidth(footerWidth(renderer))
+    const update = () => setTermWidth(rendererWidth(renderer))
     update()
     renderer.on(CliRenderEvents.RESIZE, update)
     onCleanup(() => renderer.off(CliRenderEvents.RESIZE, update))

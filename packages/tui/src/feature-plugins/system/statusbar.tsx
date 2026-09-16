@@ -2,6 +2,7 @@ import type { AssistantMessage } from "@arcana/sdk/v2"
 import type { TuiPlugin, TuiPluginApi } from "@arcana/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { Locale } from "../../util/locale"
+import { rendererWidth } from "../../util/geometry"
 import {
   compactNowPercent,
   compactSoonPercent,
@@ -56,10 +57,7 @@ const PARTIAL_CELLS = ["·", "–"] as const
  * reached `Locale.truncate`, which answers `NaN` with an empty string — the
  * name vanished from the bar entirely rather than merely going unmeasured.
  */
-export function statusbarWidth(renderer: { width?: number } | undefined): number | undefined {
-  const width = renderer?.width
-  return typeof width === "number" && Number.isFinite(width) && width > 0 ? width : undefined
-}
+export const statusbarWidth = rendererWidth
 
 /** Narrow enough that the decorative meter and the cost give way. */
 export function isCompactWidth(width: number | undefined): boolean {
