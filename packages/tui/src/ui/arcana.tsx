@@ -51,7 +51,11 @@ export function ArcanaSection(props: { title: string; detail?: string | number; 
   return (
     <box gap={0}>
       <text fg={theme.text}>
-        <text fg={theme.textMuted}>{arcanaDitherPattern(props.title, 8)} </text>
+        {/* A nested `<text>` throws in @opentui/core 0.5.9 — a text renderable
+            only accepts strings, TextNodeRenderable instances, or StyledText —
+            so the muted dither run is a `<span>`, the same inline-run idiom
+            mcp.tsx and context.tsx use. */}
+        <span style={{ fg: theme.textMuted }}>{arcanaDitherPattern(props.title, 8)} </span>
         <b>{props.title}</b>
         {props.detail === undefined ? "" : ` ${props.detail}`}
       </text>
