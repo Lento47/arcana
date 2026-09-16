@@ -437,7 +437,7 @@ function CodeMethod(props: CodeMethodProps) {
   return (
     <DialogPrompt
       title={props.title}
-      placeholder="Authorization code…"
+      placeholder={COPY.dialog.authorizationCode}
       busy={busy()}
       busyText="Verifying code…"
       onConfirm={async (value) => {
@@ -586,7 +586,7 @@ function ApiMethod(props: ApiMethodProps) {
   return (
     <DialogPrompt
       title={props.title}
-      placeholder="API key…"
+      placeholder={COPY.dialog.apiKey}
       description={description as any}
       busy={busy()}
       busyText={phase()}

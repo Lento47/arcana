@@ -3,6 +3,7 @@ import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import type { QuestionAnswer, QuestionRequest } from "@arcana/sdk/v2"
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { useTuiConfig } from "../../config"
+import { COPY } from "../../branding"
 import { useSync } from "../../context/sync"
 import { useSDK } from "../../context/sdk"
 import { selectedForeground, useTheme } from "../../context/theme"
@@ -419,7 +420,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
                           ref={(value) => { textarea = value as unknown as TextareaRenderable }}
                           height={3}
                           initialValue={customValues()[index()] ?? ""}
-                          placeholder="Type a custom answer…"
+                          placeholder={COPY.dialog.customAnswer}
                           focused={true}
                         />
                       }>

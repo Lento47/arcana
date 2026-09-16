@@ -5,6 +5,7 @@ import { fileURLToPath } from "url"
 import { DialogSelect, type DialogSelectOption } from "../../ui/dialog-select"
 import { Show, createEffect, createMemo, createSignal } from "solid-js"
 import { useBindings } from "../../keymap"
+import { COPY } from "../../branding"
 
 const id = "internal:plugin-manager"
 
@@ -47,7 +48,7 @@ function Install(props: { api: TuiPluginApi }) {
   return (
     <props.api.ui.DialogPrompt
       title="Install Plugin"
-      placeholder="npm package name…"
+      placeholder={COPY.dialog.packageName}
       busy={busy()}
       busyText="Installing plugin…"
       description={() => (

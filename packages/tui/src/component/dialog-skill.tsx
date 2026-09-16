@@ -3,7 +3,7 @@ import { createResource, createMemo, createSignal, Show } from "solid-js"
 import { useDialog } from "../ui/dialog"
 import { useSDK } from "../context/sdk"
 import { useTheme } from "../context/theme"
-import { Glyph } from "../branding"
+import { COPY, Glyph } from "../branding"
 import { Spinner } from "./spinner"
 import { errorMessage } from "../util/error"
 
@@ -48,7 +48,7 @@ export function DialogSkill(props: DialogSkillProps) {
   return (
     <DialogSelect
       title={`${Glyph.sigil} Skills`}
-      placeholder="Search skills…"
+      placeholder={COPY.dialog.searchSkills}
       options={options()}
       emptyView={
         <Show

@@ -132,7 +132,7 @@ export function DialogMcp() {
       title={`${Glyph.sigil} MCPs`}
       options={options()}
       actions={actions()}
-      placeholder="Filter servers…"
+      placeholder={COPY.dialog.filterServers}
       emptyView={
         <box paddingLeft={4} paddingRight={4} paddingTop={1}>
           <Show

@@ -317,6 +317,16 @@ export const DIALOG_COPY = {
   dontShowAgain: "Don't Show Again",
   enterText: "Enter text…",
   enterFilename: "Enter filename…",
+  // Field placeholders. A hint inside an empty input is a functional label, not
+  // a brand or idle moment, so like the verbs above these read the same in both
+  // voices. They live here for the same reason: six dialogs each spelling their
+  // own hint is six chances to drift on ellipsis and capitalisation.
+  searchSkills: "Search skills…",
+  filterServers: "Filter servers…",
+  apiKey: "API key…",
+  authorizationCode: "Authorization code…",
+  packageName: "npm package name…",
+  customAnswer: "Type a custom answer…",
   exportTitle: "Export Options",
   filenameLabel: "Filename:",
   working: "Working…",
