@@ -286,7 +286,7 @@ export function DialogSessionList() {
               fallback={
                 <box paddingLeft={4} paddingRight={4} paddingTop={1}>
                   <text fg={theme.textMuted}>
-                    {search() ? "No sessions match this search — try a different query." : COPY.chronicleEmpty}
+                    {search() ? COPY.noSessionsMatch : COPY.chronicleEmpty}
                   </text>
                 </box>
               }

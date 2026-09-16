@@ -1,9 +1,11 @@
-import { MouseButton, type MouseEvent } from "@opentui/core"
+import { MouseButton, type MouseEvent, type RGBA } from "@opentui/core"
 import { createMemo, createSignal } from "solid-js"
-import { useTheme } from "../../context/theme"
+import { tint, useTheme } from "../../context/theme"
+import { COPY, Glyph } from "../../branding"
 import { compactSpineElapsed, formatElapsedMs, type SpineLayout } from "./spine-types"
 import type { ActivityEntry } from "./spine-entry-view"
 import { displayWidth, truncate } from "../../util/locale"
+import { createFlare } from "../../util/motion"
 import { useSpineMotion } from "./spine-motion"
 import { SpineRail } from "./spine-rail"
 import { activityStepGist } from "./spine-activity"
@@ -35,6 +37,12 @@ export function ActivityReel(props: {
   // Header row is clickable (collapse/expand). Hover feedback mirrors the
   // entry header and session rail: interactive states must be visible.
   const [hovered, setHovered] = createSignal(false)
+  // Settle flare: the card lifts for a beat when the live work lands.
+  const settleFlare = createFlare(() => props.view.streaming !== true)
+  const flareInk = (base: RGBA) => {
+    const intensity = settleFlare()
+    return intensity > 0 ? tint(base, theme.text, intensity * 0.5) : base
+  }
 
   // The shared tick only invalidates the live duration. It must never choose
   // a different child or otherwise animate the activity summary.
@@ -45,6 +53,12 @@ export function ActivityReel(props: {
   const gist = createMemo(() =>
     props.view.streaming === true ? "" : truncate(activityStepGist(props.view.children ?? []), 44),
   )
+  // One source for the status word: the row paints it and also measures it to
+  // budget the summary beside it. A second literal for the same state would
+  // let an edit to the painted word silently mis-truncate every reel.
+  const statusLabel = createMemo(() =>
+    props.view.streaming === true ? COPY.activity.live : COPY.activity.settled,
+  )
   const activityWidth = createMemo(() => {
     const width = typeof props.contentWidth === "number" && Number.isFinite(props.contentWidth)
       ? Math.floor(props.contentWidth)
@@ -53,15 +67,14 @@ export function ActivityReel(props: {
   })
   const activityText = createMemo(() => {
     const width = activityWidth()
-    const status = props.view.streaming === true ? "working" : "work"
     // The summary already owns the step count; the chevron is the affordance,
     // not a second count ("hide 2 steps" beside "2 actions" was the noise).
-    const hint = props.expanded ? "▾" : "▸"
+    const hint = props.expanded ? Glyph.chevronOpen : Glyph.chevronClosed
     const tailParts = [
       width >= 52 ? elapsed() : "",
     ].filter(Boolean)
     const tail = tailParts.join(" · ")
-    const prefixWidth = displayWidth(`${status} · `)
+    const prefixWidth = displayWidth(`${statusLabel()} · `)
     const tailWidth = tail ? displayWidth(` · ${tail}`) + displayWidth(` ${hint}`) : displayWidth(` ${hint}`)
     const summaryBudget = Math.max(1, width - prefixWidth - tailWidth)
     const detail =
@@ -90,16 +103,19 @@ export function ActivityReel(props: {
       onMouseOut={() => setHovered(false)}
       backgroundColor={hovered() ? theme.backgroundElement : undefined}
     >
+      {/* The reel's mark is decided once, in the model (spine-activity.ts sets
+          it on build and rebuild); re-deriving it here from `streaming` gave
+          the row two answers to one question. */}
       <SpineRail
         layout={props.layout}
-        glyph={props.view.streaming === true ? "●" : "✓"}
+        glyph={props.view.glyph}
         active={props.focused}
       />
       <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} overflow="hidden">
         <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} overflow="hidden">
           <text wrapMode="none">
-            <span style={{ fg: props.view.streaming === true ? theme.accent : theme.spineOk }}>
-              {props.view.streaming === true ? "working" : "work"}
+            <span style={{ fg: props.view.streaming === true ? theme.accent : flareInk(theme.spineOk) }}>
+              {statusLabel()}
             </span>
             <span style={{ fg: theme.spineDiffMuted }}> · </span>
             <span style={{ fg: theme.text }}>{activityText().summary}</span>

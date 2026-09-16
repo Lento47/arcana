@@ -3,7 +3,7 @@ import { useLocal } from "../context/local"
 import { useTheme } from "../context/theme"
 import { DialogSelect } from "../ui/dialog-select"
 import { useDialog } from "../ui/dialog"
-import { Glyph } from "../branding"
+import { Glyph, COPY } from "../branding"
 
 export function DialogAgent() {
   const local = useLocal()
@@ -15,7 +15,7 @@ export function DialogAgent() {
       return {
         value: item.name,
         title: item.name,
-        description: item.native ? "native" : item.description,
+        description: item.native ? COPY.dialog.nativeTag : item.description,
       }
     }),
   )

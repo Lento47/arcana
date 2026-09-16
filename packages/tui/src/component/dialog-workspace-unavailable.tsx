@@ -4,6 +4,7 @@ import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
 import { useBindings } from "../keymap"
 import { DialogButton, DialogColumn, DialogFooter, DialogTitleRow } from "../ui/dialog-chrome"
+import { COPY } from "../branding"
 
 export function DialogWorkspaceUnavailable(props: { onRestore?: () => boolean | void | Promise<boolean | void> }) {
   const dialog = useDialog()
@@ -14,8 +15,8 @@ export function DialogWorkspaceUnavailable(props: { onRestore?: () => boolean | 
 
   const options = ["cancel", "restore"] as const
   const labels: Record<(typeof options)[number], string> = {
-    cancel: "Cancel",
-    restore: "Restore",
+    cancel: COPY.dialog.cancel,
+    restore: COPY.dialog.restore,
   }
 
   async function confirm() {

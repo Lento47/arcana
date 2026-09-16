@@ -191,7 +191,7 @@ export function SpineDiff(props: {
           )}
         </For>
         <Show when={changed().truncated}>
-          <text fg={theme.spineDiffMuted}>o · open full diff for remaining changes</text>
+          <text fg={theme.spineDiffMuted}>d · open full diff for remaining changes</text>
         </Show>
       </Show>
     </box>

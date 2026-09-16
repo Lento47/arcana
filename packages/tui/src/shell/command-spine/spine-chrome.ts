@@ -6,6 +6,7 @@
 import type { SpineApprovalSnapshot, SpineKind, SpineLayout, SpineReceipt } from "./spine-types"
 import { selectionActions } from "../../util/selection"
 import { displayWidth } from "../../util/locale"
+import { Glyph } from "../../branding"
 
 /** Label column shared by approval / proof key-value rows. */
 export const FACT_LABEL_WIDTH = 12
@@ -308,7 +309,7 @@ export function thinkingRowChrome(input: {
     title,
     cue: streaming ? "live" : "done",
     badge: "",
-    disclosure: (input.expanded ? "▾" : "▸") as "▸" | "▾",
+    disclosure: input.expanded ? Glyph.chevronOpen : Glyph.chevronClosed,
     streaming,
   }
 }
@@ -399,7 +400,7 @@ export function taskRowChrome(input: {
     // comes back when it completes. "delegated" while running, "returned" on done.
     cue: input.streaming === true ? "delegated" : "returned",
     childHint: n > 0 ? `${n} ${n === 1 ? "step" : "steps"}` : "",
-    disclosure: (input.expanded ? "▾" : "▸") as "▸" | "▾",
+    disclosure: input.expanded ? Glyph.chevronOpen : Glyph.chevronClosed,
   }
 }
 

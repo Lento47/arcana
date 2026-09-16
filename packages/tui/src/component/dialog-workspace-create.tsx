@@ -10,8 +10,9 @@ import { useSDK } from "../context/sdk"
 import { useToast } from "../ui/toast"
 import { Spinner } from "./spinner"
 import { useTheme } from "../context/theme"
-import { Glyph } from "../branding"
+import { COPY, Glyph } from "../branding"
 import { DialogAlert } from "../ui/dialog-alert"
+import { DialogButton, DialogFooter } from "../ui/dialog-chrome"
 import { DialogWorkspaceFileChanges } from "./dialog-workspace-file-changes"
 import { TextAttributes } from "@opentui/core"
 import { useBindings } from "../keymap"
@@ -54,6 +55,10 @@ export function warpReminderText(dir: string) {
   return `<system-reminder>The user has changed the current working directory to "${dir}". This is still the same project but at a possibly new location; take this into account when working with any files from now on.</system-reminder>`
 }
 
+// Discovery failure is reported twice — a toast while the picker is open and the
+// retry card that replaces it. One source so the two surfaces cannot drift.
+const WORKSPACE_ADAPTERS_FAILED = "Failed to load workspace adapters"
+
 async function loadWorkspaceAdapters(input: {
   sdk: ReturnType<typeof useSDK>
   sync: ReturnType<typeof useSync>
@@ -66,7 +71,7 @@ async function loadWorkspaceAdapters(input: {
     return response.data
   } catch (err) {
     input.toast.show({
-      title: "Failed to load workspace adapters",
+      title: WORKSPACE_ADAPTERS_FAILED,
       message: `${errorMessage(err)} — retry from the workspace dialog.`,
       variant: "error",
     })
@@ -349,30 +354,38 @@ function DialogWorkspaceLoading() {
 }
 
 // Error state shown when workspace adapter loading fails.
-function DialogWorkspaceError(props: { onRetry: () => void }) {
+export function DialogWorkspaceError(props: { onRetry: () => void }) {
   const { theme } = useTheme()
   const dialog = useDialog()
+  const [active, setActive] = createSignal<"cancel" | "retry">("retry")
+
+  const confirm = () => {
+    if (active() === "cancel") {
+      dialog.clear()
+      return
+    }
+    props.onRetry()
+  }
+
   useBindings(() => ({
     bindings: [
-      { key: "return", desc: "Retry workspace adapters", group: "Dialog", cmd: () => props.onRetry() },
+      { key: "return", desc: "Confirm workspace adapter action", group: "Dialog", cmd: confirm },
+      { key: "left", desc: "Cancel workspace adapter retry", group: "Dialog", cmd: () => setActive("cancel") },
+      { key: "right", desc: "Retry workspace adapters", group: "Dialog", cmd: () => setActive("retry") },
     ],
   }))
   return (
     <box padding={3} gap={1}>
       <text fg={theme.error} attributes={TextAttributes.BOLD}>
-        Failed to load workspace adapters
+        {WORKSPACE_ADAPTERS_FAILED}
       </text>
       <text fg={theme.textMuted} wrapMode="word">
         Check that the engine is reachable, then press Enter to retry.
       </text>
-      <box flexDirection="row" gap={2} paddingTop={1}>
-        <box backgroundColor={theme.primary} paddingLeft={3} paddingRight={3} onMouseUp={props.onRetry}>
-          <text fg={theme.selectedListItemText}>Retry</text>
-        </box>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          Cancel
-        </text>
-      </box>
+      <DialogFooter>
+        <DialogButton label={COPY.dialog.cancel} active={active() === "cancel"} onPress={() => dialog.clear()} />
+        <DialogButton label={COPY.dialog.retry} active={active() === "retry"} onPress={props.onRetry} />
+      </DialogFooter>
     </box>
   )
 }

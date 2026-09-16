@@ -1,5 +1,6 @@
 /** @jsxImportSource @opentui/solid */
 import type { ColorInput, RGBA, ScrollBoxRenderable } from "@opentui/core"
+import { COPY } from "../../branding"
 import { Locale } from "../../util/locale"
 import { dim } from "../../theme/emphasis"
 import { createEffect, createMemo, createSignal, For, Match, Switch } from "solid-js"
@@ -59,8 +60,13 @@ export function DiffViewerFileTree(props: DiffViewerFileTreeProps) {
         horizontalScrollbarOptions={{ visible: false }}
       >
         <Switch>
-          <Match when={props.loading || props.error}>
-            <text />
+          {/* The tree mounts only beside an existing snapshot, so the viewer's own
+              loading/error line is never on screen at the same time as this pane. */}
+          <Match when={props.loading}>
+            <text fg={props.theme.textMuted}>{COPY.dialog.working}</text>
+          </Match>
+          <Match when={props.error}>
+            <text fg={props.theme.error}>Failed to load files — reopen the viewer to retry</text>
           </Match>
           <Match when={props.files.length === 0}>
             <text fg={props.theme.text}>No files changed</text>

@@ -1,6 +1,6 @@
 import { useKeyboard } from "@opentui/solid"
 import type { VcsFileStatus } from "@arcana/sdk/v2"
-import { createMemo, For } from "solid-js"
+import { createMemo, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Locale } from "../util/locale"
 import { useTheme } from "../context/theme"
@@ -9,14 +9,15 @@ import { useDialog, type DialogContext } from "../ui/dialog"
 import { getScrollAcceleration } from "../util/scroll"
 import { DialogButton, DialogFooter, DialogTitleRow } from "../ui/dialog-chrome"
 import { Space } from "../ui/chrome"
+import { COPY } from "../branding"
 
 const options = ["no", "yes"] as const
 
 export type WorkspaceFileChangesChoice = (typeof options)[number]
 
 const labels: Record<WorkspaceFileChangesChoice, string> = {
-  no: "No",
-  yes: "Yes",
+  no: COPY.dialog.no,
+  yes: COPY.dialog.yes,
 }
 
 function statusLabel(status: VcsFileStatus["status"]) {
@@ -81,33 +82,46 @@ export function DialogWorkspaceFileChanges(props: {
           {props.message ?? "Do you want to move these changes with the session?"}
         </text>
       </box>
+      {/* The empty state is still one line of content: a zero-height pane is a
+          blank box, and an uncapped one grows over the footer. */}
       <scrollbox
-        height={height()}
+        height={Math.max(height(), 1)}
         backgroundColor={theme.backgroundElement}
         scrollbarOptions={{ visible: false }}
         scrollAcceleration={scrollAcceleration()}
       >
-        <For each={props.files}>
-          {(item) => (
-            <box flexDirection="row" justifyContent="space-between" paddingLeft={Space.padX} paddingRight={Space.padX}>
-              <box flexDirection="row" minWidth={0} flexShrink={1}>
-                <box width={2} flexShrink={0}>
-                  <text fg={theme.textMuted}>{statusLabel(item.status)}</text>
-                </box>
-                <text fg={theme.textMuted} wrapMode="none">
-                  {Locale.truncateLeft(item.file, fileNameWidth())}
-                </text>
-              </box>
-              <box flexDirection="row" gap={1} minWidth={7} flexShrink={0} justifyContent="flex-end">
-                <text>
-                  {" "}
-                  {item.additions ? <span style={{ fg: theme.diffAdded }}>+{item.additions}</span> : null}
-                  {item.deletions ? <span style={{ fg: theme.diffRemoved }}> -{item.deletions}</span> : null}
-                </text>
-              </box>
+        <Show
+          when={props.files.length > 0}
+          fallback={
+            // A force-required delete can be reported with no rows to show — an
+            // empty pane reads as "still loading", so name the state instead.
+            <box paddingLeft={Space.padX} paddingRight={Space.padX}>
+              <text fg={theme.textMuted}>{COPY.dialog.noFileChanges}</text>
             </box>
-          )}
-        </For>
+          }
+        >
+          <For each={props.files}>
+            {(item) => (
+              <box flexDirection="row" justifyContent="space-between" paddingLeft={Space.padX} paddingRight={Space.padX}>
+                <box flexDirection="row" minWidth={0} flexShrink={1}>
+                  <box width={2} flexShrink={0}>
+                    <text fg={theme.textMuted}>{statusLabel(item.status)}</text>
+                  </box>
+                  <text fg={theme.textMuted} wrapMode="none">
+                    {Locale.truncateLeft(item.file, fileNameWidth())}
+                  </text>
+                </box>
+                <box flexDirection="row" gap={1} minWidth={7} flexShrink={0} justifyContent="flex-end">
+                  <text>
+                    {" "}
+                    {item.additions ? <span style={{ fg: theme.diffAdded }}>+{item.additions}</span> : null}
+                    {item.deletions ? <span style={{ fg: theme.diffRemoved }}> -{item.deletions}</span> : null}
+                  </text>
+                </box>
+              </box>
+            )}
+          </For>
+        </Show>
       </scrollbox>
       <box paddingLeft={Space.padX} paddingRight={Space.padX}>
         <DialogFooter>

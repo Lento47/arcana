@@ -525,6 +525,23 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
         flexDirection="row"
         backgroundColor={active() ? theme.primary : inactiveBg()}
         onMouseUp={() => triggerAction(item)}
+        // Same two-step the option rows use: crossing the row declares the
+        // pointer as the active input, and only then does the hover focus.
+        // Without the move step the guard below can never pass for a pointer
+        // that entered the dialog at the footer — and without the guard, a
+        // cursor parked where the dialog opens would steal focus from a
+        // keyboard user mid-navigation.
+        onMouseMove={() => {
+          if (props.locked) return
+          setStore("input", "mouse")
+        }}
+        onMouseOver={() => {
+          if (props.locked) return
+          if (store.input !== "mouse") return
+          const index = actionItems().indexOf(item)
+          if (index < 0) return
+          setFocusedAction(index)
+        }}
       >
         <text
           fg={disabled() ? theme.textMuted : active() ? fg : theme.text}
@@ -603,7 +620,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
                 input.focus()
               }, 1)
             }}
-            placeholder={props.placeholder ?? "Scry…"}
+            placeholder={props.placeholder ?? COPY.pickerFilter}
             placeholderColor={theme.textMuted}
           />
         </box>

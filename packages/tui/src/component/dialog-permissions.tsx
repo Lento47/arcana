@@ -22,6 +22,7 @@ import {
   waitingHint,
 } from "../util/permissions-status"
 import { DialogColumn, DialogTitleRow } from "../ui/dialog-chrome"
+import { COPY } from "../branding"
 
 /**
  * Permissions status — the operator's view of what the engine is asking and
@@ -325,11 +326,17 @@ export function DialogPermissions() {
         </Show>
       </box>
 
-      <Show when={status().recentActivity.length > 0}>
-        <box flexDirection="column" gap={0}>
-          <text fg={theme.text} attributes={TextAttributes.BOLD}>
-            Recent approvals
-          </text>
+      {/* The heading belongs to the section, not to its contents: on a fresh
+          session nothing has settled yet, and hiding the whole box would take
+          the heading with it, hiding the section itself. */}
+      <box flexDirection="column" gap={0}>
+        <text fg={theme.text} attributes={TextAttributes.BOLD}>
+          Recent approvals
+        </text>
+        <Show
+          when={status().recentActivity.length > 0}
+          fallback={<text fg={theme.textMuted}>{COPY.dialog.permissionsRecentEmpty}</text>}
+        >
           <For each={status().recentActivity}>
             {(activity) => (
               <box flexDirection="row" gap={1}>
@@ -342,8 +349,8 @@ export function DialogPermissions() {
               </box>
             )}
           </For>
-        </box>
-      </Show>
+        </Show>
+      </box>
 
       <text fg={theme.textMuted}>{waitingHint(status())}</text>
     </DialogColumn>

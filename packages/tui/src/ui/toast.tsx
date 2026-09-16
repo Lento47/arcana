@@ -1,6 +1,7 @@
 import { createContext, useContext, createSignal, type ParentProps, Show, Switch, Match, For } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useTheme } from "../context/theme"
+import { Glyph } from "../branding"
 import { useTerminalDimensions } from "@opentui/solid"
 import { SplitBorder } from "./border"
 import { TextAttributes } from "@opentui/core"
@@ -79,7 +80,7 @@ export function Toast() {
                   onMouseOver={() => setDismissHovered(true)}
                   onMouseOut={() => setDismissHovered(false)}
                 >
-                  ✕
+                  {Glyph.dismiss}
                 </text>
               </box>
             </box>

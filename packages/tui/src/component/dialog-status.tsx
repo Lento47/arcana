@@ -4,6 +4,7 @@ import { useDialog } from "../ui/dialog"
 import { useSync } from "../context/sync"
 import { For, Match, Switch, Show, createMemo } from "solid-js"
 import { DialogColumn, DialogTitleRow } from "../ui/dialog-chrome"
+import { COPY } from "../branding"
 
 export type DialogStatusProps = {}
 
@@ -48,7 +49,7 @@ export function DialogStatus() {
   return (
     <DialogColumn padBottom>
       <DialogTitleRow title="Status" onClose={() => dialog.clear()} />
-      <Show when={Object.keys(sync.data.mcp).length > 0} fallback={<text fg={theme.text}>No MCP Servers</text>}>
+      <Show when={Object.keys(sync.data.mcp).length > 0} fallback={<text fg={theme.text}>{COPY.dialog.noMcpServers}</text>}>
         <box>
           <text fg={theme.text}>{countLabel(Object.keys(sync.data.mcp).length, "MCP Server")}</text>
           <For each={Object.entries(sync.data.mcp)}>
@@ -91,7 +92,10 @@ export function DialogStatus() {
           </For>
         </box>
       </Show>
-      {sync.data.lsp.length > 0 && (
+      <Show
+        when={sync.data.lsp.length > 0}
+        fallback={<text fg={theme.text}>{COPY.dialog.noLspServers}</text>}
+      >
         <box>
           <text fg={theme.text}>{countLabel(sync.data.lsp.length, "LSP Server")}</text>
           <For each={sync.data.lsp}>
@@ -115,8 +119,8 @@ export function DialogStatus() {
             )}
           </For>
         </box>
-      )}
-      <Show when={enabledFormatters().length > 0} fallback={<text fg={theme.text}>No Formatters</text>}>
+      </Show>
+      <Show when={enabledFormatters().length > 0} fallback={<text fg={theme.text}>{COPY.dialog.noFormatters}</text>}>
         <box>
           <text fg={theme.text}>{countLabel(enabledFormatters().length, "Formatter")}</text>
           <For each={enabledFormatters()}>
@@ -138,7 +142,7 @@ export function DialogStatus() {
           </For>
         </box>
       </Show>
-      <Show when={plugins().length > 0} fallback={<text fg={theme.text}>No Plugins</text>}>
+      <Show when={plugins().length > 0} fallback={<text fg={theme.text}>{COPY.dialog.noPlugins}</text>}>
         <box>
           <text fg={theme.text}>{countLabel(plugins().length, "Plugin")}</text>
           <For each={plugins()}>

@@ -24,40 +24,41 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
   const hidden = createMemo(() => Math.max(0, artifacts().length - visible().length))
 
   return (
-    <Show when={artifacts().length > 0}>
-      <box flexDirection="column" gap={1}>
-        <text fg={theme().text}>
-          <span style={{ fg: theme().accent }}>◇ </span>
-          <b>ARTIFACTS</b>
-        </text>
-        <For each={visible()}>
-          {(item) => {
-            const [hovered, setHovered] = createSignal(false)
-            return (
-              <box
-                onMouseUp={() => setSelectedId(selectedId() === item.id ? null : item.id)}
-                onMouseOver={() => setHovered(true)}
-                onMouseOut={() => setHovered(false)}
-                backgroundColor={hovered() ? theme().backgroundElement : undefined}
+    <box flexDirection="column" gap={1}>
+      <text fg={theme().text}>
+        <span style={{ fg: theme().accent }}>◇ </span>
+        <b>ARTIFACTS</b>
+      </text>
+      <Show when={artifacts().length === 0}>
+        <text fg={theme().textMuted}>No artifacts yet — they appear here as they are created</text>
+      </Show>
+      <For each={visible()}>
+        {(item) => {
+          const [hovered, setHovered] = createSignal(false)
+          return (
+            <box
+              onMouseUp={() => setSelectedId(selectedId() === item.id ? null : item.id)}
+              onMouseOver={() => setHovered(true)}
+              onMouseOut={() => setHovered(false)}
+              backgroundColor={hovered() ? theme().backgroundElement : undefined}
+            >
+              <text
+                fg={selectedId() === item.id ? theme().accent : theme().textMuted}
+                wrapMode="none"
+                truncate
               >
-                <text
-                  fg={selectedId() === item.id ? theme().accent : theme().textMuted}
-                  wrapMode="none"
-                  truncate
-                >
-                  {item.type === "svg" || item.type === "html" ? "◈ " : "▣ "}
-                  {item.title}
-                  <text fg={theme().textMuted}> v{item.version}</text>
-                </text>
-              </box>
-            )
-          }}
-        </For>
-        <Show when={hidden() > 0}>
-          <text fg={theme().textMuted}>+{hidden()} more in ~/.arcana/artifacts</text>
-        </Show>
-      </box>
-    </Show>
+                {item.type === "svg" || item.type === "html" ? "◈ " : "▣ "}
+                {item.title}
+                <span style={{ fg: theme().textMuted }}> v{item.version}</span>
+              </text>
+            </box>
+          )
+        }}
+      </For>
+      <Show when={hidden() > 0}>
+        <text fg={theme().textMuted}>+{hidden()} more in ~/.arcana/artifacts</text>
+      </Show>
+    </box>
   )
 }
 

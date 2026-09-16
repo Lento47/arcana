@@ -28,62 +28,63 @@ function View(props: { api: TuiPluginApi }) {
   }
 
   return (
-    <Show when={list().length > 0}>
-      <box>
-        <box
-          flexDirection="row"
-          gap={1}
-          onMouseDown={() => list().length > 2 && setOpen((x) => !x)}
-          onMouseOver={() => setHovered(true)}
-          onMouseOut={() => setHovered(false)}
-          backgroundColor={hovered() && list().length > 2 ? theme().backgroundElement : undefined}
-        >
-          <Show when={list().length > 2}>
-            <text fg={theme().text}>{open() ? "▼" : "▶"}</text>
-          </Show>
-          <text fg={theme().text}>
-            <span style={{ fg: theme().accent }}>◆ </span>
-            <b>MCP</b>
-            <Show when={!open()}>
-              <span style={{ fg: theme().textMuted }}>
-                {" "}
-                ({on()} active{bad() > 0 ? `, ${bad()} error${bad() > 1 ? "s" : ""}` : ""})
-              </span>
-            </Show>
-          </text>
-        </box>
-        <Show when={list().length <= 2 || open()}>
-          <For each={list()}>
-            {(item) => (
-              <box flexDirection="row" gap={1}>
-                <text
-                  flexShrink={0}
-                  style={{
-                    fg: dot(item.status),
-                  }}
-                >
-                  •
-                </text>
-                <text fg={theme().text} wrapMode="word">
-                  {item.name}{" "}
-                  <span style={{ fg: theme().textMuted }}>
-                    <Switch fallback={item.status}>
-                      <Match when={item.status === "connected"}>Connected</Match>
-                      <Match when={item.status === "failed"}>
-                        <i>{item.error}</i>
-                      </Match>
-                      <Match when={item.status === "disabled"}>Disabled</Match>
-                      <Match when={item.status === "needs_auth"}>Needs auth</Match>
-                      <Match when={item.status === "needs_client_registration"}>Needs client ID</Match>
-                    </Switch>
-                  </span>
-                </text>
-              </box>
-            )}
-          </For>
+    <box>
+      <box
+        flexDirection="row"
+        gap={1}
+        onMouseDown={() => list().length > 2 && setOpen((x) => !x)}
+        onMouseOver={() => setHovered(true)}
+        onMouseOut={() => setHovered(false)}
+        backgroundColor={hovered() && list().length > 2 ? theme().backgroundElement : undefined}
+      >
+        <Show when={list().length > 2}>
+          <text fg={theme().text}>{open() ? "▼" : "▶"}</text>
         </Show>
+        <text fg={theme().text}>
+          <span style={{ fg: theme().accent }}>◆ </span>
+          <b>MCP</b>
+          <Show when={!open()}>
+            <span style={{ fg: theme().textMuted }}>
+              {" "}
+              ({on()} active{bad() > 0 ? `, ${bad()} error${bad() > 1 ? "s" : ""}` : ""})
+            </span>
+          </Show>
+        </text>
       </box>
-    </Show>
+      <Show when={list().length <= 2 || open()}>
+        <Show when={list().length === 0}>
+          <text fg={theme().textMuted}>No MCP servers configured — add one with `arcana mcp add`</text>
+        </Show>
+        <For each={list()}>
+          {(item) => (
+            <box flexDirection="row" gap={1}>
+              <text
+                flexShrink={0}
+                style={{
+                  fg: dot(item.status),
+                }}
+              >
+                •
+              </text>
+              <text fg={theme().text} wrapMode="word">
+                {item.name}{" "}
+                <span style={{ fg: theme().textMuted }}>
+                  <Switch fallback="Unknown status">
+                    <Match when={item.status === "connected"}>Connected</Match>
+                    <Match when={item.status === "failed"}>
+                      <i>{item.error}</i>
+                    </Match>
+                    <Match when={item.status === "disabled"}>Disabled</Match>
+                    <Match when={item.status === "needs_auth"}>Needs auth</Match>
+                    <Match when={item.status === "needs_client_registration"}>Needs client ID</Match>
+                  </Switch>
+                </span>
+              </text>
+            </box>
+          )}
+        </For>
+      </Show>
+    </box>
   )
 }
 

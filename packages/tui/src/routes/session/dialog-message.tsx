@@ -12,7 +12,7 @@ import { useBindings } from "../../keymap"
 import { errorMessage } from "../../util/error"
 import type { PromptInfo } from "../../component/prompt/history"
 import { stripPromptPartIDs as strip } from "../../prompt/part"
-import { Glyph } from "../../branding"
+import { COPY, Glyph } from "../../branding"
 import { TextAttributes } from "@opentui/core"
 import { promptTextFromPart } from "../../arcana/task"
 import { DialogCloseHint } from "../../ui/dialog-chrome"
@@ -130,7 +130,13 @@ export function DialogMessage(props: {
           if (part.type === "text") agg += promptTextFromPart(part)
           return agg
         }, "")
-        await clipboard.write?.(text)
+        // A clip that silently clears the card is indistinguishable from one
+        // that copied nothing — report both outcomes so the operator knows
+        // whether the text is on the clipboard.
+        await clipboard.write?.(text).then(
+          () => toast.show({ message: COPY.inscribedToClipboard, variant: "info" }),
+          () => toast.show({ message: "Inscribe failed — try again", variant: "error" }),
+        )
         clear()
       },
     },
@@ -290,14 +296,15 @@ export function DialogMessage(props: {
           </text>
         </box>
         <box flexDirection="row" flexWrap="wrap" gap={1} paddingTop={1}>
-          <text fg={theme.primary}>enter</text>
-          <text fg={theme.textMuted}>seal</text>
+          <text fg={theme.primary}>[enter]</text>
+          <text fg={theme.textMuted}>Seal</text>
           <text fg={theme.textMuted}>·</text>
-          <text fg={theme.primary}>tab/↓↑</text>
-          <text fg={theme.textMuted}>navigate</text>
+          <text fg={theme.primary}>[↓↑]</text>
+          <text fg={theme.textMuted}>Navigate</text>
           <text fg={theme.textMuted}>·</text>
-          <text fg={theme.primary}>esc</text>
-          <text fg={theme.textMuted}>vanish</text>
+          {/* Same `[esc] <verb>` as the header and every other card — typed
+              here it was a second spelling of the same dismissal. */}
+          <DialogCloseHint onClose={clear} />
         </box>
       </box>
     </box>

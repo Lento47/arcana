@@ -130,7 +130,7 @@ export function providerOptions(
     ),
     map((provider) => ({
       type: "provider" as const,
-      title: provider.id === "opencode-go" ? "Arcana Plan" : provider.name,
+      title: provider.id === "opencode-go" ? BRAND_TIERS.go.name : provider.name,
       value: provider.id,
       providerID: provider.id,
       description: {
@@ -180,6 +180,7 @@ export function createDialogProviderOptions() {
   const { theme } = useTheme()
   const onboarded = useConnected()
   const proxyKey = useHasProxyKey()
+  const [busy, setBusy] = createSignal(false)
 
   async function promptCustomProvider(): Promise<{ id: string; baseURL?: string } | undefined> {
     while (true) {
@@ -215,19 +216,28 @@ export function createDialogProviderOptions() {
           return {
             title: provider.title,
             value: provider.value,
-            description: provider.description,
+            // Reading `busy` here is what makes the picker redraw: the row's
+            // description is the only channel the picker gives us, and the
+            // refetch below is a round trip the row must narrate.
+            description: busy() ? COPY.dialog.signingIn : provider.description,
             category: provider.category,
             async onSelect() {
-              await proxyKey.refetch()
-              if (proxyKey.present()) {
-                // User already has a key — refresh catalog in case it's stale
-                // and jump straight to the model picker.
-                await sdk.client.instance.dispose()
-                await sync.bootstrap()
-                dialog.replace(() => <DialogModel providerID="arcana" />)
-                return
+              if (busy()) return
+              setBusy(true)
+              try {
+                await proxyKey.refetch()
+                if (proxyKey.present()) {
+                  // User already has a key — refresh catalog in case it's stale
+                  // and jump straight to the model picker.
+                  await sdk.client.instance.dispose()
+                  await sync.bootstrap()
+                  dialog.replace(() => <DialogModel providerID="arcana" />)
+                  return
+                }
+                dialog.replace(() => <ArcanaOAuthMethod />)
+              } finally {
+                setBusy(false)
               }
-              dialog.replace(() => <ArcanaOAuthMethod />)
             },
           }
         }

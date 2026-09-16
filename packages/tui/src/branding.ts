@@ -57,6 +57,15 @@ export const Glyph = {
    */
   checked: "[x]",
   unchecked: "[ ]",
+  /** Card / toast close. Same mark everywhere something can be dismissed. */
+  dismiss: "✕",
+  /**
+   * Disclosure pair. `chevron` above means "next"; these mean "this row opens".
+   * Kept apart so a retune of the navigation chevron cannot silently move the
+   * expand/collapse affordance.
+   */
+  chevronOpen: "▾",
+  chevronClosed: "▸",
 } as const
 
 /** Agent sigil glyphs by mode. */
@@ -332,6 +341,36 @@ export const DIALOG_COPY = {
   working: "Working…",
   processing: "Processing…",
   submit: "submit",
+  restore: "Restore",
+  retry: "Retry",
+  yes: "Yes",
+  no: "No",
+  signingIn: "Signing in…",
+  // Empty states. These were four literals in one file read side by side with
+  // the collections they describe, so a fifth collection copied one and drifted
+  // the moment either changed.
+  noMcpServers: "No MCP Servers",
+  noLspServers: "No LSP Servers",
+  noFormatters: "No Formatters",
+  noPlugins: "No Plugins",
+  noFileChanges: "No file changes",
+  permissionsRecentEmpty: "No settled approvals yet.",
+  // A built-in agent ships with the app; "native" is the field name in the SDK,
+  // not a word an operator reads.
+  nativeTag: "Built-in",
+} as const
+
+/**
+ * Activity-row status words. Voice-identical for the same reason `DIALOG_COPY`
+ * is: "working" is a state report, not a brand moment.
+ *
+ * They also have to be *one* source rather than two — the reel draws the word
+ * and separately measures its width to budget the summary beside it, so a copy
+ * that drifts from the other silently mis-truncates the row.
+ */
+const ACTIVITY_COPY = {
+  live: "working",
+  settled: "work",
 } as const
 
 /** Miscellaneous copy strings (toasts, notifications, empty states). */
@@ -340,7 +379,10 @@ const DEFAULT_COPY = {
   riteComplete: "The rite is complete",
   noEchoesFound: "No echoes found",
   chronicleEmpty: "The chronicle is empty — send a prompt from Home to begin.",
+  pickerFilter: "Scry…",
+  noSessionsMatch: "No sessions match this search — try a different query.",
   dialog: DIALOG_COPY,
+  activity: ACTIVITY_COPY,
 } as const
 
 export const PLAIN_COPY = {
@@ -348,7 +390,10 @@ export const PLAIN_COPY = {
   riteComplete: "Done",
   noEchoesFound: "No matches found",
   chronicleEmpty: "No sessions yet — send a prompt from Home to start one.",
+  pickerFilter: "Filter…",
+  noSessionsMatch: "No sessions match this search.",
   dialog: DIALOG_COPY,
+  activity: ACTIVITY_COPY,
 } as const
 
 export let COPY: typeof DEFAULT_COPY | typeof PLAIN_COPY = DEFAULT_COPY

@@ -2,6 +2,7 @@ import { For, Show, createMemo } from "solid-js"
 import type { RGBA } from "@opentui/core"
 import { useTheme } from "../../context/theme"
 import type { Theme } from "../../theme"
+import { APP_NAME_UPPER, Glyph } from "../../branding"
 import { spineOuterPadding, statusToneColor, type SpineLayout, type StatusSegment, type StatusTone } from "./spine-types"
 import { displayWidth, truncate } from "../../util/locale"
 import { useTuiConfig } from "../../config"
@@ -55,7 +56,7 @@ function segmentFg(tone: StatusTone, theme: Theme): RGBA {
 
 type ZonedItem = { key: string; label: string; hint?: string; tone: SessionCharterTone; fg?: RGBA }
 
-const RUNTIME_DOT = "◆"
+const RUNTIME_DOT = Glyph.diamond
 const ZONE_SEP = "│"
 /** Context-zone glyphs: structure marks, not labels. */
 const CONTEXT_GLYPHS: Record<string, string> = { branch: "⎇" }
@@ -308,7 +309,7 @@ export function SpineHeader(props: {
         <Show when={showBrand()}>
           <box flexShrink={0} paddingRight={2}>
             <text fg={theme.spineBrand} wrapMode="none">
-              ARCANA
+              {APP_NAME_UPPER}
             </text>
           </box>
         </Show>

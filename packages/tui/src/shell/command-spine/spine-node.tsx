@@ -1,8 +1,9 @@
 import { Show, createMemo, createSignal } from "solid-js"
-import type { MouseEvent } from "@opentui/core"
-import { useTheme } from "../../context/theme"
+import type { MouseEvent, RGBA } from "@opentui/core"
+import { tint, useTheme } from "../../context/theme"
 import { Glyph } from "../../branding"
 import { displayWidth, truncate } from "../../util/locale"
+import { createFlare } from "../../util/motion"
 import {
   compactSpineElapsed,
   formatElapsedMs,
@@ -81,14 +82,14 @@ export function SpineNode(props: {
   cueID?: string
   /** Dedicated disclosure action; lets agent titles navigate while chevrons expand. */
   onDisclosureMouseUp?: (event: MouseEvent) => void
-  /** Dismiss affordance ("×") for cancellable rows (approval banners). */
+  /** Dismiss affordance (Glyph.dismiss) for cancellable rows (approval banners). */
   onDismiss?: () => void
   /** The row body already renders this outcome; suppress the header copy. */
   outcomeHidden?: boolean
 }) {
   const { theme } = useTheme()
   const motion = useSpineMotion()
-  // Inline affordances (chevron, dismiss "×") are pointer targets: give them
+  // Inline affordances (chevron, dismiss glyph) are pointer targets: give them
   // the same hover tint as the entry header, scoped to the glyph cell.
   const [disclosureHover, setDisclosureHover] = createSignal(false)
   const [dismissHover, setDismissHover] = createSignal(false)
@@ -101,6 +102,13 @@ export function SpineNode(props: {
   const disclosure = createMemo(() => props.disclosure ?? "")
   const thinking = createMemo(() => props.thinking)
   const streaming = createMemo(() => props.streaming === true)
+  // Settle flare for think rows: the thought line lifts for a beat when the
+  // reasoning segment finishes. Mounted-settled rows (scrollback) never flare.
+  const settleFlare = createFlare(() => kind() === "think" && streaming() !== true)
+  const flareInk = (base: RGBA) => {
+    const intensity = settleFlare()
+    return intensity > 0 ? tint(base, theme.text, intensity * 0.4) : base
+  }
 
   // Live ticking chrome: while a running row carries an absolute start time,
   // refresh only the elapsed duration. The shared chip keeps its status glyph
@@ -154,7 +162,7 @@ export function SpineNode(props: {
   const tone = createMemo(() => spineTone(kind(), theme))
   const summaryColor = createMemo(() => {
     if (kind() === "fail") return theme.spineFail
-    if (kind() === "think") return streaming() ? activityColor() : theme.spineThink
+    if (kind() === "think") return flareInk(streaming() ? activityColor() : theme.spineThink)
     // User chat voice: text reads against the soft row fill (backgroundElement).
     // Use the bright text token so glyph/summary/meta stay legible without
     // shouting. Assistant chat voice stays muted (text renders inside the
@@ -285,7 +293,7 @@ export function SpineNode(props: {
                 onMouseOut={() => setDismissHover(false)}
                 backgroundColor={dismissHover() ? theme.backgroundElement : undefined}
               >
-                <text fg={theme.textMuted} wrapMode="none">×</text>
+                <text fg={theme.textMuted} wrapMode="none">{Glyph.dismiss}</text>
               </box>
             </Show>
           </box>
@@ -364,7 +372,7 @@ export function SpineNode(props: {
                   onMouseOut={() => setDismissHover(false)}
                   backgroundColor={dismissHover() ? theme.backgroundElement : undefined}
                 >
-                  <text fg={theme.textMuted} wrapMode="none">×</text>
+                  <text fg={theme.textMuted} wrapMode="none">{Glyph.dismiss}</text>
                 </box>
               </Show>
             </box>
