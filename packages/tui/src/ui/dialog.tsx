@@ -6,7 +6,6 @@ import {
   createMemo,
   createSignal,
   onCleanup,
-  onMount,
   Show,
   useContext,
   type JSX,
@@ -15,7 +14,8 @@ import {
 import { useTheme } from "../context/theme"
 import { dialogContentMaxHeight, dialogMaxHeight, dialogMaxWidth, dialogWidth } from "../util/geometry"
 import { COPY } from "../branding"
-import { MouseButton, Renderable, RGBA } from "@opentui/core"
+import { backdropScrim } from "../theme/emphasis"
+import { MouseButton, Renderable } from "@opentui/core"
 import { createStore } from "solid-js/store"
 import { useToast } from "./toast"
 import { RoundBorder } from "./chrome"
@@ -33,48 +33,27 @@ export function Dialog(
   const { theme } = useTheme()
   const renderer = useRenderer()
 
-  const dimmer = createMemo(() => {
-    const bg = theme.background
-    const lum = 0.299 * bg.r + 0.587 * bg.g + 0.114 * bg.b
-    const base = lum > 0.5 ? RGBA.fromInts(0, 0, 0) : RGBA.fromInts(255, 255, 255)
-    return RGBA.fromValues(base.r, base.g, base.b, 150 / 255)
-  })
+  // Shared scrim definition (`theme/emphasis`) so the dialog, the permission
+  // gates and the diff viewer recede the app behind them by the same amount.
+  const dimmer = createMemo(() => backdropScrim(theme))
 
   let dismiss = false
   const width = () => dialogWidth(dimensions().width, props.size ?? "medium")
   const contentCap = createMemo(() => dialogContentMaxHeight(dimensions().height))
 
-  // The scrollbox's internal content node forces minHeight "100%", so a bare
+  // The scrollbox's internal content node forces `minHeight: "100%"`, so a bare
   // maxHeight scrollbox claims the whole viewport even for short content.
-  // Measure the real content height through a wrapper ref and drive the
-  // scrollbox from it: short dialogs hug their rows, long dialogs cap at
-  // contentCap and scroll (the O3 bounded-scroll invariant, preserved).
-  const [contentHeight, setContentHeight] = createSignal<number | null>(null)
-  let contentBox: Renderable | null = null
-  const measureContent = () => {
-    const el = contentBox
-    if (!el || el.isDestroyed) return
-    const h = el.height
-    if (h > 0 && h !== contentHeight()) setContentHeight(h)
-  }
-  onMount(() => {
-    // The ref fires before layout; re-measure after the first frames so short
-    // dialogs hug their content instead of the cap. A slow poll keeps the card
-    // tight when content changes after mount (palette filtering, async loads).
-    const t0 = setTimeout(measureContent, 0)
-    const t1 = setTimeout(measureContent, 60)
-    const poll = setInterval(measureContent, 250)
-    onCleanup(() => {
-      clearTimeout(t0)
-      clearTimeout(t1)
-      clearInterval(poll)
-    })
-  })
-  const bodyHeight = () => {
-    const measured = contentHeight()
-    if (measured == null || measured <= 0) return contentCap()
-    return Math.min(measured, contentCap())
-  }
+  // `contentOptions` is spread *after* that default (`@opentui/core`
+  // ScrollBoxRenderable), so overriding it to 0 lets the scrollbox hug its
+  // children while `maxHeight` still caps — short dialogs are their real
+  // height, long dialogs stop at `contentCap` and scroll (the O3
+  // bounded-scroll invariant, preserved).
+  //
+  // This replaced a `setInterval(measureContent, 250)`: a layout read on a
+  // timer, which reflowed every tick and left a timer running for as long as
+  // the dialog lived. Sizing off content now needs no JS at all, so the class
+  // of defect (a poll that never stops, a card that snaps from full-height to
+  // hugging after paint) is structurally gone rather than merely fixed.
 
   return (
     <box
@@ -127,12 +106,12 @@ export function Dialog(
           width="100%"
           minWidth={0}
           minHeight={0}
-          height={bodyHeight()}
           maxHeight={contentCap()}
           flexShrink={1}
+          contentOptions={{ minHeight: 0 }}
           viewportCulling={true}
         >
-          <box ref={(el) => { contentBox = el }} width="100%" minWidth={0}>
+          <box width="100%" minWidth={0}>
             {props.children}
           </box>
         </scrollbox>

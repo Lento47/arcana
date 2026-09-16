@@ -3,15 +3,18 @@ import open from "open"
 import { createMemo, createSignal, Show } from "solid-js"
 import { selectedForeground, useTheme } from "../context/theme"
 import { useDialog, type DialogContext } from "../ui/dialog"
+import { OVERLAY_ALPHA, withAlpha } from "../theme/emphasis"
 import { useKV } from "../context/kv"
 import { Link } from "../ui/link"
 import { BgPulse } from "./bg-pulse"
 import { useBindings } from "../keymap"
+import { DialogCloseHint } from "../ui/dialog-chrome"
+import { Space } from "../ui/chrome"
+import { COPY } from "../branding"
 
 const GO_URL = "https://arcana.otnelhq.com/go"
-const PAD_X = 3
+/** Bleed for the decorative pulse behind the card, in rows. */
 const PAD_TOP_OUTER = 1
-const FOREGROUND_ALPHA = 186
 
 export type DialogRetryActionProps = {
   title: string
@@ -32,9 +35,9 @@ function dismiss(props: DialogRetryActionProps, dialog: ReturnType<typeof useDia
   dialog.clear()
 }
 
+/** Card-colored panel at the shared overlay alpha — see `theme/emphasis`. */
 function panelOverlay(color: RGBA) {
-  const [r, g, b] = color.toInts()
-  return RGBA.fromInts(r, g, b, FOREGROUND_ALPHA)
+  return withAlpha(color, OVERLAY_ALPHA)
 }
 
 export function DialogRetryAction(props: DialogRetryActionProps) {
@@ -88,14 +91,12 @@ export function DialogRetryAction(props: DialogRetryActionProps) {
           <BgPulse />
         </box>
       </Show>
-      <box zIndex={1} paddingLeft={PAD_X} paddingRight={PAD_X} paddingBottom={1} gap={1}>
+      <box zIndex={1} paddingLeft={Space.padX} paddingRight={Space.padX} paddingBottom={Space.padY} gap={Space.gap}>
         <box flexDirection="row" justifyContent="space-between">
           <text attributes={TextAttributes.BOLD} fg={theme.text} bg={textBg()} wrapMode="word">
             {props.title}
           </text>
-          <text fg={theme.textMuted} bg={textBg()} onMouseUp={() => dialog.clear()}>
-            [esc] dismiss
-          </text>
+          <DialogCloseHint onClose={() => dialog.clear()} label={COPY.dialog.dismiss} background={textBg()} />
         </box>
         <box gap={0}>
           <text fg={theme.textMuted} bg={textBg()} wrapMode="word">
@@ -117,8 +118,8 @@ export function DialogRetryAction(props: DialogRetryActionProps) {
         )}
         <box flexDirection="row" justifyContent="space-between">
           <box
-            paddingLeft={2}
-            paddingRight={2}
+            paddingLeft={Space.padX}
+            paddingRight={Space.padX}
             backgroundColor={selected() === "dismiss" ? theme.primary : inactiveBg()}
             onMouseOver={() => setSelected("dismiss")}
             onMouseUp={() => dismiss(props, dialog)}
@@ -128,12 +129,12 @@ export function DialogRetryAction(props: DialogRetryActionProps) {
               bg={selected() === "dismiss" ? undefined : textBg()}
               attributes={selected() === "dismiss" ? TextAttributes.BOLD : undefined}
             >
-              don't show again
+              {COPY.dialog.dontShowAgain}
             </text>
           </box>
           <box
-            paddingLeft={2}
-            paddingRight={2}
+            paddingLeft={Space.padX}
+            paddingRight={Space.padX}
             backgroundColor={selected() === "action" ? theme.primary : inactiveBg()}
             onMouseOver={() => setSelected("action")}
             onMouseUp={() => runAction(props, dialog)}

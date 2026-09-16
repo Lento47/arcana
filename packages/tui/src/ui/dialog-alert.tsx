@@ -1,6 +1,8 @@
-import { TextAttributes } from "@opentui/core"
 import { useTheme } from "../context/theme"
 import { useDialog, type DialogContext } from "./dialog"
+import { Space } from "./chrome"
+import { DialogButton, DialogColumn, DialogFooter, DialogTitleRow } from "./dialog-chrome"
+import { COPY } from "../branding"
 import { useBindings } from "../keymap"
 
 export type DialogAlertProps = {
@@ -28,35 +30,37 @@ export function DialogAlert(props: DialogAlertProps) {
       },
     ],
   }))
+
   return (
-    <box width="100%" minWidth={0} paddingLeft={2} paddingRight={2} gap={1}>
-      <box flexDirection="row" justifyContent="space-between" minWidth={0}>
-        <text attributes={TextAttributes.BOLD} fg={theme.text} flexShrink={1} overflow="hidden" wrapMode="none">
-          {props.title}
-        </text>
-        <text fg={theme.textMuted} flexShrink={0} onMouseUp={() => dialog.clear()}>
-          [esc] dismiss
-        </text>
-      </box>
-      <box width="100%" minWidth={0} paddingBottom={1}>
-        <text fg={theme.textMuted} width="100%" minWidth={0} wrapMode={props.preformatted ? "none" : "word"}>
+    <DialogColumn>
+      <DialogTitleRow
+        title={props.title}
+        onClose={() => dialog.clear()}
+        closeLabel={COPY.dialog.dismiss}
+      />
+      <box width="100%" minWidth={0} paddingBottom={Space.padY}>
+        <text
+          fg={theme.textMuted}
+          width="100%"
+          minWidth={0}
+          wrapMode={props.preformatted ? "none" : "word"}
+        >
           {props.message}
         </text>
       </box>
-      <box flexDirection="row" justifyContent="flex-end" paddingBottom={1}>
-        <box
-          paddingLeft={3}
-          paddingRight={3}
-          backgroundColor={theme.primary}
-          onMouseUp={() => {
+      <DialogFooter>
+        {/* The only action, so it is always the active one — a single-button
+            alert has nothing to be unfocused from. */}
+        <DialogButton
+          label={COPY.dialog.ok}
+          active
+          onPress={() => {
             props.onConfirm?.()
             dialog.clear()
           }}
-        >
-          <text fg={theme.selectedListItemText}>OK</text>
-        </box>
-      </box>
-    </box>
+        />
+      </DialogFooter>
+    </DialogColumn>
   )
 }
 

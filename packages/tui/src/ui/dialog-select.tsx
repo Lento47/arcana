@@ -20,6 +20,7 @@ import { Locale } from "../util/locale"
 import { getScrollAcceleration } from "../util/scroll"
 import { useTuiConfig } from "../config"
 import { formatKeyBindings, useBindings, useKeymapSelector } from "../keymap"
+import { DialogCloseHint } from "./dialog-chrome"
 
 function fastEqual<T>(a: T, b: T): boolean {
   if (a === b) return true
@@ -548,9 +549,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
               {props.title}
             </text>
           )}
-          <text fg={theme.textMuted} flexShrink={0} onMouseUp={() => dialog.clear()}>
-            [esc] close
-          </text>
+          <DialogCloseHint onClose={() => dialog.clear()} />
         </box>
       </box>
 

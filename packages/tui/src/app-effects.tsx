@@ -367,7 +367,9 @@ export function useAppEffects(props: {
         dialog,
         `Update Available`,
         `A new release v${version} is available. Would you like to update now?`,
-        "skip",
+        "Skip This Version",
+        false,
+        "Update Now",
       )
 
       if (choice === false) {

@@ -5,6 +5,7 @@ import { useTheme } from "../context/theme"
 import { useBindings } from "../keymap"
 import { useDialog } from "../ui/dialog"
 import { Locale } from "../util/locale"
+import { DialogColumn, DialogTitleRow } from "../ui/dialog-chrome"
 
 export type MlConsentScope = "workspace" | "device"
 export type MlConsentDecision = "grant" | "revoke" | "inherit"
@@ -168,15 +169,8 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
   }))
 
   return (
-    <box paddingLeft={2} paddingRight={2} paddingBottom={1} gap={1}>
-      <box flexDirection="row" justifyContent="space-between">
-        <text fg={theme.text} attributes={TextAttributes.BOLD}>
-          Signal Engine learning consent
-        </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          [esc] close
-        </text>
-      </box>
+    <DialogColumn padBottom>
+      <DialogTitleRow title="Signal Engine learning consent" onClose={() => dialog.clear()} />
 
       <text fg={theme.textMuted} wrapMode="word">
         Workspace: {props.workspace}
@@ -218,21 +212,21 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
                 attributes={TextAttributes.UNDERLINE}
                 onMouseUp={() => requestGrant("workspace")}
               >
-                [g] grant
+                [g] Grant workspace
               </text>
               <text
                 fg={!busy() ? theme.warning : theme.textMuted}
                 attributes={TextAttributes.UNDERLINE}
                 onMouseUp={() => requestRevoke("workspace")}
               >
-                [r] revoke
+                [r] Revoke workspace
               </text>
               <text
                 fg={disclosure() && !busy() ? theme.primary : theme.textMuted}
                 attributes={TextAttributes.UNDERLINE}
                 onMouseUp={requestInherit}
               >
-                [i] inherit device
+                [i] Inherit device
               </text>
             </box>
 
@@ -248,14 +242,14 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
                 attributes={TextAttributes.UNDERLINE}
                 onMouseUp={() => requestGrant("device")}
               >
-                [d] grant device
+                [d] Grant device
               </text>
               <text
                 fg={!busy() ? theme.warning : theme.textMuted}
                 attributes={TextAttributes.UNDERLINE}
                 onMouseUp={() => requestRevoke("device")}
               >
-                [x] revoke device
+                [x] Revoke device
               </text>
             </box>
           </box>
@@ -264,7 +258,7 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
         {(choice) => (
           <box flexDirection="column" gap={1}>
             <text fg={theme.warning} attributes={TextAttributes.BOLD}>
-              Confirm {choice().scope} {choice().decision}
+              Confirm {choice().decision} — {choice().scope}
             </text>
             <text fg={theme.text} wrapMode="word">
               {consentConfirmMessage(choice())}
@@ -275,14 +269,17 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
                 attributes={TextAttributes.UNDERLINE}
                 onMouseUp={confirmPending}
               >
-                [enter] confirm
+                [enter] Confirm
               </text>
+              {/* No key hint: this is mouse-only, and the app's `[key] verb`
+                  shape means "press this key". Esc dismisses the whole dialog,
+                  so labelling this one `[esc]` would promise the wrong thing. */}
               <text
                 fg={theme.textMuted}
                 attributes={TextAttributes.UNDERLINE}
                 onMouseUp={() => !busy() && setPending(undefined)}
               >
-                cancel
+                Cancel
               </text>
             </box>
           </box>
@@ -301,6 +298,6 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
       <text fg={theme.textMuted} wrapMode="word">
         Revoking consent stops new collection. It does not silently purge already retained data; purge remains a separate explicit command.
       </text>
-    </box>
+    </DialogColumn>
   )
 }

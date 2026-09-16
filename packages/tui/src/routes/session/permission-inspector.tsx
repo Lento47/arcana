@@ -3,6 +3,7 @@ import { TextAttributes } from "@opentui/core"
 import type { PermissionRequest } from "@arcana/sdk/v2"
 import { useTheme } from "../../context/theme"
 import { useDialog } from "../../ui/dialog"
+import { DialogCloseHint } from "../../ui/dialog-chrome"
 
 /**
  * Read-only inspector for a permission ACTION GATE entry.
@@ -43,7 +44,7 @@ export function PermissionInspector(props: { request: PermissionRequest }) {
         <text fg={theme.warning} attributes={TextAttributes.BOLD}>△ PERMISSION INSPECTOR</text>
         <text fg={theme.textMuted}>{request().permission}</text>
         <box flexGrow={1} />
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>[esc] close</text>
+        <DialogCloseHint onClose={() => dialog.clear()} />
       </box>
 
       <box

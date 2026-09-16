@@ -1,9 +1,12 @@
-import { TextareaRenderable, TextAttributes } from "@opentui/core"
+import { TextareaRenderable } from "@opentui/core"
 import { useTheme } from "../context/theme"
 import { useDialog, type DialogContext } from "./dialog"
 import { createStore } from "solid-js/store"
 import { onMount, Show } from "solid-js"
 import { useBindings } from "../keymap"
+import { Space } from "./chrome"
+import { DialogBody, DialogColumn, DialogOptionRow, DialogTitleRow } from "./dialog-chrome"
+import { COPY } from "../branding"
 
 export type DialogExportOptionsProps = {
   defaultFilename: string
@@ -82,18 +85,15 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
   })
 
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1}>
-      <box flexDirection="row" justifyContent="space-between">
-        <text attributes={TextAttributes.BOLD} fg={theme.text}>
-          Export Options
-        </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          [esc] cancel
-        </text>
-      </box>
-      <box gap={1}>
+    <DialogColumn>
+      <DialogTitleRow
+        title={COPY.dialog.exportTitle}
+        onClose={() => dialog.clear()}
+        closeLabel={COPY.dialog.cancel}
+      />
+      <DialogBody>
         <box>
-          <text fg={theme.text}>Filename:</text>
+          <text fg={theme.text}>{COPY.dialog.filenameLabel}</text>
         </box>
         <textarea
           onSubmit={() => {
@@ -111,76 +111,52 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
             val.traits = { status: "FILENAME" }
           }}
           initialValue={props.defaultFilename}
-          placeholder="Enter filename…"
+          placeholder={COPY.dialog.enterFilename}
           placeholderColor={theme.textMuted}
           textColor={theme.text}
           focusedTextColor={theme.text}
           cursorColor={theme.text}
         />
-      </box>
-      <box flexDirection="column">
-        <box
-          flexDirection="row"
-          gap={2}
-          paddingLeft={1}
-          backgroundColor={store.active === "thinking" ? theme.backgroundElement : undefined}
-          onMouseUp={() => setStore("active", "thinking")}
-        >
-          <text fg={store.active === "thinking" ? theme.primary : theme.textMuted}>
-            {store.thinking ? "[x]" : "[ ]"}
-          </text>
-          <text fg={store.active === "thinking" ? theme.primary : theme.text}>Include thinking</text>
+        <box flexDirection="column">
+          <DialogOptionRow
+            label="Include thinking"
+            checked={store.thinking}
+            active={store.active === "thinking"}
+            onPress={() => setStore("active", "thinking")}
+          />
+          <DialogOptionRow
+            label="Include tool details"
+            checked={store.toolDetails}
+            active={store.active === "toolDetails"}
+            onPress={() => setStore("active", "toolDetails")}
+          />
+          <DialogOptionRow
+            label="Include assistant metadata"
+            checked={store.assistantMetadata}
+            active={store.active === "assistantMetadata"}
+            onPress={() => setStore("active", "assistantMetadata")}
+          />
+          <DialogOptionRow
+            label="Open without saving"
+            checked={store.openWithoutSaving}
+            active={store.active === "openWithoutSaving"}
+            onPress={() => setStore("active", "openWithoutSaving")}
+          />
         </box>
-        <box
-          flexDirection="row"
-          gap={2}
-          paddingLeft={1}
-          backgroundColor={store.active === "toolDetails" ? theme.backgroundElement : undefined}
-          onMouseUp={() => setStore("active", "toolDetails")}
-        >
-          <text fg={store.active === "toolDetails" ? theme.primary : theme.textMuted}>
-            {store.toolDetails ? "[x]" : "[ ]"}
-          </text>
-          <text fg={store.active === "toolDetails" ? theme.primary : theme.text}>Include tool details</text>
-        </box>
-        <box
-          flexDirection="row"
-          gap={2}
-          paddingLeft={1}
-          backgroundColor={store.active === "assistantMetadata" ? theme.backgroundElement : undefined}
-          onMouseUp={() => setStore("active", "assistantMetadata")}
-        >
-          <text fg={store.active === "assistantMetadata" ? theme.primary : theme.textMuted}>
-            {store.assistantMetadata ? "[x]" : "[ ]"}
-          </text>
-          <text fg={store.active === "assistantMetadata" ? theme.primary : theme.text}>Include assistant metadata</text>
-        </box>
-        <box
-          flexDirection="row"
-          gap={2}
-          paddingLeft={1}
-          backgroundColor={store.active === "openWithoutSaving" ? theme.backgroundElement : undefined}
-          onMouseUp={() => setStore("active", "openWithoutSaving")}
-        >
-          <text fg={store.active === "openWithoutSaving" ? theme.primary : theme.textMuted}>
-            {store.openWithoutSaving ? "[x]" : "[ ]"}
-          </text>
-          <text fg={store.active === "openWithoutSaving" ? theme.primary : theme.text}>Open without saving</text>
-        </box>
-      </box>
+      </DialogBody>
       <Show when={store.active !== "filename"}>
-        <text fg={theme.textMuted} paddingBottom={1}>
+        <text fg={theme.textMuted} paddingBottom={Space.padY}>
           Press <span style={{ fg: theme.text }}>space</span> to toggle, <span style={{ fg: theme.text }}>return</span>{" "}
           to confirm
         </text>
       </Show>
       <Show when={store.active === "filename"}>
-        <text fg={theme.textMuted} paddingBottom={1}>
+        <text fg={theme.textMuted} paddingBottom={Space.padY}>
           Press <span style={{ fg: theme.text }}>return</span> to confirm, <span style={{ fg: theme.text }}>tab</span>{" "}
           for options
         </text>
       </Show>
-    </box>
+    </DialogColumn>
   )
 }
 

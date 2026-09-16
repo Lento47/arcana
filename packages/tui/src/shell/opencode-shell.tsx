@@ -70,6 +70,9 @@ export function OpencodeShell(props: ShellProps) {
                       dialog,
                       "Confirm Redo",
                       "Are you sure you want to restore the reverted messages?",
+                      "Cancel",
+                      false,
+                      "Restore Messages",
                     )
                     if (confirmed) {
                       keymap.dispatchCommand("session.redo")

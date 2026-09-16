@@ -1,4 +1,3 @@
-import { TextAttributes } from "@opentui/core"
 import { useKeyboard } from "@opentui/solid"
 import type { VcsFileStatus } from "@arcana/sdk/v2"
 import { createMemo, For } from "solid-js"
@@ -8,6 +7,8 @@ import { useTheme } from "../context/theme"
 import { useTuiConfig } from "../config"
 import { useDialog, type DialogContext } from "../ui/dialog"
 import { getScrollAcceleration } from "../util/scroll"
+import { DialogButton, DialogFooter, DialogTitleRow } from "../ui/dialog-chrome"
+import { Space } from "../ui/chrome"
 
 const options = ["no", "yes"] as const
 
@@ -72,15 +73,10 @@ export function DialogWorkspaceFileChanges(props: {
 
   return (
     <box gap={1}>
-      <box flexDirection="row" justifyContent="space-between" paddingLeft={2} paddingRight={2}>
-        <text attributes={TextAttributes.BOLD} fg={theme.text}>
-          {props.title ?? "File Changes Found"}
-        </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          [esc] close
-        </text>
+      <box paddingLeft={Space.padX} paddingRight={Space.padX}>
+        <DialogTitleRow title={props.title ?? "File Changes Found"} onClose={() => dialog.clear()} />
       </box>
-      <box paddingLeft={2} paddingRight={2}>
+      <box paddingLeft={Space.padX} paddingRight={Space.padX}>
         <text fg={theme.textMuted} wrapMode="word">
           {props.message ?? "Do you want to move these changes with the session?"}
         </text>
@@ -93,7 +89,7 @@ export function DialogWorkspaceFileChanges(props: {
       >
         <For each={props.files}>
           {(item) => (
-            <box flexDirection="row" justifyContent="space-between" paddingLeft={2} paddingRight={2}>
+            <box flexDirection="row" justifyContent="space-between" paddingLeft={Space.padX} paddingRight={Space.padX}>
               <box flexDirection="row" minWidth={0} flexShrink={1}>
                 <box width={2} flexShrink={0}>
                   <text fg={theme.textMuted}>{statusLabel(item.status)}</text>
@@ -113,23 +109,22 @@ export function DialogWorkspaceFileChanges(props: {
           )}
         </For>
       </scrollbox>
-      <box flexDirection="row" justifyContent="flex-end" paddingLeft={2} paddingRight={2} paddingBottom={1}>
-        <For each={options}>
-          {(item) => (
-            <box
-              paddingLeft={2}
-              paddingRight={2}
-              backgroundColor={item === store.active ? theme.primary : undefined}
-              onMouseUp={() => {
-                setStore("active", item)
-                props.onSelect(item)
-                dialog.clear()
-              }}
-            >
-              <text fg={item === store.active ? theme.selectedListItemText : theme.textMuted}>{labels[item]}</text>
-            </box>
-          )}
-        </For>
+      <box paddingLeft={Space.padX} paddingRight={Space.padX}>
+        <DialogFooter>
+          <For each={options}>
+            {(item) => (
+              <DialogButton
+                label={labels[item]}
+                active={item === store.active}
+                onPress={() => {
+                  setStore("active", item)
+                  props.onSelect(item)
+                  dialog.clear()
+                }}
+              />
+            )}
+          </For>
+        </DialogFooter>
       </box>
     </box>
   )

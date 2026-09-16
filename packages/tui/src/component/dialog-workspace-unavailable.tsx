@@ -1,9 +1,9 @@
-import { TextAttributes } from "@opentui/core"
 import { createStore } from "solid-js/store"
 import { For } from "solid-js"
 import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
 import { useBindings } from "../keymap"
+import { DialogButton, DialogColumn, DialogFooter, DialogTitleRow } from "../ui/dialog-chrome"
 
 export function DialogWorkspaceUnavailable(props: { onRestore?: () => boolean | void | Promise<boolean | void> }) {
   const dialog = useDialog()
@@ -36,15 +36,8 @@ export function DialogWorkspaceUnavailable(props: { onRestore?: () => boolean | 
   }))
 
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1}>
-      <box flexDirection="row" justifyContent="space-between">
-        <text attributes={TextAttributes.BOLD} fg={theme.text}>
-          Workspace Unavailable
-        </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          [esc] close
-        </text>
-      </box>
+    <DialogColumn>
+      <DialogTitleRow title="Workspace Unavailable" onClose={() => dialog.clear()} />
       <text fg={theme.textMuted} wrapMode="word">
         This session is attached to a workspace that is no longer available.
       </text>
@@ -52,23 +45,20 @@ export function DialogWorkspaceUnavailable(props: { onRestore?: () => boolean | 
         Would you like to restore this session into a new workspace?
       </text>
       <text fg={theme.textMuted}>left/right to choose · Enter to confirm</text>
-      <box flexDirection="row" justifyContent="flex-end" paddingBottom={1} gap={1}>
+      <DialogFooter>
         <For each={options}>
           {(item) => (
-            <box
-              paddingLeft={2}
-              paddingRight={2}
-              backgroundColor={item === store.active ? theme.primary : undefined}
-              onMouseUp={() => {
+            <DialogButton
+              label={labels[item]}
+              active={item === store.active}
+              onPress={() => {
                 setStore("active", item)
                 void confirm()
               }}
-            >
-              <text fg={item === store.active ? theme.selectedListItemText : theme.textMuted}>{labels[item]}</text>
-            </box>
+            />
           )}
         </For>
-      </box>
-    </box>
+      </DialogFooter>
+    </DialogColumn>
   )
 }

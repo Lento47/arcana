@@ -1,6 +1,7 @@
 import { Show, type JSX } from "solid-js"
 import { useTheme } from "../context/theme"
 import { useDialog } from "./dialog"
+import { DialogCloseHint } from "./dialog-chrome"
 
 const ARCANA_DITHER_CELLS = ["·", "–", "·", "·", "–", "·"] as const
 
@@ -34,9 +35,7 @@ export function ArcanaSurface(props: { title: string; path?: string; meta?: stri
           <text fg={theme.text}>
             <b>ARCANA / {props.title}</b>
           </text>
-          <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-            [esc] close
-          </text>
+          <DialogCloseHint onClose={() => dialog.clear()} />
         </box>
         <Show when={props.meta}>{(meta) => <text fg={theme.textMuted}>{meta()}</text>}</Show>
         <Show when={props.path}>{(path) => <text fg={theme.textMuted}>proof {path()}</text>}</Show>

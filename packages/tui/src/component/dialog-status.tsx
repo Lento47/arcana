@@ -1,9 +1,9 @@
-import { TextAttributes } from "@opentui/core"
 import { fileURLToPath } from "bun"
 import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
 import { useSync } from "../context/sync"
 import { For, Match, Switch, Show, createMemo } from "solid-js"
+import { DialogColumn, DialogTitleRow } from "../ui/dialog-chrome"
 
 export type DialogStatusProps = {}
 
@@ -46,15 +46,8 @@ export function DialogStatus() {
   })
 
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
-      <box flexDirection="row" justifyContent="space-between">
-        <text fg={theme.text} attributes={TextAttributes.BOLD}>
-          Status
-        </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          [esc] close
-        </text>
-      </box>
+    <DialogColumn padBottom>
+      <DialogTitleRow title="Status" onClose={() => dialog.clear()} />
       <Show when={Object.keys(sync.data.mcp).length > 0} fallback={<text fg={theme.text}>No MCP Servers</text>}>
         <box>
           <text fg={theme.text}>{countLabel(Object.keys(sync.data.mcp).length, "MCP Server")}</text>
@@ -168,6 +161,6 @@ export function DialogStatus() {
           </For>
         </box>
       </Show>
-    </box>
+    </DialogColumn>
   )
 }

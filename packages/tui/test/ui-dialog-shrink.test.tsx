@@ -4,9 +4,10 @@
  *
  * The scrollbox's internal content node forces minHeight "100%", so a bare
  * maxHeight scrollbox renders at the cap (≈75% of the terminal) even for a
- * few rows. Dialog measures the real content through a wrapper ref and drives
- * the scrollbox height from it; long content still caps at the viewport bound
- * and scrolls (covered by o3-clip-repro.test.tsx).
+ * few rows. Dialog overrides that default through `contentOptions`
+ * (`minHeight: 0`), so the scrollbox sizes to its children while `maxHeight`
+ * still caps; long content caps at the viewport bound and scrolls (covered by
+ * o3-clip-repro.test.tsx).
  */
 /** @jsxImportSource @opentui/solid */
 import { expect, test } from "bun:test"
@@ -61,7 +62,9 @@ async function renderShortDialog() {
     await app.renderOnce()
   }
   await app.waitForFrame((frame) => frame.includes("Permissions status"))
-  // Let the dialog's post-mount measurements (setTimeout 0/60ms + poll) land.
+  // Let layout settle before reading geometry. Sizing is now a pure layout
+  // consequence (no post-mount measurement pass), so this is convergence
+  // cover, not a wait for a timer.
   for (let attempt = 0; attempt < 5; attempt++) {
     await Bun.sleep(30)
     await app.renderOnce()

@@ -49,6 +49,14 @@ export const Glyph = {
   meter: "▰",
   well: "▣",
   mic: "🎙",
+  /**
+   * Checkbox pair. Deliberately ASCII brackets rather than a symbol pair: a
+   * terminal checkbox is read at a glance, and `[x]`/`[ ]` is unambiguous in
+   * every font, at every size, in every color mode. The two must stay the same
+   * width so toggling never shifts the label beside them.
+   */
+  checked: "[x]",
+  unchecked: "[ ]",
 } as const
 
 /** Agent sigil glyphs by mode. */
@@ -291,12 +299,38 @@ export const PLAIN_PROMPT_FRAME: { normal: string; shell: string } = {
 
 export let PROMPT_FRAME: { normal: string; shell: string } = DEFAULT_PROMPT_FRAME
 
+/**
+ * Dialog-family copy — shared by every dialog scaffold (`ui/dialog-chrome.tsx`).
+ *
+ * Deliberately **identical in both voices**. The interface voice rule is quiet
+ * by default with arcane flavor reserved for brand and idle moments; a button
+ * someone has to press to approve, reject or delete something is neither. These
+ * live here rather than as literals so the family cannot drift, and so the
+ * verbs can be retuned in one place.
+ */
+export const DIALOG_COPY = {
+  close: "Close",
+  cancel: "Cancel",
+  dismiss: "Dismiss",
+  confirm: "Confirm",
+  ok: "OK",
+  dontShowAgain: "Don't Show Again",
+  enterText: "Enter text…",
+  enterFilename: "Enter filename…",
+  exportTitle: "Export Options",
+  filenameLabel: "Filename:",
+  working: "Working…",
+  processing: "Processing…",
+  submit: "submit",
+} as const
+
 /** Miscellaneous copy strings (toasts, notifications, empty states). */
 const DEFAULT_COPY = {
   inscribedToClipboard: "Inscribed to clipboard",
   riteComplete: "The rite is complete",
   noEchoesFound: "No echoes found",
   chronicleEmpty: "The chronicle is empty — send a prompt from Home to begin.",
+  dialog: DIALOG_COPY,
 } as const
 
 export const PLAIN_COPY = {
@@ -304,6 +338,7 @@ export const PLAIN_COPY = {
   riteComplete: "Done",
   noEchoesFound: "No matches found",
   chronicleEmpty: "No sessions yet — send a prompt from Home to start one.",
+  dialog: DIALOG_COPY,
 } as const
 
 export let COPY: typeof DEFAULT_COPY | typeof PLAIN_COPY = DEFAULT_COPY

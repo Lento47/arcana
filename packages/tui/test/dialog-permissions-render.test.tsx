@@ -171,7 +171,7 @@ test("DialogPermissions renders authorization, waiting, and activity sections", 
     expect(frame).toContain("bash · git push")
     expect(frame).toContain("approval a3 · request abcdef12 · ")
     expect(frame).toContain("· desktop")
-    expect(frame).toContain("[↻ resend]")
+    expect(frame).toContain("Resend")
     expect(frame).toContain("Arcana Desktop decides the desktop-routed gates")
     expect(frame).toContain("Recent approvals")
     expect(frame).toContain("consumed a1 · request abcdef12")

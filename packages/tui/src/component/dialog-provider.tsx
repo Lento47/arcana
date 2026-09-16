@@ -7,12 +7,12 @@ import { useSDK } from "../context/sdk"
 import { DialogPrompt } from "../ui/dialog-prompt"
 import { Link } from "../ui/link"
 import { useTheme } from "../context/theme"
-import { TextAttributes } from "@opentui/core"
 import type { ProviderAuthAuthorization, ProviderAuthMethod } from "@arcana/sdk/v2"
 import { DialogModel } from "./dialog-model"
 import { useToast } from "../ui/toast"
 import { isConsoleManagedProvider } from "../util/provider-origin"
 import { useConnected } from "./use-connected"
+import { DialogColumn, DialogTitleRow } from "../ui/dialog-chrome"
 import { BRAND_TIERS } from "../branding"
 import { useHasProxyKey } from "./use-has-proxy-key"
 import { errorMessage } from "../util/error"
@@ -406,15 +406,8 @@ function AutoMethod(props: AutoMethodProps) {
   })
 
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
-      <box flexDirection="row" justifyContent="space-between">
-        <text attributes={TextAttributes.BOLD} fg={theme.text}>
-          {props.title}
-        </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          [esc] close
-        </text>
-      </box>
+    <DialogColumn padBottom>
+      <DialogTitleRow title={props.title} onClose={() => dialog.clear()} />
       <box gap={1}>
         <Link href={props.authorization.url} fg={theme.primary} />
         <text fg={theme.textMuted}>{props.authorization.instructions}</text>
@@ -423,7 +416,7 @@ function AutoMethod(props: AutoMethodProps) {
       <text fg={theme.text}>
         c <span style={{ fg: theme.textMuted }}>copy</span>
       </text>
-    </box>
+    </DialogColumn>
   )
 }
 

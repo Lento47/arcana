@@ -176,6 +176,9 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
             dialog,
             "Share Session",
             "Share this session publicly? Anyone with the link can read the transcript.",
+            "Cancel",
+            false,
+            "Share",
           )
           if (ok !== true) return
           kv.set("share_consent", true)
@@ -305,6 +308,9 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
           dialog,
           "Unshare Session",
           "Remove the public link for this session? Anyone with the link will lose access.",
+          "Cancel",
+          true,
+          "Unshare",
         )
         if (ok !== true) return
         await sdk.client.session

@@ -21,6 +21,7 @@ import {
   projectPermissionsStatus,
   waitingHint,
 } from "../util/permissions-status"
+import { DialogColumn, DialogTitleRow } from "../ui/dialog-chrome"
 
 /**
  * Permissions status — the operator's view of what the engine is asking and
@@ -126,7 +127,7 @@ export function DialogPermissions() {
     projectPermissionsStatus({ approvals: approvals(), requests: requests(), governance: governance() }),
   )
 
-  // Per-approval re-send feedback: idle rows show the [↻ resend] link; a
+  // Per-approval re-send feedback: idle rows show the Resend action; a
   // clicked row shows its outcome (re-sent / desktop offline / reason). The
   // engine re-send is idempotent, so rapid clicks never duplicate a request.
   const [resendState, setResendState] = createStore<
@@ -157,15 +158,8 @@ export function DialogPermissions() {
   }
 
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
-      <box flexDirection="row" justifyContent="space-between">
-        <text fg={theme.text} attributes={TextAttributes.BOLD}>
-          Permissions status
-        </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          [esc] close
-        </text>
-      </box>
+    <DialogColumn padBottom>
+      <DialogTitleRow title="Permissions status" onClose={() => dialog.clear()} />
 
       <text fg={theme.textMuted}>
         session {sessionID() ?? "—"} · governance {status().authorization?.traceHealth ?? "UNAVAILABLE"}
@@ -219,9 +213,13 @@ export function DialogPermissions() {
                 </text>
                 <Show when={sessionID()}>
                   {/* resendState[id] is read inside JSX so the row stays
-                      reactive: idle shows [↻ resend], clicked rows show the
+                      reactive: idle shows the action, clicked rows show the
                       outcome. The engine re-send is idempotent — repeated
-                      clicks never duplicate a request. */}
+                      clicks never duplicate a request.
+
+                      No `[key]` wrapper: this row is mouse-only, and the app's
+                      `[key] verb` shape means "press this key" — a bracket here
+                      would advertise a binding that does not exist. */}
                   <Show
                     when={resendState[approval.approvalId]}
                     fallback={
@@ -230,7 +228,7 @@ export function DialogPermissions() {
                         attributes={TextAttributes.UNDERLINE}
                         onMouseUp={() => void onResend(approval.approvalId)}
                       >
-                        [↻ resend]
+                        Resend
                       </text>
                     }
                   >
@@ -315,7 +313,7 @@ export function DialogPermissions() {
                       attributes={TextAttributes.UNDERLINE}
                       onMouseUp={() => void revokeRemembered(rule.id)}
                     >
-                      [revoke]
+                      Revoke
                     </text>
                   </box>
                 )}
@@ -348,6 +346,6 @@ export function DialogPermissions() {
       </Show>
 
       <text fg={theme.textMuted}>{waitingHint(status())}</text>
-    </box>
+    </DialogColumn>
   )
 }

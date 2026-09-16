@@ -4,6 +4,7 @@ import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import type { ApprovalSnapshotDetail } from "../../shell/command-spine/approval-http-bridge"
 import { useTheme } from "../../context/theme"
 import { useDialog } from "../../ui/dialog"
+import { DialogCloseHint } from "../../ui/dialog-chrome"
 export type ApprovalSnapshotStatus = "loading" | "ready" | "missing" | "error" | undefined
 
 /**
@@ -68,7 +69,7 @@ export function ApprovalInspector(props: {
           {a().state} · version {a().version}
         </text>
         <box flexGrow={1} />
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>[esc] close</text>
+        <DialogCloseHint onClose={() => dialog.clear()} />
       </box>
 
       <scrollbox

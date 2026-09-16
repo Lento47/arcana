@@ -4,6 +4,8 @@ import { useDialog } from "../ui/dialog"
 import { createStore } from "solid-js/store"
 import { For, Show, createSignal } from "solid-js"
 import { useBindings } from "../keymap"
+import { DialogColumn, DialogTitleRow } from "../ui/dialog-chrome"
+import { COPY } from "../branding"
 
 type RecoveryOptionID = "delete" | "force-delete" | "restore" | "dismiss"
 
@@ -119,15 +121,8 @@ export function DialogSessionDeleteFailed(props: {
   }))
 
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1}>
-      <box flexDirection="row" justifyContent="space-between">
-        <text attributes={TextAttributes.BOLD} fg={theme.text}>
-          Failed to Delete Session
-        </text>
-        <text fg={theme.textMuted} onMouseUp={dismiss}>
-          [esc] dismiss
-        </text>
-      </box>
+    <DialogColumn>
+      <DialogTitleRow title="Failed to Delete Session" onClose={dismiss} closeLabel={COPY.dialog.dismiss} />
       <text fg={theme.textMuted} wrapMode="word">
         {`The session "${props.session}" could not be deleted because the workspace "${props.workspace}" is not available.`}
       </text>
@@ -178,6 +173,6 @@ export function DialogSessionDeleteFailed(props: {
           )}
         </For>
       </box>
-    </box>
+    </DialogColumn>
   )
 }

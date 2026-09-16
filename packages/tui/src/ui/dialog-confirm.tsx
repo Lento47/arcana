@@ -1,9 +1,9 @@
-import { TextAttributes } from "@opentui/core"
 import { useTheme } from "../context/theme"
 import { useDialog, type DialogContext } from "./dialog"
 import { createStore } from "solid-js/store"
-import { For } from "solid-js"
-import { Locale } from "../util/locale"
+import { Space } from "./chrome"
+import { DialogButton, DialogColumn, DialogFooter, DialogTitleRow } from "./dialog-chrome"
+import { COPY } from "../branding"
 import { useBindings } from "../keymap"
 
 export type DialogConfirmProps = {
@@ -11,7 +11,17 @@ export type DialogConfirmProps = {
   message: string
   onConfirm?: () => void
   onCancel?: () => void
+  /** Overrides the cancel button's label (the action-specific verb). */
   label?: string
+  /** Overrides the confirm button's label. */
+  confirmLabel?: string
+  /**
+   * Marks the confirm as consequential: it fills with `theme.error` and stays
+   * error-colored while unfocused. Pair it with a verb that names the
+   * consequence ("Delete", "Discard") — a destructive confirm labelled
+   * "Confirm" would read like any other.
+   */
+  destructive?: boolean
 }
 
 export type DialogConfirmResult = boolean | undefined
@@ -23,17 +33,19 @@ export function DialogConfirm(props: DialogConfirmProps) {
     active: "confirm" as "confirm" | "cancel",
   })
 
+  const finish = (which: "confirm" | "cancel") => {
+    if (which === "confirm") props.onConfirm?.()
+    else props.onCancel?.()
+    dialog.clear()
+  }
+
   useBindings(() => ({
     bindings: [
       {
         key: "return",
         desc: "Confirm dialog selection",
         group: "Dialog",
-        cmd: () => {
-          if (store.active === "confirm") props.onConfirm?.()
-          if (store.active === "cancel") props.onCancel?.()
-          dialog.clear()
-        },
+        cmd: () => finish(store.active),
       },
       {
         key: "left",
@@ -53,46 +65,44 @@ export function DialogConfirm(props: DialogConfirmProps) {
       },
     ],
   }))
+
   return (
-    <box width="100%" minWidth={0} paddingLeft={2} paddingRight={2} gap={1}>
-      <box flexDirection="row" justifyContent="space-between" minWidth={0}>
-        <text attributes={TextAttributes.BOLD} fg={theme.text} flexShrink={1} overflow="hidden" wrapMode="none">
-          {props.title}
-        </text>
-        <text fg={theme.textMuted} flexShrink={0} onMouseUp={() => dialog.clear()}>
-          [esc] cancel
-        </text>
-      </box>
-      <box width="100%" minWidth={0} paddingBottom={1}>
+    <DialogColumn>
+      <DialogTitleRow
+        title={props.title}
+        onClose={() => dialog.clear()}
+        closeLabel={COPY.dialog.cancel}
+      />
+      <box width="100%" minWidth={0} paddingBottom={Space.padY}>
         <text fg={theme.textMuted} width="100%" minWidth={0} wrapMode="word">
           {props.message}
         </text>
       </box>
-      <box flexDirection="row" justifyContent="flex-end" paddingBottom={1}>
-        <For each={["cancel", "confirm"] as const}>
-          {(key) => (
-            <box
-              paddingLeft={1}
-              paddingRight={1}
-              backgroundColor={key === store.active ? theme.primary : undefined}
-              onMouseUp={() => {
-                if (key === "confirm") props.onConfirm?.()
-                if (key === "cancel") props.onCancel?.()
-                dialog.clear()
-              }}
-            >
-              <text fg={key === store.active ? theme.selectedListItemText : theme.textMuted}>
-                {Locale.titlecase(key === "cancel" ? (props.label ?? key) : key)}
-              </text>
-            </box>
-          )}
-        </For>
-      </box>
-    </box>
+      <DialogFooter>
+        <DialogButton
+          label={props.label ?? COPY.dialog.cancel}
+          active={store.active === "cancel"}
+          onPress={() => finish("cancel")}
+        />
+        <DialogButton
+          label={props.confirmLabel ?? COPY.dialog.confirm}
+          active={store.active === "confirm"}
+          destructive={props.destructive}
+          onPress={() => finish("confirm")}
+        />
+      </DialogFooter>
+    </DialogColumn>
   )
 }
 
-DialogConfirm.show = (dialog: DialogContext, title: string, message: string, label?: string) => {
+DialogConfirm.show = (
+  dialog: DialogContext,
+  title: string,
+  message: string,
+  label?: string,
+  destructive?: boolean,
+  confirmLabel?: string,
+) => {
   return new Promise<DialogConfirmResult>((resolve) => {
     dialog.replace(
       () => (
@@ -102,6 +112,8 @@ DialogConfirm.show = (dialog: DialogContext, title: string, message: string, lab
           onConfirm={() => resolve(true)}
           onCancel={() => resolve(false)}
           label={label}
+          destructive={destructive}
+          confirmLabel={confirmLabel}
         />
       ),
       () => resolve(undefined),

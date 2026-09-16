@@ -15,6 +15,7 @@ import { stripPromptPartIDs as strip } from "../../prompt/part"
 import { Glyph } from "../../branding"
 import { TextAttributes } from "@opentui/core"
 import { promptTextFromPart } from "../../arcana/task"
+import { DialogCloseHint } from "../../ui/dialog-chrome"
 
 type Act = {
   key: string
@@ -62,7 +63,9 @@ export function DialogMessage(props: {
           dialog,
           "Unravel Session",
           "Rewind the session to before this message? Everything after it will be removed — this cannot be undone.",
-          "keep session",
+          "Keep Session",
+          true,
+          "Unravel",
         )
         if (confirmed !== true) return
         void sdk.client.session
@@ -221,7 +224,7 @@ export function DialogMessage(props: {
         <text fg={theme.primary} attributes={TextAttributes.BOLD} flexShrink={0}>Acts</text>
         <text fg={theme.textMuted} flexShrink={0}>scry…_</text>
         <box flexGrow={1} />
-        <text fg={theme.textMuted} flexShrink={0} onMouseUp={clear}>[esc] close</text>
+        <DialogCloseHint onClose={clear} />
       </box>
 
       {/* Body: compact rail timeline */}

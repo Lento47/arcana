@@ -13,6 +13,7 @@ import { COPY, Glyph } from "../branding"
 import { errorMessage } from "../util/error"
 import { Locale } from "../util/locale"
 import { isRecord } from "../util/record"
+import { DialogColumn, DialogTitleRow } from "../ui/dialog-chrome"
 
 type PollStatus = "pending" | "slow_down" | "expired" | "denied" | "success"
 
@@ -265,15 +266,8 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
   void start()
 
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
-      <box flexDirection="row" justifyContent="space-between">
-        <text attributes={TextAttributes.BOLD} fg={theme.text}>
-          {Glyph.sigil} Sign in with arcana
-        </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          [esc] close
-        </text>
-      </box>
+    <DialogColumn padBottom>
+      <DialogTitleRow title={`${Glyph.sigil} Sign in with arcana`} onClose={() => dialog.clear()} />
       <Show when={phase() === "starting"}>
         <SigilSpinner color={theme.textMuted}>Generating sign-in code…</SigilSpinner>
       </Show>
@@ -317,6 +311,6 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
           <text fg={theme.textMuted}>Press esc to close and try again.</text>
         </box>
       </Show>
-    </box>
+    </DialogColumn>
   )
 }
