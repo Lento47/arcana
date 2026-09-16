@@ -1,6 +1,7 @@
 /** @jsxImportSource @opentui/solid */
 import { RGBA, TextAttributes, type KeyEvent, type Renderable } from "@opentui/core"
-import { useTerminalDimensions } from "@opentui/solid"
+import { useRenderer } from "@opentui/solid"
+import { useTerminalSize } from "../../util/terminal-size"
 import { displayWidth } from "../../util/locale"
 import { Size, Space } from "../../ui/chrome"
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
@@ -206,7 +207,7 @@ function WhichKeyPanel(props: {
   pendingPreview: () => boolean
   pinned: () => boolean
 }) {
-  const dimensions = useTerminalDimensions()
+  const dimensions = useTerminalSize(useRenderer())
   const [offset, setOffset] = createSignal(0)
   const [activeGroup, setActiveGroup] = createSignal<string | undefined>()
   const pending = useKeymapSelector((keymap) => keymap.getPendingSequence())

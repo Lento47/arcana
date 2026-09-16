@@ -1,4 +1,4 @@
-import { render, TimeToFirstDraw, useRenderer, useTerminalDimensions } from "@opentui/solid"
+import { render, TimeToFirstDraw, useRenderer } from "@opentui/solid"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 // Spinner registration (spinner-crash fix B): explicit + idempotent, imported
 // FIRST so it always evaluates before any component tree mounts. Bare
@@ -91,6 +91,7 @@ import { createTuiAttention } from "./attention"
 import * as TuiAudio from "./audio"
 import { win32DisableProcessedInput, win32EnableUtf8Console, win32FlushInputBuffer } from "./terminal-win32"
 import { destroyRenderer } from "./util/renderer"
+import { useTerminalSize } from "./util/terminal-size"
 import { cliErrorMessage, errorFormat } from "./util/error"
 import { resolveInteractiveStdin } from "./util/stdin"
 
@@ -300,8 +301,8 @@ export function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: T
   const startup = useTuiStartup()
   const tuiConfig = useTuiConfig()
   const route = useRoute()
-  const dimensions = useTerminalDimensions()
   const renderer = useRenderer()
+  const dimensions = useTerminalSize(renderer)
   const dialog = useDialog()
   const local = useLocal()
   const kv = useKV()

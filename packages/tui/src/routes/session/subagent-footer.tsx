@@ -1,6 +1,5 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js"
+import { createMemo, createSignal, For, Show } from "solid-js"
 import { useRenderer } from "@opentui/solid"
-import { CliRenderEvents } from "@opentui/core"
 import { useRouteData } from "../../context/route"
 import { useSync } from "../../context/sync"
 import { useTheme } from "../../context/theme"
@@ -8,6 +7,7 @@ import type { AssistantMessage } from "@arcana/sdk/v2"
 import { Locale } from "../../util/locale"
 import { contextUsageFor, hasContextUsage } from "../../util/context-pressure"
 import { fitSegments, rendererWidth } from "../../util/geometry"
+import { useTerminalSize } from "../../util/terminal-size"
 import { useCommandShortcut, useOpencodeKeymap } from "../../keymap"
 
 /**
@@ -134,15 +134,13 @@ export function SubagentFooter() {
    * wider terminal had room for. `rendererWidth` returns undefined until the
    * renderer has been laid out, which is why every consumer below treats an
    * unmeasured width as "keep everything" instead of "keep nothing".
+   *
+   * The watch is the app's shared one, so this footer adds no subscription of
+   * its own to a renderer that already carries one per surface.
    */
   const renderer = useRenderer()
-  const [termWidth, setTermWidth] = createSignal(rendererWidth(renderer))
-  createEffect(() => {
-    const update = () => setTermWidth(rendererWidth(renderer))
-    update()
-    renderer.on(CliRenderEvents.RESIZE, update)
-    onCleanup(() => renderer.off(CliRenderEvents.RESIZE, update))
-  })
+  const size = useTerminalSize(renderer)
+  const termWidth = () => rendererWidth({ width: size().width })
 
   /** Two columns of padding around a label, plus the space and the shortcut. */
   const chipWidth = (label: string, shortcut: string) =>

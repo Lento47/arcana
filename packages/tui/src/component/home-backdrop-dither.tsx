@@ -1,5 +1,6 @@
 import { RGBA, StyledText, type TextChunk, type TextRenderable } from "@opentui/core"
-import { useTerminalDimensions } from "@opentui/solid"
+import { useRenderer } from "@opentui/solid"
+import { useTerminalSize } from "../util/terminal-size"
 import { createEffect } from "solid-js"
 import { useTheme } from "../context/theme"
 
@@ -1305,7 +1306,7 @@ export function buildHomeDitherChunks(
 
 export function HomeBackdropDither(props: HomeBackdropDitherProps = {}) {
   const theme = useTheme().theme
-  const dimensions = useTerminalDimensions()
+  const dimensions = useTerminalSize(useRenderer())
   const seed = normalizeSeed(props.seed ?? createHomeBackdropSeed())
   const scene = props.scene ?? selectHomeScene(seed).id
   // Keep the raster monochrome, but move it toward the theme's success/phosphor

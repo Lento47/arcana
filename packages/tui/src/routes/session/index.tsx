@@ -52,7 +52,8 @@ import type {
 import { useLocal } from "../../context/local"
 import { Locale } from "../../util/locale"
 import { webSearchProviderLabel } from "../../util/tool-display"
-import { useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
+import { useRenderer, type JSX } from "@opentui/solid"
+import { useTerminalSize } from "../../util/terminal-size"
 import { useSDK, getLastSseEventMeta, SSE_SILENT_DEATH_MS } from "../../context/sdk"
 import { streamState } from "../../context/stream-state"
 import { useEditorContext } from "../../context/editor"
@@ -411,7 +412,7 @@ export function Session() {
   const visible = createMemo(() => permissions().length === 0 && questions().length === 0)
   const disabled = createMemo(() => permissions().length > 0 || questions().length > 0)
 
-  const dimensions = useTerminalDimensions()
+  const dimensions = useTerminalSize(useRenderer())
   const [sidebar, setSidebar] = kv.signal<"auto" | "hide">("sidebar", "auto")
   const [sidebarOpen, setSidebarOpen] = createSignal(false)
   const [conceal, setConceal] = createSignal(true)

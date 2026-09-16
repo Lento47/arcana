@@ -13,7 +13,8 @@ import { COPY, Glyph } from "../branding"
 import { isDeepEqual } from "remeda"
 import { batch, createEffect, createMemo, createSignal, For, Show, type JSX, on } from "solid-js"
 import { createStore } from "solid-js/store"
-import { useTerminalDimensions } from "@opentui/solid"
+import { useRenderer } from "@opentui/solid"
+import { useTerminalSize } from "../util/terminal-size"
 import * as fuzzysort from "fuzzysort"
 import { useDialog, type DialogContext } from "./dialog"
 import { Locale } from "../util/locale"
@@ -238,7 +239,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
     return rows
   })
 
-  const dimensions = useTerminalDimensions()
+  const dimensions = useTerminalSize(useRenderer())
   // The picker's *preferred* list height. Keep the picker body useful on short
   // terminals; the previous expression could hand Yoga a zero/negative
   // maxHeight, collapsing the dialog and making the filter/footer appear

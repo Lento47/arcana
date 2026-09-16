@@ -13,7 +13,7 @@ import {
 import { Lexicon, Glyph } from "../../branding"
 import { ShimmerText } from "../../component/shimmer-text"
 import { selectedForeground } from "../../context/theme"
-import { CliRenderEvents } from "@opentui/core"
+import { useTerminalSize } from "../../util/terminal-size"
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js"
 
 const id = "internal:statusbar"
@@ -239,18 +239,13 @@ function View(props: { api: TuiPluginApi }) {
    * The bar lays out against the renderer it was handed rather than a context
    * hook: a plugin is given the renderer, and `useTerminalDimensions()` is
    * undefined outside a live terminal, which would leave the budget unmeasured.
-   * The subscription is what keeps it honest across a resize — a bar still laid
-   * out for the old width either clips or wastes the new one.
+   * Watching it is what keeps the budget honest across a resize — a bar still
+   * laid out for the old width either clips or wastes the new one — and the
+   * shared source means the bar does not open a subscription of its own for it.
    */
-  const [termWidth, setTermWidth] = createSignal(statusbarWidth(api.renderer))
-  createEffect(() => {
-    const renderer = api.renderer
-    if (!renderer) return
-    const update = () => setTermWidth(statusbarWidth(renderer))
-    update()
-    renderer.on(CliRenderEvents.RESIZE, update)
-    onCleanup(() => renderer.off(CliRenderEvents.RESIZE, update))
-  })
+  const size = useTerminalSize(api.renderer)
+  /** `undefined` until laid out: the source reports an unmeasured renderer as 0. */
+  const termWidth = () => statusbarWidth({ width: size().width })
   const compact = () => isCompactWidth(termWidth())
 
   // C4: the chip is flush with the bar's left edge when it is the first visible

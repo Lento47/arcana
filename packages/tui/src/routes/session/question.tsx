@@ -1,5 +1,6 @@
 import { type ScrollBoxRenderable, type TextareaRenderable } from "@opentui/core"
-import { useRenderer, useTerminalDimensions } from "@opentui/solid"
+import { useRenderer } from "@opentui/solid"
+import { useTerminalSize } from "../../util/terminal-size"
 import type { QuestionAnswer, QuestionRequest } from "@arcana/sdk/v2"
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { useTuiConfig } from "../../config"
@@ -23,7 +24,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
   const sync = useSync()
   const { theme } = useTheme()
   const renderer = useRenderer()
-  const dimensions = useTerminalDimensions()
+  const dimensions = useTerminalSize(useRenderer())
   const tuiConfig = useTuiConfig()
   const modeStack = useOpencodeModeStack()
   const toast = useToast()

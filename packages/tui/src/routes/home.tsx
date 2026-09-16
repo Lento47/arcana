@@ -11,7 +11,8 @@ import { useLocal } from "../context/local"
 import { useKV } from "../context/kv.tsx"
 import { usePluginRuntime } from "../plugin/runtime"
 import { useEditorContext } from "../context/editor"
-import { useTerminalDimensions } from "@opentui/solid"
+import { useRenderer } from "@opentui/solid"
+import { useTerminalSize } from "../util/terminal-size"
 import { useTuiConfig } from "../config"
 import { useTheme } from "../context/theme"
 import { WORDMARK_TAGLINE, PLACEHOLDER, IDLE_PHRASES } from "../branding"
@@ -31,7 +32,10 @@ export function Home() {
   const args = useArgs()
   const local = useLocal()
   const editor = useEditorContext()
-  const dimensions = useTerminalDimensions()
+  // Watched through the shared source, not `useTerminalDimensions`: every
+  // surface that watches the terminal subscribes to the same renderer event,
+  // and the vendor hook adds a listener per call site.
+  const dimensions = useTerminalSize(useRenderer())
   const tuiConfig = useTuiConfig()
   const promptMaxWidth = createMemo(() => {
     const configured = tuiConfig.prompt?.max_width

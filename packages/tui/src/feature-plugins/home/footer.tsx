@@ -1,13 +1,13 @@
 import type { TuiPlugin, TuiPluginApi } from "@arcana/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
-import { createEffect, createMemo, createSignal, Match, onCleanup, Show, Switch } from "solid-js"
+import { createMemo, Match, Show, Switch } from "solid-js"
 import { abbreviateHome, directoryLabel } from "../../runtime"
 import { useTuiPaths } from "../../context/runtime"
 import { useHomeSessionDestination } from "../../routes/home/session-destination"
 import { Glyph } from "../../branding"
 import { Locale } from "../../util/locale"
 import { footerDirectoryWidth, rendererWidth } from "../../util/geometry"
-import { CliRenderEvents } from "@opentui/core"
+import { useTerminalSize } from "../../util/terminal-size"
 
 const id = "internal:home-footer"
 
@@ -108,21 +108,15 @@ function View(props: { api: TuiPluginApi }) {
    * The row lays out against the renderer it was handed rather than a context
    * hook: a plugin is given the renderer, and `useTerminalDimensions()` is
    * undefined outside a live terminal, which would leave the budget unmeasured.
-   * The subscription keeps it honest across a resize.
+   * Watching it keeps the budget honest across a resize, through the source the
+   * whole app shares rather than a subscription of this row's own.
    *
    * An unmeasured width is not an empty directory: arithmetic on it becomes
    * `NaN`, which `Locale.truncateLeft` answers with an empty string, so the
    * guard has to happen here, before the budget exists.
    */
-  const [termWidth, setTermWidth] = createSignal(rendererWidth(props.api.renderer))
-  createEffect(() => {
-    const renderer = props.api.renderer
-    if (!renderer) return
-    const update = () => setTermWidth(rendererWidth(renderer))
-    update()
-    renderer.on(CliRenderEvents.RESIZE, update)
-    onCleanup(() => renderer.off(CliRenderEvents.RESIZE, update))
-  })
+  const size = useTerminalSize(props.api.renderer)
+  const termWidth = () => rendererWidth({ width: size().width })
 
   /**
    * What the directory may not have: the sigil, the badge, the version, the

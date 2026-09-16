@@ -2,7 +2,8 @@ import { createContext, useContext, createSignal, type ParentProps, Show, Switch
 import { createStore } from "solid-js/store"
 import { useTheme } from "../context/theme"
 import { Glyph } from "../branding"
-import { useTerminalDimensions } from "@opentui/solid"
+import { useRenderer } from "@opentui/solid"
+import { useTerminalSize } from "../util/terminal-size"
 import { SplitBorder } from "./border"
 import { TextAttributes, type MouseEvent } from "@opentui/core"
 import { Scramble } from "../component/scramble"
@@ -25,7 +26,7 @@ let _nextId = 0
 export function Toast() {
   const toast = useToast()
   const { theme } = useTheme()
-  const dimensions = useTerminalDimensions()
+  const dimensions = useTerminalSize(useRenderer())
 
   return (
     <box

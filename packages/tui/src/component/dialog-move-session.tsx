@@ -1,4 +1,5 @@
-import { useTerminalDimensions } from "@opentui/solid"
+import { useRenderer } from "@opentui/solid"
+import { useTerminalSize } from "../util/terminal-size"
 import { TextAttributes } from "@opentui/core"
 import { createMemo, createResource, createSignal, onMount, Show } from "solid-js"
 import path from "path"
@@ -35,7 +36,7 @@ type DialogMoveSessionProps = {
 export function DialogMoveSession(props: DialogMoveSessionProps) {
   const dialog = useDialog()
   const sdk = useSDK()
-  const dimensions = useTerminalDimensions()
+  const dimensions = useTerminalSize(useRenderer())
   const { theme } = useTheme()
   const sync = useSync()
   const projectContext = useProject()

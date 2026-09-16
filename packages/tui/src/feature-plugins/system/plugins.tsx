@@ -1,6 +1,7 @@
 import type { TuiPlugin, TuiPluginApi, TuiPluginStatus } from "@arcana/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
-import { useTerminalDimensions } from "@opentui/solid"
+import { useRenderer } from "@opentui/solid"
+import { useTerminalSize } from "../../util/terminal-size"
 import { fileURLToPath } from "url"
 import { DialogSelect, type DialogSelectOption } from "../../ui/dialog-select"
 import { Show, createEffect, createMemo, createSignal } from "solid-js"
@@ -149,7 +150,7 @@ function showInstall(api: TuiPluginApi) {
 }
 
 function View(props: { api: TuiPluginApi }) {
-  const size = useTerminalDimensions()
+  const size = useTerminalSize(useRenderer())
   const [list, setList] = createSignal(props.api.plugins.list())
   const [cur, setCur] = createSignal<string | undefined>()
   const [lock, setLock] = createSignal(false)

@@ -1,7 +1,8 @@
 import { createStore } from "solid-js/store"
 import { dirname } from "node:path"
 import { createMemo, For, Match, onCleanup, Show, Switch } from "solid-js"
-import { Portal, useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
+import { Portal, useRenderer, type JSX } from "@opentui/solid"
+import { useTerminalSize } from "../../util/terminal-size"
 import type { RGBA, TextareaRenderable } from "@opentui/core"
 import { useTheme, selectedForeground } from "../../context/theme"
 import type { PermissionRequest } from "@arcana/sdk/v2"
@@ -96,7 +97,7 @@ function EditBody(props: { request: PermissionRequest }) {
   const theme = themeState.theme
   const syntax = themeState.syntax
   const config = useTuiConfig()
-  const dimensions = useTerminalDimensions()
+  const dimensions = useTerminalSize(useRenderer())
 
   const filepath = createMemo(() => {
     const value = props.request.metadata?.filepath
@@ -697,7 +698,7 @@ function GateFrame(props: {
   color?: RGBA
 }) {
   const { theme } = useTheme()
-  const dimensions = useTerminalDimensions()
+  const dimensions = useTerminalSize(useRenderer())
   // Hysteresis (audit S4): shared tracked-prev hook — replaces the inline
   // _prevLayoutP holder + `as any` (same dead-zone behavior, typed).
   const layout = useSpineLayout(() => dimensions().width)
@@ -764,7 +765,7 @@ function RejectPrompt(props: { busy?: boolean; onConfirm: (message: string) => v
   let input: TextareaRenderable
   const { theme } = useTheme()
   const tuiConfig = useTuiConfig()
-  const dimensions = useTerminalDimensions()
+  const dimensions = useTerminalSize(useRenderer())
   const narrow = createMemo(() => dimensions().width < 80)
   useBindings(() => ({
     mode: ARCANA_BASE_MODE,
@@ -878,7 +879,7 @@ function Prompt<const T extends Record<string, string>>(props: {
 }) {
   const { theme } = useTheme()
   const tuiConfig = useTuiConfig()
-  const dimensions = useTerminalDimensions()
+  const dimensions = useTerminalSize(useRenderer())
   const keys = Object.keys(props.options) as Extract<keyof T, string>[]
   const [store, setStore] = createStore({
     selected: keys[0],

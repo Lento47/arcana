@@ -1,5 +1,6 @@
 import { RGBA, TextAttributes } from "@opentui/core"
-import { useKeyboard, useTerminalDimensions } from "@opentui/solid"
+import { useKeyboard, useRenderer } from "@opentui/solid"
+import { useTerminalSize } from "../util/terminal-size"
 import { createSignal, useContext } from "solid-js"
 import { getScrollAcceleration } from "../util/scroll"
 import { useClipboard } from "../context/clipboard"
@@ -28,7 +29,7 @@ function emergencyPalette(theme: Theme | undefined, mode?: "dark" | "light") {
 }
 
 export function ErrorComponent(props: { error: Error; reset: () => void; mode?: "dark" | "light" }) {
-  const term = useTerminalDimensions()
+  const term = useTerminalSize(useRenderer())
   const exit = useExit()
   const clipboard = useClipboard()
   const themeContext = useContext(ThemeContext)
