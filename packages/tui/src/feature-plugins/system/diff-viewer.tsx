@@ -11,7 +11,8 @@ import {
 import { LANGUAGE_EXTENSIONS } from "../../util/filetype"
 import { useBindings, useCommandShortcut } from "../../keymap"
 import { useTheme } from "../../context/theme"
-import { useTerminalDimensions } from "@opentui/solid"
+import { useRenderer } from "@opentui/solid"
+import { useTerminalSize } from "../../util/terminal-size"
 import path from "path"
 import { createEffect, createMemo, createResource, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js"
 import { DiffViewerFileTree } from "./diff-viewer-file-tree"
@@ -19,6 +20,8 @@ import { Panel, PanelGroup, Separator } from "./diff-viewer-ui"
 import { DialogSelect } from "../../ui/dialog-select"
 import { getScrollAcceleration } from "../../util/scroll"
 import { diffFileTreeWidth, diffPatchPaneWidth, diffViewerFileTreeVisible } from "../../util/geometry"
+import { Locale } from "../../util/locale"
+import { elidePath } from "../../runtime"
 import {
   allExpandedFileTreeDirectories,
   buildFileTree,
@@ -135,7 +138,7 @@ export function sameDiffRequest(left: DiffRequest, right: DiffRequest): boolean 
 }
 
 function DiffViewer(props: { api: TuiPluginApi }) {
-  const dimensions = useTerminalDimensions()
+  const dimensions = useTerminalSize(useRenderer())
   const themeState = useTheme()
   const theme = () => props.api.theme.current
   const params = () =>
@@ -458,6 +461,40 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     if (singlePatch()) return 0
     return Math.max(0, visiblePatchFiles().length - renderedPatchFiles().length)
   })
+
+  /**
+   * Columns a file header's path may occupy: the pane, less the row's own
+   * chrome and the two counts pinned to its right.
+   *
+   * A file header is one row, and every patch row below it is positioned from
+   * its measured `y` — which is why a header that *grows* is not merely ugly
+   * here, it moves the target of every click-to-scroll into the file. The path
+   * is a single token with no spaces, so an overrun broke it mid-name
+   * (`packages/tui/src/feature-plugins/sys` / `tem/diff-viewer.tsx`) rather than
+   * clipping. It elides from the left instead: the filename is what tells two
+   * headers apart, the directories are what they have in common.
+   */
+  const fileHeaderPathWidth = createMemo(() => {
+    const pane = patchPaneWidth()
+    if (!Number.isFinite(pane)) return undefined
+    const counts = renderedPatchFiles().reduce(
+      (widest, entry) =>
+        Math.max(
+          widest,
+          Locale.displayWidth(`+${entry.file.additions}`) + Locale.displayWidth(`-${entry.file.deletions}`),
+        ),
+      0,
+    )
+    // paddingLeft 1 + paddingRight 1 + left border 1 + three gaps (path,
+    // spacer, and one between the two counts).
+    return Math.max(0, pane - 5 - counts)
+  })
+
+  /** The path, elided to the pane. An unmeasured pane passes it through and clips. */
+  const fileHeaderLabel = (file: string) => {
+    const budget = fileHeaderPathWidth()
+    return budget === undefined ? file : elidePath(file, budget)
+  }
 
   const ensureHighlightedPatchFile = () => {
     const fileIndex = currentPatchFileIndex() ?? activePatchFileIndex() ?? firstPatchFileIndex()
@@ -932,7 +969,14 @@ function DiffViewer(props: { api: TuiPluginApi }) {
                               border={patchLeftBorder()}
                               borderColor={patchBorderColor()}
                             >
-                              <text fg={reviewed() ? theme().textMuted : theme().text}>{entry.file.file}</text>
+                              <text
+                                flexShrink={1}
+                                minWidth={0}
+                                wrapMode="none"
+                                fg={reviewed() ? theme().textMuted : theme().text}
+                              >
+                                {fileHeaderLabel(entry.file.file)}
+                              </text>
                               <box flexGrow={1} />
                               <text fg={reviewed() ? theme().textMuted : theme().diffAdded}>
                                 +{entry.file.additions}

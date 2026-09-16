@@ -19,8 +19,16 @@ export function diffFileTreeWidth(termWidth: number): number {
   return Math.min(32, Math.max(20, Math.floor(term * 0.26)))
 }
 
+/**
+ * An unmeasurable terminal is not a wide one. `Math.max(1, NaN)` is `NaN`, so a
+ * terminal size that has not resolved — which is its state outside a live
+ * terminal, and under the test renderer — put a `NaN` width straight into the
+ * diff pane's layout instead of falling back to the one-column floor. An
+ * infinite terminal is not measured either, and takes the same floor.
+ */
 export function diffPatchPaneWidth(termWidth: number, showFileTree: boolean, fileTreeWidth = 32): number {
-  return Math.max(1, termWidth - (showFileTree ? Math.max(1, fileTreeWidth) + 1 : 0) - 4)
+  const term = Number.isFinite(termWidth) ? termWidth : 0
+  return Math.max(1, term - (showFileTree ? Math.max(1, fileTreeWidth) + 1 : 0) - 4)
 }
 
 /** Responsive tree policy: unified review gets 64 cols; split review gets 84. */

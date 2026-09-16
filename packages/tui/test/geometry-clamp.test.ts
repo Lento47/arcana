@@ -23,6 +23,18 @@ describe("geometry.diffPatchPaneWidth (B5)", () => {
     expect(diffPatchPaneWidth(4, false)).toBe(1)
   })
 
+  test("an unmeasured terminal falls back to the floor, not to NaN", () => {
+    // `Math.max(1, NaN)` is `NaN`, and this value goes straight into a pane's
+    // layout: the clamp has to be on the operand, not on the result.
+    expect(diffPatchPaneWidth(Number.NaN, false)).toBe(1)
+    expect(diffPatchPaneWidth(Number.NaN, true)).toBe(1)
+    // An infinite terminal is no more measured than a `NaN` one: each readout
+    // clamps it rather than propagating it, and each answers with its own
+    // floor — the pane's is one column, the tree's is its 20-column minimum.
+    expect(diffPatchPaneWidth(Number.POSITIVE_INFINITY, false)).toBe(1)
+    expect(diffFileTreeWidth(Number.POSITIVE_INFINITY)).toBe(20)
+  })
+
   test("reserves 33 cols for the file tree + 4 border chrome", () => {
     expect(diffPatchPaneWidth(40, true)).toBe(3)
     expect(diffPatchPaneWidth(60, true)).toBe(23)
