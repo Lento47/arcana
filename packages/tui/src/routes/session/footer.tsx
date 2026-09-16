@@ -1,4 +1,5 @@
 import { createMemo, Match, onCleanup, onMount, Show, Switch } from "solid-js"
+import { Glyph } from "../../branding"
 import { useTheme } from "../../context/theme"
 import { useSync } from "../../context/sync"
 import { useDirectory } from "../../context/directory"
@@ -69,7 +70,7 @@ export function Footer() {
           <Match when={connected()}>
             <Show when={permissions().length > 0}>
               <text fg={theme.warning}>
-                <span style={{ fg: theme.warning }}>△</span> {permissions().length} Permission
+                {Glyph.attention} {permissions().length} Permission
                 {permissions().length > 1 ? "s" : ""}
               </text>
             </Show>

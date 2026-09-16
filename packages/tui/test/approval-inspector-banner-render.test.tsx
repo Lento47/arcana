@@ -21,6 +21,7 @@ import { testRender } from "@opentui/solid"
 import { createSignal, type Accessor } from "solid-js"
 import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import type { ApprovalSnapshotDetail } from "../src/shell/command-spine/approval-http-bridge"
+import { Glyph } from "../src/branding"
 import {
   ApprovalInspector,
   type ApprovalSnapshotStatus,
@@ -113,7 +114,7 @@ async function openInspector() {
   return { app, setStatus, setSnapshot, settle, frame: () => app.captureCharFrame() }
 }
 
-const UNAVAILABLE_HEADING = "△ SNAPSHOT UNAVAILABLE · FAIL-CLOSED"
+const UNAVAILABLE_HEADING = `${Glyph.attention} SNAPSHOT UNAVAILABLE · FAIL-CLOSED`
 const READY_HEADING = "REQUEST SNAPSHOT · verified ✓"
 const LOADING_HEADING = "REQUEST SNAPSHOT · loading…"
 

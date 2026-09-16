@@ -1,6 +1,7 @@
 import { createMemo, For, onMount } from "solid-js"
 import { TextAttributes } from "@opentui/core"
 import type { PermissionRequest } from "@arcana/sdk/v2"
+import { Glyph } from "../../branding"
 import { useTheme } from "../../context/theme"
 import { useDialog } from "../../ui/dialog"
 import { DialogCloseHint } from "../../ui/dialog-chrome"
@@ -41,7 +42,7 @@ export function PermissionInspector(props: { request: PermissionRequest }) {
         gap={1}
         height={1}
       >
-        <text fg={theme.warning} attributes={TextAttributes.BOLD}>△ PERMISSION INSPECTOR</text>
+        <text fg={theme.warning} attributes={TextAttributes.BOLD}>{Glyph.attention} PERMISSION INSPECTOR</text>
         <text fg={theme.textMuted}>{request().permission}</text>
         <box flexGrow={1} />
         <DialogCloseHint onClose={() => dialog.clear()} />

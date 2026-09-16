@@ -60,6 +60,17 @@ export const Glyph = {
   /** Card / toast close. Same mark everywhere something can be dismissed. */
   dismiss: "✕",
   /**
+   * "This one needs you." The mark on every surface that is waiting for an
+   * operator decision — a permission ACTION GATE, an approval, an inspector
+   * opened over one — and on the rows that count them. Drawn in `theme.warning`
+   * on a heading and in `theme.spineFix` on a gate's rail node, but it is one
+   * mark: the ink says how urgent, the triangle says who it is waiting on.
+   *
+   * Deliberately not `⚠`, which the app keeps for a statement about behaviour
+   * (a lock, a wholesale replacement) rather than a request for a decision.
+   */
+  attention: "△",
+  /**
    * Disclosure pair. `chevron` above means "next"; these mean "this row opens".
    * Kept apart so a retune of the navigation chevron cannot silently move the
    * expand/collapse affordance.

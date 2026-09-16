@@ -22,7 +22,7 @@ import {
   waitingHint,
 } from "../util/permissions-status"
 import { DialogColumn, DialogTitleRow } from "../ui/dialog-chrome"
-import { COPY } from "../branding"
+import { COPY, Glyph } from "../branding"
 
 /**
  * Permissions status — the operator's view of what the engine is asking and
@@ -264,7 +264,7 @@ export function DialogPermissions() {
               return (
                 <box flexDirection="row" gap={1}>
                   <text fg={hasGuard ? theme.error : theme.warning} flexShrink={0}>
-                    {hasGuard ? "⚑" : "△"}
+                    {hasGuard ? "⚑" : Glyph.attention}
                   </text>
                   <text fg={hasGuard ? theme.warning : theme.text} wrapMode="word">
                     {permissionRequestSummary(request)}

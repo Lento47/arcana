@@ -2,6 +2,7 @@ import { createMemo, For, onMount, Show, type Accessor } from "solid-js"
 import { RGBA, TextAttributes } from "@opentui/core"
 import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import type { ApprovalSnapshotDetail } from "../../shell/command-spine/approval-http-bridge"
+import { Glyph } from "../../branding"
 import { useTheme } from "../../context/theme"
 import { useDialog } from "../../ui/dialog"
 import { DialogCloseHint } from "../../ui/dialog-chrome"
@@ -37,7 +38,7 @@ export type ApprovalSnapshotStatus = "loading" | "ready" | "missing" | "error" |
  * `spine-approval-gate.tsx`): the inspector is what `v` opens from that gate, so
  * it has to name the condition the operator just read.
  */
-const SNAPSHOT_UNAVAILABLE = "△ SNAPSHOT UNAVAILABLE · FAIL-CLOSED"
+const SNAPSHOT_UNAVAILABLE = `${Glyph.attention} SNAPSHOT UNAVAILABLE · FAIL-CLOSED`
 
 /**
  * Why the snapshot is unavailable. The `missing` wording is the audit's
@@ -183,7 +184,7 @@ export function ApprovalInspector(props: {
         gap={1}
         height={1}
       >
-        <text fg={theme.warning} attributes={TextAttributes.BOLD}>△ APPROVAL INSPECTOR</text>
+        <text fg={theme.warning} attributes={TextAttributes.BOLD}>{Glyph.attention} APPROVAL INSPECTOR</text>
         <text fg={theme.textMuted}>
           {a().state} · version {a().version}
         </text>

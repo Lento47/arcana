@@ -4,6 +4,7 @@ import { createMemo, For, Match, onCleanup, Show, Switch } from "solid-js"
 import { Portal, useRenderer, type JSX } from "@opentui/solid"
 import { useTerminalSize } from "../../util/terminal-size"
 import type { RGBA, TextareaRenderable } from "@opentui/core"
+import { Glyph } from "../../branding"
 import { useTheme, selectedForeground } from "../../context/theme"
 import type { PermissionRequest } from "@arcana/sdk/v2"
 import { useSDK } from "../../context/sdk"
@@ -610,7 +611,7 @@ export function PermissionPrompt(props: {
             <box flexDirection="column" gap={0} minWidth={0}>
               <box flexDirection="row" gap={1} flexShrink={0} minWidth={0}>
                 <text fg={theme.warning} flexShrink={0}>
-                  {"△"}
+                  {Glyph.attention}
                 </text>
                 <text fg={theme.text} wrapMode="word">
                   {contractAdmission() ? "COMPLETION CONTRACT" : "ACTION GATE"}
@@ -694,6 +695,8 @@ function GateFrame(props: {
   body: JSX.Element
   footer?: JSX.Element
   expanded?: boolean
+  /** Mark on the gate's own rail node. Defaults to the attention triangle: a
+   * gate exists because something is waiting on the operator. */
   glyph?: string
   color?: RGBA
 }) {
@@ -703,7 +706,7 @@ function GateFrame(props: {
   // _prevLayoutP holder + `as any` (same dead-zone behavior, typed).
   const layout = useSpineLayout(() => dimensions().width)
   const metrics = createMemo(() => spineLeadMetrics(layout()))
-  const glyph = createMemo(() => props.glyph ?? "△")
+  const glyph = createMemo(() => props.glyph ?? Glyph.attention)
   const color = createMemo(() => props.color ?? theme.spineFix)
 
   function GateRow(row: { children: JSX.Element; rail?: "node" | "line"; marginTop?: number }) {
@@ -944,7 +947,7 @@ function Prompt<const T extends Record<string, string>>(props: {
     <box flexDirection="column" gap={0} minWidth={0}>
       <box flexDirection="row" gap={1} minWidth={0}>
         <text fg={theme.spineFix} flexShrink={0}>
-          {"△"}
+          {Glyph.attention}
         </text>
         <text fg={theme.spineFix} wrapMode="word">
           {props.title.toUpperCase()}
