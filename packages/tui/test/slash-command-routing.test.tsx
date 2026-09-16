@@ -108,4 +108,42 @@ describe("palette slash routing", () => {
     expect(slashBlock).toBeGreaterThanOrEqual(0)
     expect(agentGuard).toBeGreaterThan(slashBlock)
   })
+
+  test("session.new returns to Home instead of creating a session", async () => {
+    const navigations: unknown[] = []
+    let creates = 0
+
+    function Harness() {
+      const currentRenderer = useRenderer()
+      renderer = currentRenderer
+      const keymap = createDefaultOpenTuiKeymap(currentRenderer)
+      const deps = appDeps()
+      deps.route = {
+        data: { type: "session", sessionID: "ses_current" },
+        navigate: (route: unknown) => {
+          navigations.push(route)
+        },
+      }
+      deps.sdk = {
+        client: {
+          session: {
+            create: () => {
+              creates += 1
+              return Promise.resolve({ data: { id: "ses_created" } })
+            },
+          },
+        },
+      }
+      const appLayer = keymap.registerLayer({ commands: buildAppCommands(deps) as any })
+      expect(keymap.dispatchCommand("session.new")).toMatchObject({ ok: true })
+      onCleanup(appLayer)
+      return <box />
+    }
+
+    await testRender(() => <Harness />)
+    await Bun.sleep(0)
+
+    expect(navigations).toEqual([{ type: "home" }])
+    expect(creates).toBe(0)
+  })
 })

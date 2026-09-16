@@ -273,47 +273,13 @@ export function buildAppCommands(deps: {
       slashName: "new",
       slashAliases: ["clear"],
       run: () => {
-        const agent = deps.local.agent.current()
-        const model = deps.local.model.current()
-        if (!agent || !model || !model.providerID || !model.modelID) {
-          deps.dialog.clear()
-          queueMicrotask(() => deps.route.navigate({ type: "home" }))
-          return
-        }
-
-        const currentSession = deps.route.data.type === "session" ? deps.sync.session.get(deps.route.data.sessionID) : undefined
-        const directory = currentSession?.directory ?? ""
-        const workspaceID = currentSession?.workspaceID
-        const variant = deps.local.model.variant.current()
-
+        // Home is the new-session surface: the session is created (or consumed
+        // from prewarm) on the first send from there. This also keeps /new
+        // usable without a configured agent/model and avoids leaving an empty
+        // "Untitled" session behind when all the operator wanted was a fresh
+        // composer.
         deps.dialog.clear()
-
-        void deps.sdk.client.session
-          .create({
-            directory,
-            workspace: workspaceID,
-            agent: agent.name,
-            model: {
-              providerID: model.providerID,
-              id: model.modelID,
-              variant,
-            },
-          })
-          .then((res: any) => {
-            if (res.error) {
-              console.error("session.new create returned error:", res.error)
-              deps.route.navigate({ type: "home" })
-              return
-            }
-            deps.route.navigate({
-              type: "session",
-              sessionID: res.data.id,
-            })
-          })
-          .catch((error: unknown) => {
-            console.error("session.new create threw:", error)
-            deps.route.navigate({ type: "home" })
-          })
+        queueMicrotask(() => deps.route.navigate({ type: "home" }))
       },
     },
     {
