@@ -7,7 +7,7 @@
  * feed fractional padding to a whole-cell grid.
  */
 
-import { Size } from "../ui/chrome"
+import { Size, Space } from "../ui/chrome"
 
 /**
  * Diff patch pane width: terminal minus file-tree + border chrome.
@@ -64,6 +64,50 @@ export function footerDirectoryWidth(termWidth: number, reserved: number): numbe
   const width = Number.isFinite(termWidth) ? Math.floor(termWidth) : 0
   const taken = Number.isFinite(reserved) ? Math.max(0, Math.floor(reserved)) : 0
   return Math.max(0, width - taken)
+}
+
+/**
+ * The width left for content drawn inside `inset` columns of chrome, floored at
+ * one column.
+ *
+ * `useTerminalSize` reports an unmeasured renderer as `{ width: 0, height: 0 }`
+ * — that is its convention, not a zero-width terminal — so a bare
+ * `dimensions().width - inset` hands the layout a negative width on every frame
+ * before the first measurement. The toast card was `min(60, width - 6)` (-6 at
+ * an unmeasured terminal) and the session route's `ctx.width`, which every tool
+ * part measures its own budget against, was `width - 4`. Both arithmetic sites
+ * are also where a duplicated literal lived: the route's `4` was a second copy
+ * of the frame's own `2 * framePadding(density)`, so a density change moved the
+ * padding and left the content width behind.
+ *
+ * The floor is one column rather than zero because both consumers feed a budget
+ * that has to stay non-empty: a zero budget elides every value to nothing, which
+ * reads as a tool with no output rather than as a terminal with no room.
+ */
+export function paneWidth(termWidth: number, inset: number): number {
+  const term = Number.isFinite(termWidth) ? Math.max(0, Math.floor(termWidth)) : 0
+  const taken = Number.isFinite(inset) ? Math.max(0, Math.floor(inset)) : 0
+  return Math.max(1, term - taken)
+}
+
+/**
+ * The width a transcript entry may draw in: the terminal less the session
+ * frame's own horizontal chrome for the current density, floored at one column.
+ *
+ * This is the number the session route publishes as `ctx.width`, and the frame
+ * it describes is `paddingLeft={framePadding(density)}` /
+ * `paddingRight={framePadding(density)}` on the same route — so the two are one
+ * fact and have to be derived from one place. The route used to subtract a
+ * literal `4`, which is `2 * Space.frame("cozy")`: a copy of the default, so
+ * choosing compact density moved the padding and left the content width two
+ * columns behind it. It was also unclamped, and an unmeasured renderer reads as
+ * `{ width: 0 }` — `-4` reached every tool part's budget.
+ */
+export function sessionContentWidth(
+  termWidth: number,
+  density?: "compact" | "cozy" | "spacious",
+): number {
+  return paneWidth(termWidth, Space.frame(density) * 2)
 }
 
 /**

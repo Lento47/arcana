@@ -98,6 +98,10 @@ export const Size = {
   dialogMedium: 60,
   dialogLarge: 88,
   dialogXLarge: 116,
+  /** Widest a toast card may grow; a notification is read at a glance, not scanned. */
+  toastMaxWidth: 60,
+  /** Columns the toast card reserves for its right inset and left margin. */
+  toastInset: 6,
 } as const
 
 /**

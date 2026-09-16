@@ -5,6 +5,8 @@ import { Glyph } from "../branding"
 import { useRenderer } from "@opentui/solid"
 import { useTerminalSize } from "../util/terminal-size"
 import { SplitBorder } from "./border"
+import { Size } from "./chrome"
+import { paneWidth } from "../util/geometry"
 import { TextAttributes, type MouseEvent } from "@opentui/core"
 import { Scramble } from "../component/scramble"
 
@@ -59,7 +61,12 @@ export function Toast() {
           }
           return (
             <box
-              maxWidth={Math.min(60, dimensions().width - 6)}
+              // The card is a fixed-width column pinned to the top-right corner,
+              // so its budget has to be the terminal less the corner it hangs
+              // from and the margin that keeps it off the left edge — clamped,
+              // because `useTerminalSize` reports an unmeasured renderer as 0
+              // and `min(60, -6)` is a negative `maxWidth` handed to yoga.
+              maxWidth={Math.min(Size.toastMaxWidth, paneWidth(dimensions().width, Size.toastInset))}
               paddingLeft={2}
               paddingRight={1}
               paddingTop={1}

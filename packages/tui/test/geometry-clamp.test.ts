@@ -11,7 +11,9 @@ import {
   dialogWidth,
   footerDirectoryWidth,
   fitSegments,
+  paneWidth,
   rendererWidth,
+  sessionContentWidth,
 } from "../src/util/geometry"
 
 describe("geometry.diffPatchPaneWidth (B5)", () => {
@@ -95,6 +97,54 @@ describe("geometry.footerDirectoryWidth", () => {
     expect(footerDirectoryWidth(80, Number.NaN)).toBe(80)
     // Both sides floor to whole cells before subtracting.
     expect(footerDirectoryWidth(80.7, 34.2)).toBe(46)
+  })
+})
+
+describe("geometry.paneWidth", () => {
+  test("never hands the layout a negative width at an unmeasured terminal", () => {
+    // `useTerminalSize` reports an unmeasured renderer as `{width: 0}` — its own
+    // convention, not a zero-width terminal. The toast card was `min(60, 0 - 6)`
+    // and the session route's `ctx.width` was `0 - 4`.
+    expect(paneWidth(0, 6)).toBe(1)
+    expect(paneWidth(0, 4)).toBe(1)
+    expect(paneWidth(2, 6)).toBe(1)
+    expect(paneWidth(Number.NaN, 4)).toBe(1)
+    expect(paneWidth(Number.POSITIVE_INFINITY, 4)).toBe(1)
+    // An unmeasurable inset is not a large one: it costs nothing, so the pane
+    // keeps the whole terminal rather than collapsing to the floor.
+    expect(paneWidth(80, Number.NaN)).toBe(80)
+    expect(paneWidth(80, -4)).toBe(80)
+  })
+
+  test("subtracts whole cells, and only as many as it was asked for", () => {
+    expect(paneWidth(120, 4)).toBe(116)
+    expect(paneWidth(80, 6)).toBe(74)
+    // Fractional chrome is floored, not rounded: half a column of padding is a
+    // column of padding, and the budget has to stay inside the pane it is for.
+    expect(paneWidth(80.9, 4.2)).toBe(76)
+    expect(paneWidth(4, 0)).toBe(4)
+    expect(paneWidth(1, 0)).toBe(1)
+  })
+})
+
+describe("geometry.sessionContentWidth", () => {
+  test("subtracts the frame's own chrome, for the density the frame is drawn at", () => {
+    // The route draws the frame with `framePadding(density)` on each side, so the
+    // content budget is the terminal less twice that — one fact, one place. The
+    // literal this replaced was `4`, a copy of the cozy default.
+    expect(sessionContentWidth(120, "cozy")).toBe(116)
+    expect(sessionContentWidth(120)).toBe(116)
+    expect(sessionContentWidth(120, "compact")).toBe(118)
+    expect(sessionContentWidth(120, "spacious")).toBe(114)
+  })
+
+  test("floors at one column at an unmeasured terminal", () => {
+    // `useTerminalSize` reports an unmeasured renderer as `{ width: 0 }`, and
+    // this number is `ctx.width` — the budget every tool part measures against.
+    expect(sessionContentWidth(0, "cozy")).toBe(1)
+    expect(sessionContentWidth(0)).toBe(1)
+    expect(sessionContentWidth(Number.NaN, "spacious")).toBe(1)
+    expect(sessionContentWidth(4, "cozy")).toBe(1)
   })
 })
 

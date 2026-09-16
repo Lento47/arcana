@@ -21,7 +21,7 @@ import { recordTuiFeedback } from "../../feedback"
 import { Flag } from "@arcana/core/flag/flag"
 import type { AuthorityAffordance } from "@arcana/core/crypto/authority-affordance"
 import { isDefaultTitle, titleFromUserText } from "../../util/session"
-import { shouldFollowStream } from "../../util/geometry"
+import { sessionContentWidth, shouldFollowStream } from "../../util/geometry"
 import { framePadding, isDensity } from "../../shell/command-spine/spine-types"
 import { useRoute, useRouteData } from "../../context/route"
 import { Lexicon, Glyph, AgentSigil, VerbPool } from "../../branding"
@@ -436,7 +436,14 @@ export function Session() {
     return false
   })
   const showTimestamps = createMemo(() => timestamps() === "show")
-  const contentWidth = createMemo(() => dimensions().width - 4)
+  /**
+   * The width a transcript component may draw in: the terminal less this frame's
+   * own horizontal padding, which is what `ctx.width` has always meant. Derived
+   * (`sessionContentWidth`) rather than a literal, so it cannot drift from the
+   * `framePadding(density())` applied on the frame below, and clamped, so an
+   * unmeasured renderer cannot hand every tool part a negative budget.
+   */
+  const contentWidth = createMemo(() => sessionContentWidth(dimensions().width, density()))
   const providers = createMemo(() => Model.index(sync.data.provider))
 
   const scrollAcceleration = createMemo(() => getScrollAcceleration(tuiConfig))
