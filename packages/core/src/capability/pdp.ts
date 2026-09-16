@@ -980,6 +980,7 @@ export function evaluate(
   }
 
   let intentRequiresBinding = false
+  let intentUserApproved = false
   if (intentRisk !== "LOW" && context.intentBindings !== undefined) {
     const bindings = context.intentBindings
     const intentResult = evaluateIntentBindingLocal(request, bindings, intentRisk, context.now)
@@ -992,8 +993,11 @@ export function evaluate(
       reasons.push(...intentResult.reasons)
       intentRequiresBinding = true
     }
-    if (intentResult.decision === "ALLOW" && intentResult.reasons.length > 0) {
-      reasons.push(...intentResult.reasons)
+    if (intentResult.decision === "ALLOW") {
+      intentUserApproved = intentResult.userApproved
+      if (intentResult.reasons.length > 0) {
+        reasons.push(...intentResult.reasons)
+      }
     }
   }
 
@@ -1034,6 +1038,21 @@ export function evaluate(
   }
 
   if (approvalReasons.length > 0) {
+    // The exact operator approval for this request hash already answered the
+    // conditions that opened its gate. Re-gating here made an approved remote
+    // write loop back into a fresh approval until APPROVAL_RE_RUN_EXHAUSTED.
+    if (intentUserApproved) {
+      reasons.push(...approvalReasons)
+      return buildDecision(
+        request,
+        context,
+        "ALLOW",
+        reasons,
+        capResult.matchedCapabilityIds,
+        timestamp,
+      )
+    }
+
     // Check if an approved scope exists for this exact request (pure — no store calls)
     const requestHash = computeRequestHash(request)
 
@@ -1105,7 +1124,18 @@ function evaluateIntentBindingLocal(
   bindings: IntentBinding[],
   risk: RiskClass,
   now: string,
-): { decision: "ALLOW" | "DENY" | "REQUIRE_APPROVAL"; reasons: DecisionReason[] } {
+): {
+  decision: "ALLOW" | "DENY" | "REQUIRE_APPROVAL"
+  reasons: DecisionReason[]
+  /**
+   * An exact operator approval binding (EXPLICIT_APPROVAL + USER_APPROVAL) for
+   * this request hash is active. Step 6 approval conditions (remote content,
+   * workspace trust, risk) were the content of the gate the operator answered,
+   * so this durable artifact satisfies them as well — otherwise an approved
+   * remote write loops back into a fresh approval forever.
+   */
+  userApproved: boolean
+} {
   const reasons: DecisionReason[] = []
 
   // Check for remote content injection
@@ -1134,7 +1164,7 @@ function evaluateIntentBindingLocal(
         message: "Remote content requires explicit operator approval before this action",
         severity: "warning",
       })
-      return { decision: "REQUIRE_APPROVAL", reasons }
+      return { decision: "REQUIRE_APPROVAL", reasons, userApproved: false }
     }
   }
 
@@ -1165,9 +1195,16 @@ function evaluateIntentBindingLocal(
     return true
   })
 
+  // Exact operator approval for THIS request hash. `validBindings` already
+  // matched request hash, session, contract revision and criterion identity,
+  // so this is the durable artifact of the gate the operator answered.
+  const userApproved = validBindings.some(
+    (b) => b.justification === "EXPLICIT_APPROVAL" && b.createdBy === "USER_APPROVAL",
+  )
+
   // LOW risk: OPTIONAL — always allowed
   if (risk === "LOW") {
-    return { decision: "ALLOW", reasons }
+    return { decision: "ALLOW", reasons, userApproved }
   }
 
   // MODERATE: USER_REQUEST — needs any active binding
@@ -1178,14 +1215,14 @@ function evaluateIntentBindingLocal(
         message: "User request binding found",
         severity: "info",
       })
-      return { decision: "ALLOW", reasons }
+      return { decision: "ALLOW", reasons, userApproved }
     }
     reasons.push({
       code: "REQUIRE_APPROVAL_INTENT",
       message: "MODERATE action requires user request binding",
       severity: "warning",
     })
-    return { decision: "REQUIRE_APPROVAL", reasons }
+    return { decision: "REQUIRE_APPROVAL", reasons, userApproved }
   }
 
   // HIGH: CONTRACT_CRITERION — needs contract + criterion
@@ -1207,7 +1244,7 @@ function evaluateIntentBindingLocal(
         message: `Contract criterion binding found: ${valid.contractId}`,
         severity: "info",
       })
-      return { decision: "ALLOW", reasons }
+      return { decision: "ALLOW", reasons, userApproved }
     }
     if (request.contractId && request.contractRevision && requestedCriteria.length > 0) {
       reasons.push({
@@ -1215,14 +1252,14 @@ function evaluateIntentBindingLocal(
         message: "HIGH action requires exact operator approval for this active contract criterion",
         severity: "warning",
       })
-      return { decision: "REQUIRE_APPROVAL", reasons }
+      return { decision: "REQUIRE_APPROVAL", reasons, userApproved }
     }
     reasons.push({
       code: "DENY_NO_INTENT_BINDING",
       message: "HIGH action requires an active contract revision and criterion binding",
       severity: "critical",
     })
-    return { decision: "DENY", reasons }
+    return { decision: "DENY", reasons, userApproved }
   }
 
   // CRITICAL: EXPLICIT_APPROVAL — needs explicit approval + contract
@@ -1243,17 +1280,17 @@ function evaluateIntentBindingLocal(
         message: "Explicit approval binding found",
         severity: "info",
       })
-      return { decision: "ALLOW", reasons }
+      return { decision: "ALLOW", reasons, userApproved }
     }
     reasons.push({
       code: "REQUIRE_APPROVAL_INTENT",
       message: "CRITICAL action requires explicit approval with active contract",
       severity: "warning",
     })
-    return { decision: "REQUIRE_APPROVAL", reasons }
+    return { decision: "REQUIRE_APPROVAL", reasons, userApproved }
   }
 
-  return { decision: "ALLOW", reasons }
+  return { decision: "ALLOW", reasons, userApproved }
 }
 
 // ─── Decision Builder ─────────────────────────────────────────────────

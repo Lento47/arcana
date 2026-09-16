@@ -297,11 +297,13 @@ describe("PDP integration: intent binding rules", () => {
     const binding = makeIntentBinding(req, { justification: "EXPLICIT_APPROVAL", createdBy: "USER_APPROVAL" })
     const ctx = makeContext({ capabilities: [cap], intentBindings: [binding] })
     const d = evaluate(req, ctx)
-    // Intent binding satisfied, but CRITICAL still requires approval from risk check
-    // The intent binding doesn't override the CRITICAL risk approval requirement
-    expect(d.decision).toBe("REQUIRE_APPROVAL")
-    // But the intent binding reason should be present
+    // The EXPLICIT_APPROVAL + USER_APPROVAL binding IS the durable artifact of
+    // the operator's answer to the gate. Re-asking on the retry made an
+    // approved action loop until APPROVAL_RE_RUN_EXHAUSTED.
+    expect(d.decision).toBe("ALLOW")
     expect(d.reasons.some((r) => r.code === "ALLOW_INTENT_BINDING")).toBe(true)
+    // The gate reason stays on the record as evidence of what was approved.
+    expect(d.reasons.some((r) => r.code === "REQUIRE_APPROVAL_HIGH_RISK")).toBe(true)
   })
 
   test("REMOTE_CONTENT injection → REQUIRE_APPROVAL even with capability", () => {

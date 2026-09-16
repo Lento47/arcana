@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import { evaluate, classifyRisk, matchResource } from "@arcana/core/capability/pdp"
 import { computeRequestHash } from "@arcana/core/capability/request-hash"
+import { createIntentBinding } from "@arcana/core/capability/intent-binding"
 import type { PolicyContext, PolicyRule, ReasonCode, DenyReasonCode, ApprovalReasonCode, AllowReasonCode } from "@arcana/core/capability/pdp"
 import type {
   AuthorizationRequest,
   CapabilityGrant,
+  IntentBinding,
   ResourceSelector,
   ProvenanceLabel,
   SensitivityLabel,
@@ -537,6 +539,98 @@ describe("PDP: provenance and sensitivity", () => {
     const d = evaluate(req, ctx)
     expect(d.decision).toBe("REQUIRE_APPROVAL")
     expect(d.reasons.some((r) => r.code === "REQUIRE_APPROVAL_REMOTE_WRITE")).toBe(true)
+  })
+})
+
+describe("PDP: approved intent binding satisfies the approval gate", () => {
+  const contractScope = {
+    contractId: "contract-remote",
+    contractRevision: "1",
+    criterionIds: ["connect-firecrawl"],
+  } as const
+
+  function remoteWriteCapability(): CapabilityGrant {
+    return makeCapability({
+      actions: ["network.write"],
+      resources: [{ kind: "network", pattern: "example.com" }],
+    })
+  }
+
+  function makeRemoteWriteRequest(overrides: Partial<AuthorizationRequest> = {}): AuthorizationRequest {
+    return makeRequest({
+      action: "network.write",
+      resource: { kind: "network", host: "example.com" },
+      provenance: ["REMOTE_CONTENT", "MODEL_OUTPUT"],
+      contractId: contractScope.contractId,
+      contractRevision: contractScope.contractRevision,
+      criterionIds: [...contractScope.criterionIds],
+      ...overrides,
+    })
+  }
+
+  function makeApprovalBinding(
+    request: AuthorizationRequest,
+    overrides: Partial<Pick<IntentBinding, "justification" | "createdBy">> = {},
+  ): IntentBinding {
+    return createIntentBinding({
+      requestHash: computeRequestHash(request),
+      sessionId: request.sessionId,
+      userRequestEventId: "user-req-remote",
+      contractId: request.contractId,
+      contractRevision: request.contractRevision,
+      criterionIds: Array.from(request.criterionIds ?? []),
+      justification: overrides.justification ?? "EXPLICIT_APPROVAL",
+      createdBy: overrides.createdBy ?? "USER_APPROVAL",
+      expiresAt: "2026-07-29T12:30:00Z",
+    })
+  }
+
+  test("operator-approved request is ALLOWED on the retry — no re-gate loop", () => {
+    const req = makeRemoteWriteRequest()
+    const ctx = makeContext({
+      capabilities: [remoteWriteCapability()],
+      intentBindings: [makeApprovalBinding(req)],
+    })
+
+    const d = evaluate(req, ctx)
+
+    expect(d.decision).toBe("ALLOW")
+    expect(d.reasons.some((r) => r.code === "ALLOW_INTENT_BINDING")).toBe(true)
+    // The provenance reason stays on the record as evidence of what was approved.
+    expect(d.reasons.some((r) => r.code === "REQUIRE_APPROVAL_REMOTE_WRITE")).toBe(true)
+  })
+
+  test("runtime binding still needs the operator for a remote write", () => {
+    const req = makeRemoteWriteRequest()
+    const ctx = makeContext({
+      capabilities: [remoteWriteCapability()],
+      intentBindings: [
+        makeApprovalBinding(req, { justification: "NECESSARY_SUBSTEP", createdBy: "RUNTIME" }),
+      ],
+    })
+
+    const d = evaluate(req, ctx)
+
+    expect(d.decision).toBe("REQUIRE_APPROVAL")
+    expect(d.reasons.some((r) => r.code === "REQUIRE_APPROVAL_REMOTE_WRITE")).toBe(true)
+  })
+
+  test("approval for a different request hash does not carry over", () => {
+    const approved = makeRemoteWriteRequest()
+    const other = makeRemoteWriteRequest({
+      requestId: "req-002",
+      nonce: "nonce-002",
+      arguments: ["different", "arguments"],
+    })
+    const ctx = makeContext({
+      capabilities: [remoteWriteCapability()],
+      intentBindings: [makeApprovalBinding(approved)],
+    })
+
+    const d = evaluate(other, ctx)
+
+    expect(d.decision).toBe("REQUIRE_APPROVAL")
+    expect(d.reasons.some((r) => r.code === "REQUIRE_APPROVAL_REMOTE_CONTENT")).toBe(true)
   })
 })
 
