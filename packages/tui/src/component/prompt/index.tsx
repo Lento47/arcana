@@ -722,8 +722,14 @@ export function Prompt(props: PromptProps) {
 
   onCleanup(() => {
     alive = false
-    if (store.prompt.input) {
-      stashed = { prompt: unwrap(store.prompt), cursor: input.cursorOffset }
+    // Read the RAW store target: reading reactive store properties during
+    // teardown re-enters Solid's update queue (the signals are stale while this
+    // owner is being cleaned) and crashes cleanNode with a reentrant cleanup
+    // loop. `unwrap(store)` returns the underlying object before any reactive
+    // read, so the stash stays synchronous and no mount timing changes.
+    const rawPrompt = (unwrap(store) as { prompt: PromptInfo }).prompt
+    if (rawPrompt.input) {
+      stashed = { prompt: rawPrompt, cursor: input && !input.isDestroyed ? input.cursorOffset : 0 }
     }
     if (input && !input.isDestroyed && input.focused) input.blur()
     setInputTarget(undefined)

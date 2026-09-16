@@ -741,7 +741,11 @@ export function Session() {
   const bind = (r: PromptRef | undefined) => {
     prompt = r
     promptRef.set(r)
-    if (seeded || !route.prompt || !r) return
+    // Unbind during teardown must never read reactive state: the route store is
+    // mid-update while this tree is disposed, and a store read re-enters Solid's
+    // update queue and cleans an owner that is already being cleaned (reentrant
+    // cleanNode → crash). Seeding only matters when a prompt is attached.
+    if (!r || seeded || !route.prompt) return
     seeded = true
     r.set(route.prompt)
   }
@@ -1331,7 +1335,14 @@ export function Session() {
                 </box>
               }
             >
-              <Dynamic component={ShellCmp()} {...shellProps()} />
+              {/*
+                `bind` is deliberately passed outside the memo spread: the
+                composer's ref cleanup runs while this tree is being disposed,
+                and reading it from `shellProps()` there re-evaluates the memo
+                (route/store reads) mid-cleanup, re-entering Solid's update
+                queue with a cleanNode already in progress (TUI crash).
+              */}
+              <Dynamic component={ShellCmp()} {...shellProps()} bind={bind} />
             </Show>
           </box>
         </box>
