@@ -695,6 +695,26 @@ describe("collapsible think entries", () => {
     expect(result[0]!.summary.length).toBeLessThan(20)
     expect(result[0]!.body).toContain("The user wants a better banana ASCII art")
   })
+  test("reasoning list markers are stripped from the operational lead", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("t2c", { completed: 2000 })
+    parts.push({
+      id: "p-reason",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "reasoning",
+      text: "The user asked about the denial.\n1. First attempt: DENIED with reason.",
+      time: { start: 100 },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+
+    expect(result[0]!.kind).toBe("think")
+    expect(result[0]!.summary).toBe("First attempt: DENIED with reason.")
+  })
   test("streaming assistant without visible output does not create fake spine rows", () => {
     const { messages: msgs, parts } = makeAssistantMessage("t3")
     // incomplete assistant with no parts yet

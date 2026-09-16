@@ -362,7 +362,10 @@ function thinkingSummary(text: string, seed: string, streaming: boolean): string
       .split(/\r?\n/)
       .map((line) => line.trim())
       .find((line) => line.length > 0 && !META_REASONING_LEAD.test(line))
-    if (operational) return truncate(operational, 36)
+    // List markers ("1. ", "- ") are formatting, not the idea — drop them so
+    // the spine line reads as a statement instead of a numbered fragment.
+    const lead = operational?.replace(/^(?:\d+[.)]|[-*•])\s+/, "")
+    if (lead) return truncate(lead, 36)
   }
   // Fixed verb — avoids confusing glyph salad across entries.
   // Flips to past tense once the reasoning part has ended.
