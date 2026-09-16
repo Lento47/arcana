@@ -19,16 +19,16 @@ const assert = (cond: boolean, msg: string) => {
 
 // --- No 80-fallback: narrow terminals derive real (small) widths ---
 assert(
-  spineProseWidth(30, "minimal", "chat") === 22,
-  "30-col minimal chat -> 22 (was 72 via 80-fallback)",
+  spineProseWidth(30, "minimal", "chat") === 21,
+  "30-col minimal chat -> 21 (was 72 via 80-fallback)",
 )
 assert(
-  spineProseWidth(40, "minimal", "chat") === 32,
-  "40-col minimal chat -> 32 (no 40-floor)",
+  spineProseWidth(40, "minimal", "chat") === 31,
+  "40-col minimal chat -> 31 (no 40-floor)",
 )
 assert(
-  spineProseWidth(10, "minimal", "chat") === 2,
-  "10-col minimal chat -> 2",
+  spineProseWidth(10, "minimal", "chat") === 1,
+  "10-col minimal chat -> 1",
 )
 
 // --- Clamp >= 1: a present-but-tiny terminal keeps its real (tiny) budget ---
@@ -45,30 +45,30 @@ assert(
 // `useTerminalDimensions` seeds from `renderer.width`, so 0/NaN is the
 // first-paint race. Flooring it to 1 painted a wrap-per-character spine.
 assert(
-  spineProseWidth(0, "wide", "chat") === 72,
-  "0-col (unmeasured) -> 72, not 1",
+  spineProseWidth(0, "wide", "chat") === 71,
+  "0-col (unmeasured) -> 71, not 1",
 )
 assert(
-  spineProseWidth(Number.NaN, "wide", "chat") === 72,
-  "NaN (unmeasured) -> 72, not 1",
+  spineProseWidth(Number.NaN, "wide", "chat") === 71,
+  "NaN (unmeasured) -> 71, not 1",
 )
 
 // --- Known chrome arithmetic at wide sizes ---
-// outerPad is 0 for every layout.
-// minimal chat: gutter 2 + (chat: border1+padL2+padR1) + scrollbar2 = 8
+// outerPad is 0 for every layout; the chat card insets padL === padR === 2.
+// minimal chat: gutter 2 + (chat: border1+padL2+padR2) + scrollbar2 = 9
 assert(
-  spineProseWidth(120, "minimal", "chat") === 112,
-  "120-col minimal chat -> 112",
+  spineProseWidth(120, "minimal", "chat") === 111,
+  "120-col minimal chat -> 111",
 )
 // wide think: gutter 2 + (think: rail2+1) + scrollbar2 = 7
 assert(
   spineProseWidth(120, "wide", "think") === 113,
   "120-col wide think -> 113",
 )
-// wide chat: gutter 2 + (border1+padL2+padR1) + scrollbar2 = 8
+// wide chat: gutter 2 + (border1+padL2+padR2) + scrollbar2 = 9
 assert(
-  spineProseWidth(120, "wide", "chat") === 112,
-  "120-col wide chat -> 112",
+  spineProseWidth(120, "wide", "chat") === 111,
+  "120-col wide chat -> 111",
 )
 // wide inline: gutter 2 + 1 + scrollbar2 = 5
 assert(

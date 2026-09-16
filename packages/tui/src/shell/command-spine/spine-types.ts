@@ -385,11 +385,18 @@ export function spineRailCell(symbol: string, width: number): string {
 /**
  * Soft-card chrome inside the content column. Must stay in lockstep with
  * `SpineChatCard` (left accent + padL + padR). Do not invent a second pad.
+ *
+ * padL and padR are equal on purpose. A user prompt carries a background fill
+ * (`theme.backgroundElement`), and with padR one column short of padL the last
+ * glyph of a full line sat visibly closer to the fill's right edge than to the
+ * accent on the left. Symmetric insets are the rule; the scrollbar column the
+ * session frame already reserves is what makes the *outer* right edge wide, not
+ * a thinner inner pad.
  */
 export const SPINE_CHAT_CARD_CHROME = {
   border: 1,
   padL: 2,
-  padR: 1,
+  padR: 2,
 } as const
 
 export function spineChatCardChrome(): number {

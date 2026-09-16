@@ -3,6 +3,7 @@ import {
   DEFAULT_TERMINAL_WIDTH,
   getSpineLayout,
   SESSION_FRAME_CHROME,
+  SPINE_CHAT_CARD_CHROME,
   spineChatCardChrome,
   spineProseWidth,
   spineViewportWidth,
@@ -11,12 +12,12 @@ import {
 
 describe("spineProseWidth", () => {
   test("present-but-narrow width gets its real budget — never the bare 80 fallback", () => {
-    // 30-col minimal chat: 30 - (0 pad + 2 gutter + 4 chat + 2 scrollbar) = 22
-    expect(spineProseWidth(30, "minimal", "chat")).toBe(22)
-    // 40-col minimal chat: no 40-floor anymore — 40 - 8 = 32
-    expect(spineProseWidth(40, "minimal", "chat")).toBe(32)
-    // 10-col minimal chat: clamps to 2, not 72/80
-    expect(spineProseWidth(10, "minimal", "chat")).toBe(2)
+    // 30-col minimal chat: 30 - (0 pad + 2 gutter + 5 chat + 2 scrollbar) = 21
+    expect(spineProseWidth(30, "minimal", "chat")).toBe(21)
+    // 40-col minimal chat: no 40-floor anymore — 40 - 9 = 31
+    expect(spineProseWidth(40, "minimal", "chat")).toBe(31)
+    // 10-col minimal chat: clamps to 1, not 71/80
+    expect(spineProseWidth(10, "minimal", "chat")).toBe(1)
   })
 
   test("clamps to >= 1 — a present-but-tiny terminal keeps its real budget", () => {
@@ -35,8 +36,8 @@ describe("spineProseWidth", () => {
     expect(terminalColumns(Number.NaN)).toBe(DEFAULT_TERMINAL_WIDTH)
     expect(terminalColumns(Number.POSITIVE_INFINITY)).toBe(DEFAULT_TERMINAL_WIDTH)
     expect(terminalColumns(undefined)).toBe(DEFAULT_TERMINAL_WIDTH)
-    expect(spineProseWidth(0, "wide", "chat")).toBe(72)
-    expect(spineProseWidth(Number.NaN, "wide", "chat")).toBe(72)
+    expect(spineProseWidth(0, "wide", "chat")).toBe(71)
+    expect(spineProseWidth(Number.NaN, "wide", "chat")).toBe(71)
   })
 
   test("a real measurement is never replaced by the default", () => {
@@ -73,21 +74,28 @@ describe("spineProseWidth", () => {
 
   test("known chrome arithmetic per layout and variant", () => {
     // outerPad is now 0 for all layouts (removed)
-    expect(spineChatCardChrome()).toBe(4) // border + padL + padR
-    expect(spineProseWidth(120, "wide", "chat")).toBe(112) // + 4 chat chrome
+    expect(spineChatCardChrome()).toBe(5) // border + padL + padR, symmetric
+    expect(spineProseWidth(120, "wide", "chat")).toBe(111) // + 5 chat chrome
     expect(spineProseWidth(120, "wide", "think")).toBe(113) // + rail 2 + 1
     expect(spineProseWidth(120, "wide", "inline")).toBe(115) // + 1
     // narrow: same outerPad as wide (now 0)
-    expect(spineProseWidth(80, "narrow", "chat")).toBe(72)
+    expect(spineProseWidth(80, "narrow", "chat")).toBe(71)
     // minimal: outerPad 0
-    expect(spineProseWidth(60, "minimal", "chat")).toBe(52)
+    expect(spineProseWidth(60, "minimal", "chat")).toBe(51)
+  })
+
+  test("the chat card insets its text equally on both sides", () => {
+    // Asymmetry here is visible: a user prompt carries a background fill, so a
+    // short padR put the last glyph of a full line closer to the fill's edge
+    // than the first glyph sat to the accent on the left.
+    expect(SPINE_CHAT_CARD_CHROME.padL).toBe(SPINE_CHAT_CARD_CHROME.padR)
   })
 
   test("session frame chrome is 4 cells (padding only, no border); viewport is terminal minus that", () => {
     expect(SESSION_FRAME_CHROME).toBe(4)
     expect(spineViewportWidth(80)).toBe(76)
     expect(spineViewportWidth(120)).toBe(116)
-    expect(spineProseWidth(spineViewportWidth(80), "narrow", "chat")).toBe(68)
-    expect(68).toBeLessThanOrEqual(69)
+    expect(spineProseWidth(spineViewportWidth(80), "narrow", "chat")).toBe(67)
+    expect(67).toBeLessThanOrEqual(69)
   })
 })

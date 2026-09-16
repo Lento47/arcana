@@ -6,7 +6,12 @@ import { expect, test } from "bun:test"
 import type { Renderable } from "@opentui/core"
 import { testRender } from "@opentui/solid"
 import { displayWidth, truncate } from "../src/util/locale"
-import { getSpineLayout, spineProseWidth, type SpineLayout } from "../src/shell/command-spine/spine-types"
+import {
+  getSpineLayout,
+  spineChatCardChrome,
+  spineProseWidth,
+  type SpineLayout,
+} from "../src/shell/command-spine/spine-types"
 import { buildStatusSegments } from "../src/shell/command-spine/spine-segments"
 import { buildHeaderStatusItems, projectSessionCharter } from "../src/shell/command-spine/session-charter"
 import { ThemeProvider } from "../src/context/theme"
@@ -111,7 +116,7 @@ async function measureAt(width: number, opts: { scrollbar?: boolean } = {}) {
   const probeWidth = findById(app.renderer.root, "inner-probe")?.width
   const claimed = spineProseWidth(width, layout, "chat", 2)
   const proposed = spineProseWidth(width - 6, layout, "chat", 2)
-  const proposedNoFudge = Math.max(1, (probeWidth ?? 0) - 1 - 2 - 4)
+  const proposedNoFudge = Math.max(1, (probeWidth ?? 0) - 1 - 2 - spineChatCardChrome())
   const result = {
     width,
     layout,

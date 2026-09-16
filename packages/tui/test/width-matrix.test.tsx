@@ -49,7 +49,8 @@ async function measureFrame(width: number, opts: { scrollbar?: boolean } = {}) {
               <box id="entry" flexDirection="row" width="100%" paddingLeft={1} paddingRight={opts.scrollbar ? 1 : 0}>
                 <box id="gutter" width={2} flexShrink={0} height={1} />
                 <box id="content" flexGrow={1} minWidth={0} flexShrink={1} height={3}>
-                  <box id="card" border={["left"]} paddingLeft={2} paddingRight={1} width="100%" minWidth={0}>
+                  {/* Mirrors SPINE_CHAT_CARD_CHROME — keep in lockstep. */}
+                  <box id="card" border={["left"]} paddingLeft={2} paddingRight={2} width="100%" minWidth={0}>
                     <box id="body-probe" width="100%" height={1} />
                   </box>
                 </box>
