@@ -29,15 +29,13 @@
  * swaps in a new frame only after highlighting succeeds. A failed refresh
  * keeps the last good frame.
  *
- * Arcana also refuses to paint an unstyled first frame for content whose
- * colors are still being computed. Markdown leaves paint their synchronous
- * `initialStyledText` chunks instead (inline emphasis/codespans are built from
- * the same content before the worker is asked), and code/tool leaves defer the
- * first paint until the async highlight lands, keeping the layout measured in
- * the meantime. A bounded deadline paints plain text only when highlighting
- * never resolves (broken parser/worker) — and once that fallback fires the
- * leaf stays visible, so a slow parser cannot blink content on every update.
- * The visible downgrade therefore cannot happen on the normal streaming path.
+ * Arcana never hides painted content. Markdown leaves paint their synchronous
+ * `initialStyledText` chunks on the first frame; code/tool leaves paint plain
+ * text immediately and settle to syntax colors when the worker answers.
+ * Updates keep the last styled frame; a failed (or zero-highlight) pass marks
+ * the leaf so later updates keep painting plain instead of cycling
+ * blank/plain; and neither a slow parser nor a filetype that resolves
+ * mid-stream can blank a body the operator is already reading.
  *
  * Version-pinned to @opentui/core 0.5.9. Re-run after `bun install`
  * (wired as the root `postinstall` script).
@@ -531,6 +529,65 @@ const CODE_DEADLINE_V23_TO = `      this._shouldRenderTextBuffer = true;
     }, 120); ${SHORT_DEADLINE_MARKER}`
 
 /**
+ * Sixth pass: never hide a leaf that has already painted. A body can acquire
+ * its filetype mid-stream (resolveFiletype() flips from undefined to diff/py
+ * as content arrives); the first update after that used to re-enter the
+ * styled-first deferral and blank text the operator was already reading.
+ * Deferral now applies only to a leaf's very first paint; once anything has
+ * been painted, later updates paint plain immediately and settle to styled
+ * when the highlight lands.
+ */
+const PAINTED_LEAF_MARKER = "// [arcana] never hide a painted leaf (patch-opentui.ts)"
+const CODE_FIELDS_V24_ANCHOR = `  _arcanaFirstFrameFallback = false;`
+const CODE_FIELDS_V24 = `  _arcanaFirstFrameFallback = false;
+  ${PAINTED_LEAF_MARKER}
+  _arcanaHasPainted = false;`
+const CODE_DEFER_V24_FROM = `    if (this._filetype && !this._drawUnstyledText && !this._arcanaFirstFrameFallback) {`
+const CODE_DEFER_V24_TO = `    if (this._filetype && !this._drawUnstyledText && !this._arcanaFirstFrameFallback && !this._arcanaHasPainted) {`
+const CODE_PLAIN_PAINT_V24_FROM = `    this._shouldRenderTextBuffer = true;
+    this.requestRender();
+  }
+  _arcanaArmDeadline() {`
+const CODE_PLAIN_PAINT_V24_TO = `    this._arcanaHasPainted = true; ${PAINTED_LEAF_MARKER}
+    this._shouldRenderTextBuffer = true;
+    this.requestRender();
+  }
+  _arcanaArmDeadline() {`
+const CODE_COMMIT_V24_FROM = `    this._arcanaClearDeadline();
+    this._arcanaFirstFrameFallback = false;`
+const CODE_COMMIT_V24_TO = `    this._arcanaClearDeadline();
+    this._arcanaFirstFrameFallback = false;
+    this._arcanaHasPainted = true;`
+const CODE_DEADLINE_V24_FROM = `      this._arcanaFirstFrameFallback = true;
+      this._shouldRenderTextBuffer = true;
+      this.requestRender();
+    }, 120); ${SHORT_DEADLINE_MARKER}`
+const CODE_DEADLINE_V24_TO = `      this._arcanaFirstFrameFallback = true;
+      this._arcanaHasPainted = true; ${PAINTED_LEAF_MARKER}
+      this._shouldRenderTextBuffer = true;
+      this.requestRender();
+    }, 120); ${SHORT_DEADLINE_MARKER}`
+
+/**
+ * Final policy: never blank. Deferring the first styled paint hid content
+ * whenever a highlight was slow, failed, or the filetype settled after
+ * construction (props apply post-constructor, so a transient no-filetype paint
+ * defeated the "first paint only" guard). The first frame now paints plain
+ * immediately; updates keep the last styled frame (retention), so the only
+ * artifact on a brand-new leaf is a one-time settle from plain to styled.
+ */
+const NEVER_BLANK_MARKER = "// [arcana] paint first frame plain, never blank (patch-opentui.ts)"
+const CODE_DEFER_V25_FROM = `    if (this._filetype && !this._drawUnstyledText && !this._arcanaFirstFrameFallback && !this._arcanaHasPainted) {
+      // Colors are computed asynchronously: keep the layout measured but paint
+      // nothing until the first styled frame arrives.
+      this._shouldRenderTextBuffer = false;
+      this._arcanaArmDeadline();
+      this.requestRender();
+      return;
+    }`
+const CODE_DEFER_V25_TO = `    ${NEVER_BLANK_MARKER}`
+
+/**
  * Third pass: keep the fallback monotonic. Once the deadline has painted plain
  * text (broken/slow parser), later content updates must keep the leaf visible
  * instead of re-deferring into a blank block. The flag is cleared by the first
@@ -742,6 +799,29 @@ function patchCodeRenderable(source: string): string | undefined {
       throw new Error(`CodeRenderable short-deadline anchor missing: ${CODE_DEADLINE_V23_FROM.slice(0, 80)}`)
     }
     code = code.replace(CODE_DEADLINE_V23_FROM, CODE_DEADLINE_V23_TO)
+  }
+
+  if (!code.includes(PAINTED_LEAF_MARKER)) {
+    const paintedLeafFixes: Array<[string, string]> = [
+      [CODE_FIELDS_V24_ANCHOR, CODE_FIELDS_V24],
+      [CODE_DEFER_V24_FROM, CODE_DEFER_V24_TO],
+      [CODE_PLAIN_PAINT_V24_FROM, CODE_PLAIN_PAINT_V24_TO],
+      [CODE_COMMIT_V24_FROM, CODE_COMMIT_V24_TO],
+      [CODE_DEADLINE_V24_FROM, CODE_DEADLINE_V24_TO],
+    ]
+    for (const [from, to] of paintedLeafFixes) {
+      if (!code.includes(from)) {
+        throw new Error(`CodeRenderable painted-leaf anchor missing: ${from.slice(0, 80)}`)
+      }
+      code = code.replace(from, to)
+    }
+  }
+
+  if (!code.includes(NEVER_BLANK_MARKER)) {
+    if (!code.includes(CODE_DEFER_V25_FROM)) {
+      throw new Error(`CodeRenderable never-blank anchor missing: ${CODE_DEFER_V25_FROM.slice(0, 80)}`)
+    }
+    code = code.replace(CODE_DEFER_V25_FROM, CODE_DEFER_V25_TO)
   }
 
   if (!code.includes(CODE_FRAME_RELEASE_MARKER)) {

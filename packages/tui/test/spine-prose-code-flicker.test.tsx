@@ -59,7 +59,7 @@ test("thought prose bypasses syntax highlighting and stays plain", () => {
   expect(resolveProseMode({ kind: "think", text: "**muted reasoning**" })).toBe("plain")
 })
 
-test("deferred first paint: code shows no unstyled frame before the first highlight", async () => {
+test("first frame paints plain immediately — code never blanks", async () => {
   treeSitter = new MockTreeSitterClient()
   treeSitter.setMockResult({ highlights: [[0, 6, "keyword"]] })
 
@@ -78,10 +78,11 @@ test("deferred first paint: code shows no unstyled frame before the first highli
   )
   await app.renderOnce()
 
-  // The leaf measures the text but paints nothing until the async highlight
-  // lands: no plain frame is ever visible before the first styled frame.
+  // No deferral: the first frame is visible as plain text, never blank. The
+  // colored frame settles in when the async highlight lands (and updates keep
+  // the last styled frame, so there is no per-token repaint).
+  expect(app.captureCharFrame()).toContain("export function answer")
   await app.waitFor(() => treeSitter?.isHighlighting() === true)
-  expect(app.captureCharFrame()).not.toContain("export function answer")
 
   treeSitter.resolveHighlightOnce()
   await app.flush()
@@ -113,10 +114,10 @@ test("retains the last styled frame while content and theme colors re-highlight"
     { width: 80, height: 8 },
   )
 
-  // The first paint is deferred until the async highlight lands; no unstyled
-  // frame is visible for content whose colors are still being computed.
+  // The first frame is visible as plain text (never blank); the styled frame
+  // replaces it when the async highlight lands, and updates then retain it.
   await app.renderOnce()
-  expect(app.captureCharFrame()).not.toContain(initial)
+  expect(app.captureCharFrame()).toContain(initial)
   await app.waitFor(() => treeSitter?.isHighlighting() === true)
   treeSitter.resolveHighlightOnce()
   await app.flush()
@@ -184,7 +185,7 @@ test("streaming markdown paints its synchronous styled chunks before the first h
   expect(span?.fg.toString()).toBe(RGBA.fromHex(strongColor).toString())
 })
 
-test("first-frame deadline keeps content visible when highlighting never resolves", async () => {
+test("unresolved highlight never hides content on any update", async () => {
   const [content, setContent] = createSignal(SOURCE)
   treeSitter = new MockTreeSitterClient() // never resolved during this test
 
@@ -202,16 +203,15 @@ test("first-frame deadline keeps content visible when highlighting never resolve
     { width: 80, height: 12 },
   )
   await app.renderOnce()
-  expect(app.captureCharFrame()).not.toContain("export function answer")
-
-  // The bounded fallback paints the content plain once the deadline passes.
-  await Bun.sleep(650)
-  await app.renderOnce()
+  // Painted plain on the first frame — never blank while the highlight hangs.
   expect(app.captureCharFrame()).toContain("export function answer")
 
-  // Once the fallback has fired the leaf must stay visible: updates paint
-  // immediately instead of re-deferring into a blank block.
+  // Updates stay visible too: the leaf never re-enters a deferral.
   setContent(SOURCE + "\nexport const fallback = true")
+  await app.renderOnce()
+  expect(app.captureCharFrame()).toContain("export const fallback = true")
+
+  await Bun.sleep(150)
   await app.renderOnce()
   expect(app.captureCharFrame()).toContain("export const fallback = true")
 })
@@ -270,6 +270,47 @@ test("failed highlight keeps streamed content visible on every update", async ()
     pending.shift()?.reject(new Error("no parser"))
     expect(await frameAfter(), `update ${lines} after failure`).toContain("export function answer")
   }
+})
+
+test("a leaf that gains its filetype mid-stream never hides painted text", async () => {
+  // Root cause of a second "code blanks" path: a body can acquire its filetype
+  // mid-stream (SpineProse.resolveFiletype() flips from undefined to diff/py as
+  // content arrives). The first update after that used to re-enter the
+  // styled-first deferral and blank text the operator was already reading.
+  // Deferral now applies only to a leaf's very first paint.
+  treeSitter = new MockTreeSitterClient({ autoResolveTimeout: 25 })
+  const [content, setContent] = createSignal("first line of body\nsecond line")
+  const [filetype, setFiletype] = createSignal<string | undefined>(undefined)
+
+  app = await testRender(
+    () => (
+      <code
+        content={content()}
+        filetype={filetype()}
+        syntaxStyle={highlightedSyntaxStyle}
+        treeSitterClient={treeSitter}
+        drawUnstyledText={false}
+        width={72}
+      />
+    ),
+    { width: 80, height: 10 },
+  )
+
+  const frameAfter = async () => {
+    await app!.renderOnce()
+    await app!.flush()
+    return app!.captureCharFrame()
+  }
+
+  // Plain first paint while no filetype is known.
+  expect(await frameAfter()).toContain("first line")
+
+  setContent("diff --git a/x.py b/x.py\n--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-old = 1\n+new = 2")
+  setFiletype("diff")
+  expect(await frameAfter()).toContain("new = 2")
+
+  setContent("diff --git a/x.py b/x.py\n--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-old = 1\n+new = 2\n+more = 3")
+  expect(await frameAfter()).toContain("more = 3")
 })
 
 test("retains the last styled frame when a refresh fails", async () => {
