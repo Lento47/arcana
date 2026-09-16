@@ -24,7 +24,21 @@ export type SlashGoalDeps = {
   agentName: string
   toast: ToastLike
   loadGoalModule?: () => Promise<GoalModule>
+  /**
+   * Called after the goal is durably set, with the task text to start working
+   * on. Setting a goal must start the self-driven turn — recording it and
+   * stopping would leave the operator waiting for work they already asked for.
+   */
+  onKickoff?: (task: string) => void
 }
+
+/** Synthetic instruction sent with a goal kickoff turn. */
+export const GOAL_KICKOFF_INSTRUCTION = [
+  "The session goal is now active. Start working toward it immediately and autonomously.",
+  "Do not stop at a plan: inspect the relevant files, make the changes, and verify them.",
+  'When the goal is truly satisfied, call goal_check(status="complete", checks=[...]) with the checks that apply.',
+  "Ask a question only if a genuine decision or missing information blocks progress.",
+].join("\n")
 
 const rejectMultiSlash = (inputText: string, toast: ToastLike): boolean => {
   const firstNewline = inputText.indexOf("\n")
@@ -46,6 +60,10 @@ export function runGoalCommand(deps: SlashGoalDeps): true | undefined {
   const { inputText, toast } = deps
   const loadGoal = deps.loadGoalModule ?? (() => import("@arcana/core/session/goal"))
   if (rejectMultiSlash(inputText, toast)) return true
+  if (!deps.targetSessionID.trim()) {
+    toast.show({ title: "Goal", message: "Open a session first", variant: "warning" })
+    return true
+  }
   const firstNewline = inputText.indexOf("\n")
   const slashLine = firstNewline === -1 ? inputText : inputText.slice(0, firstNewline)
   const args = slashLine.slice(6).trim()
@@ -61,6 +79,9 @@ export function runGoalCommand(deps: SlashGoalDeps): true | undefined {
   void loadGoal()
     .then(({ setSessionGoal }) => {
       setSessionGoal(deps.targetSessionID, { goal: args, status: "in_progress", newRevision: true })
+      // Record first, then start the turn: the engine reads the goal file when
+      // it injects <active-goal> into the kickoff prompt.
+      deps.onKickoff?.(args)
       toast.show({
         title: "Goal set",
         // T9: helper appends "…" only when it truncated.
@@ -83,6 +104,10 @@ export function runLoopCommand(deps: SlashGoalDeps): true | undefined {
   const { inputText, toast } = deps
   const loadGoal = deps.loadGoalModule ?? (() => import("@arcana/core/session/goal"))
   if (rejectMultiSlash(inputText, toast)) return true
+  if (!deps.targetSessionID.trim()) {
+    toast.show({ title: "Loop", message: "Open a session first", variant: "warning" })
+    return true
+  }
   const firstNewline = inputText.indexOf("\n")
   const slashLine = firstNewline === -1 ? inputText : inputText.slice(0, firstNewline)
   const rest = slashLine.slice(5).trim()
@@ -131,6 +156,7 @@ export function runLoopCommand(deps: SlashGoalDeps): true | undefined {
     void loadGoal()
       .then(({ setSessionGoal }) => {
         setSessionGoal(deps.targetSessionID, { goal: description, status: "in_progress", newRevision: true })
+        deps.onKickoff?.(description)
         toast.show({ title: "Goal set", message: description, variant: "success" })
       })
       .catch((error: unknown) => {
@@ -169,7 +195,7 @@ export function runLoopCommand(deps: SlashGoalDeps): true | undefined {
         })
       })
   } else {
-    // /loop <text> — auto-set goal from text, start loop
+    // /loop <text> — auto-set goal from text when unset, then drive with it.
     if (!rest) {
       toast.show({ title: "Loop", message: "Usage: /loop <what to do>", variant: "warning" })
       return true
@@ -177,11 +203,22 @@ export function runLoopCommand(deps: SlashGoalDeps): true | undefined {
     void loadGoal()
       .then(({ getSessionGoal, setSessionGoal }) => {
         const snap = getSessionGoal(deps.targetSessionID)
+        if (snap.status === "complete_pending_verify") {
+          toast.show({
+            title: "Goal pending verification",
+            message: "Wait for verification to resolve, or set a new goal with /goal.",
+            variant: "warning",
+          })
+          return
+        }
         if (snap.status === "unset") {
           const goal = rest.split(/[.,;]/)[0]?.trim() || rest.slice(0, 80)
           setSessionGoal(deps.targetSessionID, { goal, status: "in_progress", newRevision: true })
           toast.show({ title: "Goal auto-set", message: goal, variant: "success" })
         }
+        // Drive with the operator's text whether or not a goal already existed:
+        // /loop <task> is the "keep going with this" command.
+        deps.onKickoff?.(rest)
       })
       .catch((error: unknown) => {
         toast.show({

@@ -1581,7 +1581,7 @@ export function Prompt(props: PromptProps) {
       }
       void promptQueue.submit(payload, task)
     // ── /goal — standalone goal setter; records the goal AND starts driving ──
-    } else if (inputText.startsWith("/goal ")) {
+    } else if (/^\/goal(?:\s|$)/.test(inputText)) {
       move.startSubmit()
       const handled = runGoalCommand({
         inputText,

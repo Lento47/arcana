@@ -77,6 +77,7 @@ import {
   continuationsUsed,
   decideDrive,
   driveProgressFingerprint,
+  goalKickoffInTurn,
   noProgressContinuations,
   resolveDriveConfig,
   turnToolActivity,
@@ -1819,8 +1820,10 @@ export const layer = Layer.effect(
             const used = continuationsUsed(meta)
             // Detect whether the model invoked tools anywhere in the current
             // turn. Pure-text turns (greetings, commentary) have no tool
-            // activity — continuing would just produce more text.
+            // activity — continuing would just produce more text. A goal
+            // kickoff turn is the exception (see decideDrive).
             const hadToolActivity = turnToolActivity(msgs)
+            const goalKickoff = goalKickoffInTurn(msgs)
             const progressFingerprint = driveProgressFingerprint({
               goalStatus: goal.status,
               tools: (lastAssistantMsg?.parts ?? [])
@@ -1853,6 +1856,7 @@ export const layer = Layer.effect(
               cancelled: meta.__arcana_cancelled === true,
               pepDeniedRequired: false,
               hadToolActivity,
+              goalKickoff,
               noProgressContinuations: repeatedProgress,
               continuationsUsed: used,
               maxContinuations: driveCfg.maxContinuations,

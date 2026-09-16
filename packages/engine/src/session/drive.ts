@@ -49,6 +49,12 @@ export type DriveSnapshot = {
   maxContinuations: number
   /** True when the model's last response invoked at least one tool. False = pure text. */
   hadToolActivity: boolean
+  /**
+   * True when this turn was started by an explicit goal command (/goal or
+   * /loop). The operator asked Arcana to pursue the goal, so a text-only first
+   * response (a plan) must still drive instead of stopping as "conversational".
+   */
+  goalKickoff: boolean
   /** Consecutive continuation boundaries with an identical semantic tool fingerprint. */
   noProgressContinuations: number
 }
@@ -89,6 +95,29 @@ export function turnToolActivity(
   return messages
     .slice(lastUserIndex + 1)
     .some((msg) => msg.info?.role === "assistant" && msg.parts.some((part) => part.type === "tool"))
+}
+
+/**
+ * True when the last user message was a goal kickoff (/goal or /loop in the
+ * TUI). The marker is durable part metadata set by the submit path, so it
+ * survives restarts and never leaks into later turns.
+ */
+export function goalKickoffInTurn(
+  messages: ReadonlyArray<{
+    info: { role: string }
+    parts: ReadonlyArray<{ type: string; metadata?: unknown }>
+  }>,
+): boolean {
+  const lastUserIndex = messages.findLastIndex((msg) => msg.info?.role === "user")
+  if (lastUserIndex === -1) return false
+  return messages[lastUserIndex]!.parts.some((part) => {
+    if (part.type !== "text") return false
+    const meta = part.metadata
+    if (!meta || typeof meta !== "object") return false
+    const arcana = (meta as { arcana?: unknown }).arcana
+    if (!arcana || typeof arcana !== "object") return false
+    return (arcana as { goal_kickoff?: unknown }).goal_kickoff === true
+  })
 }
 
 export function resolveDriveConfig(input: {
@@ -142,9 +171,10 @@ export function driveProgressFingerprint(input: {
 
 export function decideDrive(snap: DriveSnapshot): DriveDecision {
   // Pure-text responses (no tool invocations) are conversational — there is
-  // no work to drive toward. Continuing would produce another greeting or
-  // commentary without any actionable output.
-  if (!snap.hadToolActivity) return { action: "stop", reason: "conversational" }
+  // no work to drive toward. EXCEPT a goal kickoff turn: the operator
+  // explicitly asked Arcana to pursue the goal, so a plan-only first response
+  // still drives. Bounded by the no-progress and continuation caps below.
+  if (!snap.hadToolActivity && !snap.goalKickoff) return { action: "stop", reason: "conversational" }
   if (!snap.enabled) return { action: "stop", reason: "disabled" }
   if (!isDriveAgent(snap.agent)) return { action: "stop", reason: "agent_exempt" }
   if (snap.cancelled) return { action: "stop", reason: "cancelled" }

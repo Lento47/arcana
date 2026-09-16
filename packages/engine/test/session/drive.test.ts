@@ -4,6 +4,7 @@ import {
   continuationsUsed,
   decideDrive,
   driveProgressFingerprint,
+  goalKickoffInTurn,
   isDriveAgent,
   noProgressContinuations,
   resolveDriveConfig,
@@ -22,6 +23,7 @@ function snap(overrides: Partial<DriveSnapshot> = {}): DriveSnapshot {
     cancelled: false,
     pepDeniedRequired: false,
     hadToolActivity: true,
+    goalKickoff: false,
     noProgressContinuations: 0,
     continuationsUsed: 0,
     maxContinuations: DEFAULT_MAX_CONTINUATIONS,
@@ -54,6 +56,17 @@ describe("decideDrive", () => {
   test("stops on pure-text responses (no tool activity) even with an open goal", () => {
     const result = decideDrive(snap({ hadToolActivity: false }))
     expect(result).toEqual({ action: "stop", reason: "conversational" })
+  })
+
+  test("drives a goal kickoff turn even when the first response is only text", () => {
+    expect(decideDrive(snap({ hadToolActivity: false, goalKickoff: true })).action).toBe("continue")
+  })
+
+  test("a kickoff turn without an active goal still stops", () => {
+    expect(decideDrive(snap({ hadToolActivity: false, goalKickoff: true, goalStatus: "unset" }))).toEqual({
+      action: "stop",
+      reason: "no_goal",
+    })
   })
 
   test("continues when the model invoked tools and the goal is open", () => {
@@ -155,5 +168,38 @@ describe("turnToolActivity", () => {
       assistant("step-start", "text", "step-finish"),
     ]
     expect(turnToolActivity(history)).toBe(false)
+  })
+})
+
+describe("goalKickoffInTurn", () => {
+  const message = (role: string, parts: Array<{ type: string; metadata?: unknown }>) => ({
+    info: { role },
+    parts,
+  })
+  const kickoffPart = {
+    type: "text",
+    metadata: { arcana: { goal_kickoff: true } },
+  }
+
+  test("detects the marker on the last user message", () => {
+    expect(goalKickoffInTurn([message("user", [kickoffPart])])).toBe(true)
+  })
+
+  test("ignores a marker from an earlier user message", () => {
+    expect(
+      goalKickoffInTurn([
+        message("user", [kickoffPart]),
+        message("assistant", [{ type: "text" }]),
+        message("user", [{ type: "text", metadata: { arcana: {} } }]),
+      ]),
+    ).toBe(false)
+  })
+
+  test("plain messages, tool parts, and malformed metadata never mark", () => {
+    expect(goalKickoffInTurn([message("user", [{ type: "text" }])])).toBe(false)
+    expect(goalKickoffInTurn([message("user", [{ type: "tool", metadata: { arcana: { goal_kickoff: true } } }])])).toBe(false)
+    expect(goalKickoffInTurn([message("user", [{ type: "text", metadata: "nope" }])])).toBe(false)
+    expect(goalKickoffInTurn([message("user", [{ type: "text", metadata: { arcana: { goal_kickoff: "yes" } } }])])).toBe(false)
+    expect(goalKickoffInTurn([])).toBe(false)
   })
 })
