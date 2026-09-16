@@ -12,6 +12,7 @@ import { SyncProvider } from "../src/context/sync"
 import { ThemeProvider } from "../src/context/theme"
 import { TuiConfigProvider } from "../src/config"
 import { SpineEntry } from "../src/shell/command-spine/spine-entry"
+import { SpineListing } from "../src/shell/command-spine/spine-listing"
 import {
   getSpineLayout,
   spineGutterWidth,
@@ -253,6 +254,29 @@ describe("Command Spine visual grammar", () => {
       expect(frame, `width ${width}`).toContain("states remained visible")
     }
   }, 30_000)
+
+  test("wide listings truncate long paths instead of overflowing", async () => {
+    installMockTreeSitter()
+    const long = "packages/tui/src/shell/command-spine/a-very-long-module-name-that-cannot-fit.tsx"
+    app = await testRender(
+      () =>
+        withProviders(() => (
+          <box flexDirection="column" width="100%" height="100%">
+            <SpineListing entries={[long]} contentWidth={40} />
+          </box>
+        )),
+      { width: 44, height: 6 },
+    )
+    for (let attempt = 0; attempt < 20; attempt++) {
+      await app.renderOnce()
+      await app.flush()
+      if (app.captureCharFrame().includes("…")) break
+      await Bun.sleep(20)
+    }
+    const frame = app.captureCharFrame()
+    expect(frame).toContain("…")
+    expect(frame).not.toContain(long)
+  })
 
   test("wide conversation is open prose while the user prompt remains a distinct turn", async () => {
     const frame = await renderAt(120)

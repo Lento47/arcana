@@ -848,7 +848,7 @@ export function SpineEntry(props: {
                   <box flexDirection="row" flexShrink={0} alignItems="flex-start">
                     <SpineRail layout={props.layout} active={props.focused} />
                     <box flexGrow={1} minWidth={0} flexShrink={1}>
-                      <SpineListing entries={v().listing!} note={v().bodyNote} />
+                      <SpineListing entries={v().listing!} note={v().bodyNote} contentWidth={props.contentWidth} />
                     </box>
                   </box>
                 </Show>

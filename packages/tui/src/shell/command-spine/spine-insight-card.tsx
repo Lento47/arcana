@@ -58,7 +58,7 @@ export function SpineInsightCard(props: {
       backgroundColor={theme.backgroundPanel}
     >
       <box flexDirection="row" flexShrink={0} minWidth={0} gap={1} alignItems="center">
-        <text fg={theme.text} wrapMode="none">
+        <text fg={theme.text} wrapMode="none" overflow="hidden">
           {header().title}
         </text>
         <box flexGrow={1} minWidth={1} />
@@ -87,7 +87,7 @@ export function SpineInsightCard(props: {
                     paddingRight={1}
                     backgroundColor={metric.tone === "fail" || metric.tone === "warn" ? theme.backgroundElement : undefined}
                   >
-                    <text wrapMode="none">
+                    <text wrapMode="none" overflow="hidden">
                       <span style={{ fg: theme.spineContext }}>{metric.label} </span>
                       <span style={{ fg: toneColor(metric.tone, theme) }}>{metric.value}</span>
                     </text>

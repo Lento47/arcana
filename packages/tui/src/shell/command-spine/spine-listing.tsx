@@ -1,5 +1,6 @@
 import { For, Show, createMemo } from "solid-js"
 import { useTheme } from "../../context/theme"
+import { truncate } from "../../util/locale"
 import { listingEntryChrome } from "./spine-chrome"
 
 /**
@@ -8,6 +9,8 @@ import { listingEntryChrome } from "./spine-chrome"
 export function SpineListing(props: {
   entries: string[]
   note?: string
+  /** Measured row width; long paths truncate with "…" instead of overflowing. */
+  contentWidth?: number
 }) {
   const { theme } = useTheme()
   const muted = () => theme.spineDiffMuted
@@ -20,6 +23,17 @@ export function SpineListing(props: {
     const kinds = new Set(rows().map((row) => row.kind))
     return kinds.size <= 1
   })
+  // Long paths must truncate with "…" (never overflow the row): budget =
+  // measured width minus the row indent and, when mixed, the kind pill.
+  const nameBudget = createMemo(() => {
+    const width = props.contentWidth
+    if (typeof width !== "number" || !Number.isFinite(width)) return undefined
+    return Math.max(8, Math.floor(width) - 2 - (uniformKind() ? 0 : 7))
+  })
+  const name = (entry: { name: string }) => {
+    const budget = nameBudget()
+    return budget === undefined ? entry.name : truncate(entry.name, budget)
+  }
 
   return (
     <box flexDirection="column" flexShrink={0} minWidth={0} paddingLeft={1} gap={0}>
@@ -40,8 +54,8 @@ export function SpineListing(props: {
                 </text>
               </box>
             </Show>
-            <text fg={nameColor()} wrapMode="none">
-              {entry.name}
+            <text fg={nameColor()} wrapMode="none" overflow="hidden">
+              {name(entry)}
               <Show when={entry.mark}>
                 <span style={{ fg: muted() }}>{entry.mark}</span>
               </Show>
