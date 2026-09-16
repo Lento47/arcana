@@ -21,27 +21,6 @@ const STREAM_CARET = "▌"
 export { looksLikeMarkdown, normalizeChatProse, stripMarkdownEmphasis } from "./chat-prose"
 
 /**
- * Disable underscore emphasis in markdown so `_text_`, snake_case, and
- * `_private` do not render as italics. Asterisk emphasis (`*italic*`) still works.
- * Leaves fenced blocks and inline `code` alone.
- */
-export function escapeMarkdownUnderscoreEmphasis(text: string): string {
-  const parts = text.split(/(```[\s\S]*?```)/)
-  return parts
-    .map((part, i) => {
-      if (i % 2 === 1) return part
-      return part
-        .split(/(`[^`\n]+`)/)
-        .map((seg, j) => {
-          if (j % 2 === 1) return seg
-          return seg.replace(/_/g, "\\_")
-        })
-        .join("")
-    })
-    .join("")
-}
-
-/**
  * True when `line` is a paragraph line that a `---` underline can turn into a
  * setext H2. Must sit at column 0 (a setext heading paragraph is never
  * indented) and must not be a block-level construct (heading, list item,
@@ -58,8 +37,7 @@ function isSetextHeadingParagraph(line: string): boolean {
 /**
  * Strip horizontal rules — OpenTUI renders them as full-width dashes — but only
  * OUTSIDE fenced code blocks: a `---` line inside a triple-backtick fence is real
- * content (tables, YAML, etc.) and must be preserved. Mirrors the fence-splitting
- * pattern of `escapeMarkdownUnderscoreEmphasis`.
+ * content (tables, YAML, etc.) and must be preserved.
  *
  * Whole lines are filtered out (not blanked), so no empty row is left behind where
  * the rule was. A `---` directly under a column-0 paragraph line is a setext H2
@@ -217,50 +195,36 @@ export function SpineProse(props: {
     }),
   )
 
-  // Grain stream caret. While assistant prose is live, the caret flickers
-  // through the dither ramp (░▒▓▌) instead of blinking on/off — constant
-  // one-cell width, so no layout shift and no blank frame mid-stream. The
-  // caret is the liveness signal at the stream point, so the composer
-  // "Working…" pulse can stay quiet. Static ▌ when animations are disabled
-  // (global animations_enabled KV). Only while assistant prose is live.
-  // Defined before markdownContent: the initial signal value reads the memo
-  // eagerly, so caretPhase must already be initialized.
+  // Grain stream caret (░▒▓▌) at the stream point. The caret is appended to the
+  // markdown source, so a TIMER that cycles it would rewrite the body 8×/second
+  // and force the markdown renderable (tables included) to re-parse and repaint
+  // — the "code above flickers" artifact. Instead the grain advances WITH the
+  // stream: one step per content update. It still shimmers while the model
+  // writes, but a pause produces zero frames, and every caret change rides a
+  // repaint that the incoming token already caused. Static ▌ when animations
+  // are disabled (global animations_enabled KV).
   const kv = useKV()
   const GRAIN_CARET = "░▒▓▌"
-  const GRAIN_CARET_MS = 120
   const [caretPhase, setCaretPhase] = createSignal(0)
-  let caretTimer: ReturnType<typeof setInterval> | undefined
-  const grainActive = () => caretTimer !== undefined
+  let lastCaretText = ""
   createEffect(() => {
-    const show =
-      mode() === "markdown" && props.streaming === true && kv.get("animations_enabled", true)
-    if (show && !caretTimer) {
-      caretTimer = setInterval(() => setCaretPhase((v) => (v + 1) % GRAIN_CARET.length), GRAIN_CARET_MS)
-    } else if (!show && caretTimer) {
-      clearInterval(caretTimer)
-      caretTimer = undefined
-      setCaretPhase(0)
-    }
-  })
-  onCleanup(() => {
-    if (caretTimer) clearInterval(caretTimer)
+    const current = text()
+    const grain = kv.get("animations_enabled", true)
+    if (current === lastCaretText) return
+    lastCaretText = current
+    setCaretPhase(grain ? (v) => (v + 1) % GRAIN_CARET.length : 0)
   })
 
   const markdownContent = createMemo(() => {
-    const raw = mode() === "markdown" ? escapeMarkdownUnderscoreEmphasis(text()) : text()
+    const raw = text()
     // Strip emphasis/strikethrough markers (`**`, `~~`) so raw syntax never
     // leaks into chat text (OpenTUI inline conceal depends on tree-sitter
     // markdown_inline injection; strip guarantees clean text regardless).
     const noEmphasis = mode() === "markdown" || kind() === "think" ? stripMarkdownEmphasis(raw) : raw
     // Strip horizontal rules (full-width dash rows) only outside fenced code blocks
     const stripped = mode() === "markdown" ? stripMarkdownHorizontalRules(noEmphasis) : noEmphasis
-    // Stream caret: a grain-flicker caret at the end of live assistant prose.
-    // The caret is the liveness signal at the stream point — no layout shift,
-    // no per-token re-render. Suppressed for think (shimmer + elapsed already
-    // cue) and code (tool output is never streamed live).
     if (mode() === "markdown" && props.streaming === true) {
-      void caretPhase()
-      return stripped + (grainActive() ? GRAIN_CARET[caretPhase()] : STREAM_CARET)
+      return stripped + (kv.get("animations_enabled", true) ? GRAIN_CARET[caretPhase()] : STREAM_CARET)
     }
     return stripped
   })
@@ -387,7 +351,7 @@ export function SpineProse(props: {
             {/* Numeric width so wrap is correct at construct */}
             <code
               width={wrapCols()}
-              content={escapeMarkdownUnderscoreEmphasis(reminder)}
+              content={reminder}
               filetype="markdown"
               syntaxStyle={subtleSyntax()}
               streaming={false}

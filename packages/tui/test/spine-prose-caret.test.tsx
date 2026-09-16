@@ -102,23 +102,35 @@ async function renderChat(opts: { streaming?: boolean; animationsOff?: boolean }
   return { setText, setStreaming }
 }
 
-test("streaming assistant prose shows a grain caret at the stream point", async () => {
+test("streaming assistant prose shows a grain caret that advances with the stream", async () => {
   const { setText, setStreaming } = await renderChat({ streaming: true })
   setText("hello")
   await pump()
-  // Animations on: the caret flickers through the dither ramp (░▒▓▌) at
-  // 120ms/tick and never blanks — any one of the four glyphs is a valid
-  // stream point, and the cell is always occupied (no layout shift).
-  const frame = app!.captureCharFrame()
-  expect(frame).toMatch(new RegExp(`hello[${GRAIN}]`))
-  expect(frame).not.toMatch(/hello\s/)
+  const first = app!.captureCharFrame()
+  const glyph = first.match(new RegExp(`hello([${GRAIN}])`))?.[1]
+  expect(glyph, "caret at the stream point").toBeDefined()
+
+  // No text change → no frames: the grain must NOT cycle on a timer. A timer
+  // rewrote the markdown source 8×/second, which re-parsed and repainted the
+  // prose (tables included) — the flicker this contract prevents.
+  await Bun.sleep(150)
+  await app!.renderOnce()
+  await app!.flush()
+  const settled = app!.captureCharFrame()
+  expect(settled.match(new RegExp(`hello([${GRAIN}])`))?.[1]).toBe(glyph)
+
+  // A content update advances the grain with the stream (still one of ░▒▓▌).
+  setText("hello world")
+  await pump()
+  expect(app!.captureCharFrame()).toMatch(new RegExp(`hello world[${GRAIN}]`))
+
   // Once idle, the caret disappears and the text finalizes.
   setStreaming(false)
   await pump()
   const idle = app!.captureCharFrame()
-  expect(idle).toContain("hello")
-  for (const glyph of GRAIN) {
-    expect(idle).not.toContain(`hello${glyph}`)
+  expect(idle).toContain("hello world")
+  for (const candidate of GRAIN) {
+    expect(idle).not.toContain(`hello world${candidate}`)
   }
 })
 
