@@ -19,21 +19,14 @@
 import { expect, test } from "bun:test"
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
-import { onCleanup, onMount } from "solid-js"
-import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
-import { testRender, useRenderer } from "@opentui/solid"
-import { ThemeProvider } from "../src/context/theme"
-import { ToastProvider } from "../src/ui/toast"
-import { TuiConfigProvider } from "../src/config"
-import { KVProvider } from "../src/context/kv"
-import { DialogProvider, useDialog } from "../src/ui/dialog"
-import { OpencodeKeymapProvider, registerOpencodeKeymap } from "../src/keymap"
+import { onMount } from "solid-js"
+import { testRender } from "@opentui/solid"
+import { useDialog } from "../src/ui/dialog"
 import { DialogAlert } from "../src/ui/dialog-alert"
 import { DialogConfirm } from "../src/ui/dialog-confirm"
 import { fallbackTheme, selectedForeground } from "../src/theme"
 import { contrastingInk } from "../src/theme/contrast"
-import { TestTuiContexts } from "./fixture/tui-environment"
-import { createTuiResolvedConfig } from "./fixture/tui-runtime"
+import { TestTuiProviders } from "./fixture/tui-providers"
 
 type Span = { text: string; fg: unknown; bg: unknown }
 
@@ -81,28 +74,10 @@ function Opener(props: { kind: "confirm" | "alert" | "destructive" | "plain" }) 
 }
 
 function Tree(props: { kind: "confirm" | "alert" | "destructive" | "plain" }) {
-  const renderer = useRenderer()
-  const keymap = createDefaultOpenTuiKeymap(renderer)
-  const resolvedConfig = createTuiResolvedConfig()
-  const off = registerOpencodeKeymap(keymap, renderer, resolvedConfig)
-  onCleanup(off)
-
   return (
-    <TestTuiContexts>
-      <OpencodeKeymapProvider keymap={keymap}>
-        <TuiConfigProvider config={resolvedConfig}>
-          <KVProvider>
-            <ToastProvider>
-              <ThemeProvider mode="dark">
-                <DialogProvider>
-                  <Opener kind={props.kind} />
-                </DialogProvider>
-              </ThemeProvider>
-            </ToastProvider>
-          </KVProvider>
-        </TuiConfigProvider>
-      </OpencodeKeymapProvider>
-    </TestTuiContexts>
+    <TestTuiProviders>
+      <Opener kind={props.kind} />
+    </TestTuiProviders>
   )
 }
 
