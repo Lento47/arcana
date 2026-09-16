@@ -8,10 +8,12 @@
  *
  * Fix: move the highlight to the OUTER row box so it spans the full row —
  * gutter (no left gap) + header + body — and extract the policy as a pure
- * `rowFocusHighlight(focused, isChatProse)` helper (S7 pattern). Chat prose
- * rows keep their own conversation chrome (left accent border in
- * SpineChatCard; user prompts alone carry a faint fill) and are gated out —
- * no double-fill.
+ * `rowFocusHighlight(focused, isChatProse)` helper (S7 pattern).
+ *
+ * Quiet Rail (2026-09): focus is structural, not a wash. Non-chat rows get a
+ * whisper fill (~30% of one step); chat prose rows get no fill — the card
+ * hairline and marker glyph carry focus. Focus never adds a border, so
+ * focused and unfocused frames keep identical content columns.
  *
  * Source contracts fail on the old code.
  */
@@ -29,12 +31,14 @@ describe("C2 — focus highlight lives on the row container, not the header box"
     expect(src).not.toContain("backgroundColor={props.focused ? theme.backgroundElement : undefined}")
     expect(src).not.toContain('border={props.focused && !isChatProse() ? (["left"] as any) : undefined}')
   })
-  test("a rowHighlight memo feeds the outer row box (bg + border + color)", () => {
+  test("a rowHighlight memo feeds the outer row box (bg only — Quiet Rail)", () => {
     const src = entry()
     expect(src).toContain("const rowHighlight = createMemo(")
     expect(src).toContain("backgroundColor={rowHighlight().bg}")
-    expect(src).toContain("border={rowHighlight().border}")
-    expect(src).toContain("borderColor={rowHighlight().borderColor}")
+    // Quiet Rail: focus never adds a border, so focused and unfocused frames
+    // keep identical content columns.
+    expect(src).not.toContain("border={rowHighlight().border}")
+    expect(src).not.toContain("borderColor={rowHighlight().borderColor}")
   })
   test("the pure policy is exported and consumed by the memo", () => {
     const src = entry()
@@ -52,10 +56,10 @@ describe("C2 — focus highlight lives on the row container, not the header box"
   })
 })
 
-describe("C2 — rowFocusHighlight policy", () => {
-  test("focused non-chat rows highlight; chat prose rows keep card chrome", () => {
-    expect(rowFocusHighlight(true, false)).toBe("row")
-    expect(rowFocusHighlight(true, true)).toBe("none")
+describe("C2 — rowFocusHighlight policy (Quiet Rail)", () => {
+  test("focused non-chat rows whisper; chat prose rows signal with the rail only", () => {
+    expect(rowFocusHighlight(true, false)).toBe("whisper")
+    expect(rowFocusHighlight(true, true)).toBe("rail")
     expect(rowFocusHighlight(false, false)).toBe("none")
     expect(rowFocusHighlight(false, true)).toBe("none")
   })

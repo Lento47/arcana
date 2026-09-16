@@ -33,8 +33,8 @@ check(
 )
 check(src.includes("const rowHighlight = createMemo("), "rowHighlight memo exists")
 check(src.includes("backgroundColor={rowHighlight().bg}"), "outer row box consumes bg")
-check(src.includes("border={rowHighlight().border}"), "outer row box consumes border")
-check(src.includes("borderColor={rowHighlight().borderColor}"), "outer row box consumes borderColor")
+check(!src.includes("border={rowHighlight().border}"), "focus adds no border (Quiet Rail)")
+check(!src.includes("borderColor={rowHighlight().borderColor}"), "focus adds no border color (Quiet Rail)")
 check(src.includes("export function rowFocusHighlight("), "pure rowFocusHighlight policy exported")
 check(src.includes("rowFocusHighlight(props.focused === true, isChatProse())"), "memo consumes the pure policy")
 // The bg sits on the OUTER row box: it must appear after `id={entry().id}`
@@ -46,9 +46,9 @@ check(
   "bg is on the outer row box, before the gutter (gutter inside highlight)",
 )
 
-console.log("rowFocusHighlight policy:")
-eq("focused + tool/think row → row highlight", rowFocusHighlight(true, false), "row")
-eq("focused + chat prose → none (card owns chrome)", rowFocusHighlight(true, true), "none")
+console.log("rowFocusHighlight policy (Quiet Rail):")
+eq("focused + tool/think row → whisper fill", rowFocusHighlight(true, false), "whisper")
+eq("focused + chat prose → rail only (card owns chrome)", rowFocusHighlight(true, true), "rail")
 eq("unfocused + tool row → none", rowFocusHighlight(false, false), "none")
 eq("unfocused + chat prose → none", rowFocusHighlight(false, true), "none")
 

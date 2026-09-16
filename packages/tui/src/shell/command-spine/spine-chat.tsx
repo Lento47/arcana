@@ -98,9 +98,11 @@ export function SpineChatCard(props: {
       paddingTop={isUser() ? 1 : 0}
       paddingBottom={1}
     >
-      {/* Marker cell — the speaker glyph lines up with the first prose line. */}
+      {/* Marker cell — the speaker glyph lines up with the first prose line.
+          Quiet Rail: the glyph brightens to the accent on focus (same signal
+          as the card hairline), so a selected block reads without a row fill. */}
       <box width={railW()} flexShrink={0} paddingRight={1}>
-        <text fg={speakerColor()} wrapMode="none">
+        <text fg={lineColor()} wrapMode="none">
           {glyphCell()}
         </text>
       </box>

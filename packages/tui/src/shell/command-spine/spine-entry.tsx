@@ -10,7 +10,8 @@ import type {
   SpineLayout,
 } from "./spine-types"
 import { spineOuterPadding, spineRailWidth } from "./spine-types"
-import { selectedForeground, useTheme } from "../../context/theme"
+import { selectedForeground, tint, useTheme } from "../../context/theme"
+import { createEase } from "../../util/motion"
 import { useSync } from "../../context/sync"
 import { SpineGutter } from "./spine-gutter"
 import { SpineNode } from "./spine-node"
@@ -117,14 +118,16 @@ export function computeSpineToggle(facts: SpineToggleFacts): SpineToggle {
 }
 
 /**
- * C2: a focused row's highlight must be ROW-ALIGNED. The fill + left accent
- * border live on the OUTER row box (gutter + header + body) so the highlight
- * spans the whole row. Chat prose rows are gated out: the chat voice owns its
- * own chrome (soft card + left accent), so painting the row again would
- * double-fill.
+ * C2 / Quiet Rail: focus is structural, not a wash. The fill lives on the
+ * OUTER row box (gutter + header + body) so the highlight spans the whole row,
+ * but it is only a whisper for dense rows without card chrome ("whisper").
+ * Chat prose rows resolve to "rail": no fill at all — the card hairline and
+ * the marker glyph carry focus, so the block stays one surface instead of a
+ * tinted band around an inner markdown rectangle.
  */
-export function rowFocusHighlight(focused: boolean, isChatProse: boolean): "row" | "none" {
-  return focused && !isChatProse ? "row" : "none"
+export function rowFocusHighlight(focused: boolean, isChatProse: boolean): "whisper" | "rail" | "none" {
+  if (!focused) return "none"
+  return isChatProse ? "rail" : "whisper"
 }
 
 function receiptHasContent(view: SpineEntryView): boolean {
@@ -199,6 +202,10 @@ function RowHeader(props: {
         // printing the fail glyph a second time. The chip in SpineNode owns
         // the failure signal; the rail stays blank to avoid double-marking.
         glyph={props.view.kind === "think" ? "" : props.view.kind === "fail" ? " " : props.view.glyph}
+        // Quiet Rail: the leading rail is the selection edge on focus. The
+        // inner body rails stay structural (spineRail) so a focused tool row
+        // shows one accent rule, not a wall of them.
+        color={props.focused ? theme.accent : undefined}
         active={props.focused}
       />
       <SpineNode
@@ -405,22 +412,35 @@ export function SpineEntry(props: {
 
   const isChatProse = createMemo(() => view().type === "chat")
   const isThinkRow = createMemo(() => toolView() !== undefined && kind() === "think")
-  // C2: row-aligned focus highlight - the pure policy decides, the memo maps
-  // the decision to theme tokens consumed by the OUTER row box (see render).
-  // User chat rows get a soft backgroundElement fill so the row reads as
-  // "me" without competing with the assistant's bordered card. The fill
-  // is one step lighter than the panel — visible at a glance but never loud.
+  // Quiet Rail: the pure policy decides how a focused row signals selection.
+  // Non-chat rows get a WHISPER of backgroundElement (≈30% of one step) so the
+  // fill spans the whole row — gutter included, the C2 alignment contract —
+  // without repainting the row at full strength. Chat prose rows get no fill:
+  // the card hairline + marker glyph carry focus, keeping the block one surface
+  // (no tinted band around an inner markdown rectangle). User prompts keep
+  // their static "this is me" fill. The glide only moves the whisper; nothing
+  // changes row geometry, so focused and unfocused frames have identical
+  // content columns.
+  const WHISPER_FILL = 0.3
+  const focusGlide = createEase(() => (props.focused === true ? 1 : 0), {
+    stepMs: 16,
+    riseRate: 0.6,
+    fallRate: 0.35,
+    epsilon: 0.03,
+  })
   const rowHighlight = createMemo(() => {
     const mode = rowFocusHighlight(props.focused === true, isChatProse())
     const isUserCollapsed = isChatProse() && isUserVoice() && !expanded()
+    const glide = focusGlide()
+    // Chat prose never gets a fill — not while focused ("rail") and not while
+    // the glide is still fading after blur. Dense rows whisper in and out.
+    const whisper = !isChatProse() && (mode === "whisper" || glide > 0.02)
     return {
       bg: isUserCollapsed
         ? theme.backgroundElement
-        : mode === "row"
-          ? theme.backgroundElement
+        : whisper
+          ? tint(theme.background, theme.backgroundElement, glide * WHISPER_FILL)
           : undefined,
-      border: mode === "row" ? (["left"] as any) : undefined,
-      borderColor: mode === "row" ? theme.accent : undefined,
     }
   })
   // Full prose blob for the AI/user row - already joined by the view model.
@@ -609,9 +629,10 @@ export function SpineEntry(props: {
   return (
     <Show when={!entry().hidden}>
       {/* D10: id anchors this entry for the shell's scrollChildIntoView. */}
-      {/* C2: the focused-row highlight lives on the ROW box (bg + left accent
-          border) so it spans gutter + header + body - the inner header box
-          no longer paints it. Chat prose rows resolve to none (voice chrome). */}
+      {/* C2 / Quiet Rail: the focused-row signal lives on the ROW box so it
+          spans gutter + header + body. No border is added on focus — geometry
+          stays identical between focused and unfocused frames; the gutter
+          index, the leading rail and the chat hairline carry the accent. */}
       <box
         id={entry().id}
         flexDirection="row"
@@ -619,9 +640,6 @@ export function SpineEntry(props: {
         width="100%"
         paddingLeft={padLeft()}
         backgroundColor={rowHighlight().bg}
-        border={rowHighlight().border}
-        customBorderChars={rowHighlight().border ? HairlineBorder : undefined}
-        borderColor={rowHighlight().borderColor}
         focusable={entryToggleable()}
         focused={props.focused === true}
         onMouseOver={handleHover}
