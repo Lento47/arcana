@@ -51,6 +51,22 @@ export function DialogColumn(props: ParentProps<{ gap?: number; padBottom?: bool
 }
 
 /**
+ * The dismissal's text exactly as `DialogCloseHint` draws it.
+ *
+ * Exported because a row that spends its columns on a budget has to reserve the
+ * *real* width of the affordance it draws — reserving a floor instead is how a
+ * row ends up one column over and loses the space rather than the last letter.
+ * The artifact overlay's header measures this to decide whether its readout
+ * still fits.
+ *
+ * It is also why `[esc]` is typed here and nowhere else: the key is this
+ * module's to spell, and a second copy is a second thing to keep in sync.
+ */
+export function dialogCloseLabel(label?: string): string {
+  return `[esc] ${label ?? COPY.dialog.close}`
+}
+
+/**
  * The `[esc] <verb>` dismissal. Always the same shape so the affordance is
  * learnable across every dialog; only the verb varies with what closing means.
  *
@@ -62,7 +78,7 @@ export function DialogCloseHint(props: { onClose: () => void; label?: string; ba
   const { theme } = useTheme()
   return (
     <text fg={theme.textMuted} bg={props.background} flexShrink={0} onMouseUp={props.onClose}>
-      [esc] {props.label ?? COPY.dialog.close}
+      {dialogCloseLabel(props.label)}
     </text>
   )
 }
