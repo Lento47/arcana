@@ -45,7 +45,7 @@ describe("resumableFetch", () => {
     const response = sseResponse(body) // no turn-id header
     const mockFetch = async (): Promise<Response> => response
     const original = globalThis.fetch
-    globalThis.fetch = mockFetch as typeof fetch
+    globalThis.fetch = mockFetch as unknown as typeof fetch
     try {
       const result = await resumableFetch("https://proxy.test/v1/chat/completions", {
         headers: { Authorization: "Bearer x" },
@@ -99,7 +99,7 @@ describe("resumableFetch", () => {
         headers: { Authorization: "Bearer x" },
       })
       await collect(response)
-      expect(resumeBody).toBe(JSON.stringify({ turn_id: "turn-1", offset: 9 }))
+      expect(resumeBody ?? "").toBe(JSON.stringify({ turn_id: "turn-1", offset: 9 }))
     } finally {
       globalThis.fetch = original
     }

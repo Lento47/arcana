@@ -36,6 +36,20 @@ function stripDitherGlyphs(value: string) {
   return DITHER_GLYPHS.reduce((result, glyph) => result.replaceAll(glyph, " "), value)
 }
 
+function brailleDots(chunks: ReturnType<typeof buildHomeDitherChunks>) {
+  return chunks.reduce((total, chunk) => {
+    const codePoint = chunk.fg ? (chunk.text.codePointAt(0) ?? 0) : 0
+    if (codePoint < 0x2800 || codePoint > 0x28ff) return total
+    let mask = codePoint - 0x2800
+    let dots = 0
+    while (mask > 0) {
+      dots += mask & 1
+      mask >>>= 1
+    }
+    return total + dots
+  }, 0)
+}
+
 afterEach(() => {
   app?.renderer.destroy()
   app = undefined
@@ -71,22 +85,44 @@ describe("Home backdrop dither", () => {
     expect(first).toEqual(second)
   })
 
-  test("keeps the mesh deterministic and bounded", () => {
+  test("keeps the dot raster deterministic and bounded", () => {
     const first = homeDitherCells(160, 50, { seed: 0x13579bdf, scene: "fortress" })
     const second = homeDitherCells(160, 50, { seed: 0x13579bdf, scene: "fortress" })
 
     expect(first).toEqual(second)
-    expect(first.length).toBeLessThanOrEqual(3072)
+    // One cell can emit at most once, and the dithered scene is far denser
+    // than the old hashed watermark.
+    expect(first.length).toBeLessThanOrEqual(160 * 50)
+    expect(first.length).toBeGreaterThan(600)
     expect(first.every((cell) => cell.x >= 0 && cell.x < 160 && cell.y >= 0 && cell.y < 50)).toBe(true)
+    expect(first.every((cell) => cell.mask > 0 && cell.mask < 256)).toBe(true)
     expect(first.every((cell) => cell.strength > 0 && cell.strength <= 1)).toBe(true)
     expect(first.every((cell) => cell.tone > 0 && cell.tone <= 1)).toBe(true)
     expect(first.every((cell) => cell.shade > 0 && cell.shade <= 1)).toBe(true)
     expect(first.every((cell) => cell.definition >= 0 && cell.definition <= 1)).toBe(true)
     expect(first.some((cell) => cell.definition > 0.18)).toBe(true)
     expect(first.every((cell) => cell.variant >= 0 && cell.variant < 1)).toBe(true)
-    expect(first.filter((cell) => cell.y < 5).length).toBeGreaterThan(first.filter((cell) => cell.y >= 25).length)
-    expect(first.some((cell) => cell.y >= 25)).toBe(true)
+    // The scene lives in the upper band; the faded prompt rows stay sparse.
+    expect(first.filter((cell) => cell.y < 12).length).toBeGreaterThan(first.filter((cell) => cell.y >= 30).length)
     expect(first).not.toEqual(homeDitherCells(160, 50, { seed: 0x2468ace0, scene: "fortress" }))
+  })
+
+  test("keeps the logo and prompt quiet zones clear", () => {
+    for (const scene of HOME_BACKDROP_SCENES) {
+      const cells = homeDitherCells(160, 50, { seed: 0x13579bdf, scene: scene.id })
+      const insideLogo = cells.filter((cell) => {
+        const x = (cell.x + 0.5) / 160
+        const y = (cell.y + 0.5) / 50
+        return x > 0.31 && x < 0.69 && y > 0.27 && y < 0.64
+      })
+      const insidePrompt = cells.filter((cell) => {
+        const x = (cell.x + 0.5) / 160
+        const y = (cell.y + 0.5) / 50
+        return x > 0.19 && x < 0.81 && y > 0.71 && y < 0.97
+      })
+      expect(insideLogo).toHaveLength(0)
+      expect(insidePrompt).toHaveLength(0)
+    }
   })
 
   test("selects only authored environments and changes by seed", () => {
@@ -115,6 +151,9 @@ describe("Home backdrop dither", () => {
     ).toBe(true)
     expect(glyphs.length).toBeGreaterThan(0)
     expect(new Set(glyphs).size).toBeGreaterThanOrEqual(3)
+    // The raster is dithered at braille dot resolution, so a cell carries
+    // several independent halftone dots instead of a single hashed glyph.
+    expect(brailleDots(chunks)).toBeGreaterThan(glyphs.length * 2)
     expect(
       chunks
         .filter((chunk) => chunk.fg)

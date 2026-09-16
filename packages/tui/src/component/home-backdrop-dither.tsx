@@ -5,38 +5,39 @@ import { useTheme } from "../context/theme"
 
 const DEFAULT_SEED = 0x00c0ffee
 const DITHER_LEVELS = 4
-const DITHER_DENSITY = 0.86
+/**
+ * Luminance gain applied right before the ordered threshold. Authored
+ * highlights reach full dot coverage, and the composition envelope can dim the
+ * mid-tones without turning the raster into an empty stipple.
+ */
+const DITHER_DENSITY = 1.25
 const DITHER_JITTER = 0.11
-const MAX_DITHER_CELLS = 3072
 const MAX_DOT_ALPHA = 0.3
-const SCENE_WIDTH = 0.84
-const SCENE_SPAN = 0.56
 const QUIET_FEATHER = 0.06
-
-// These values describe the visual contract of the backdrop. The scene is a
-// quiet atmospheric watermark: bright and legible near the upper edge, then
-// progressively less present toward the prompt and the lower terminal rows.
-const VERTICAL_FADE_EXPONENT = 1.26
-const ATMOSPHERE_FADE_EXPONENT = 1.08
-const AMBIENT_GAIN = 0.44
-const STRUCTURE_GAIN = 1.04
-const STRUCTURE_ATMOSPHERE_GAIN = 0.16
-const DEFINITION_TONE_GAIN = 0.08
-const CONTOUR_DEFINITION_THRESHOLD = 0.18
 const CRT_SCANLINE_DROP = 0.035
-const SCANLINE_FRAGMENT_GAIN = 0.055
-const SCANLINE_FRAGMENT_PERIOD = 4
-const SCANLINE_FRAGMENT_GROUP = 3
-const SCANLINE_FRAGMENT_THRESHOLD = 0.63
-const SCANLINE_FRAGMENT_SEED = 0x04b1d2f7
-const SCENE_SAMPLE_X = 0.018
-const SCENE_SAMPLE_Y = 0.022
-const SCENE_RELIEF_GAIN = 0.14
+/**
+ * The bottom of the screen falls away from full strength with this exponent.
+ * The contract is unchanged from the original watermark: the backdrop must
+ * never compete with the prompt rows.
+ */
+const VERTICAL_FADE_EXPONENT = 1.26
+/** One static raster may not exceed this many braille dots of work. */
+const MAX_DITHER_DOTS = 147_456
+const MAX_RENDER_CACHE = 4
+const CONTOUR_DEFINITION_THRESHOLD = 0.18
+/** Distance in dot rows over which a ridge lip catches the sky. */
+const RIDGE_LIP_ROWS = 2.4
+/**
+ * Terrain facets and grain are authored per column and per depth bucket, then
+ * interpolated per dot. The raster is static, but this keeps a resize render
+ * inside a frame budget on large terminals.
+ */
+const DEPTH_BUCKETS = 8
 
 /**
- * The public allow-list is also used by the renderer tests. Braille cells give
- * the backdrop a 2×4 subpixel grid, so its raster can carry much more detail
- * than a single terminal character while remaining one cell wide.
+ * The public allow-list is used by the renderer tests. Braille cells give the
+ * backdrop a 2×4 subpixel grid; every mask is legal now because the raster is
+ * genuinely dithered dot by dot instead of sampled from a fixed palette.
  */
 const ASCII_DITHER_GLYPHS = [
   "·",
@@ -58,24 +59,13 @@ const ASCII_DITHER_GLYPHS = [
   "▓",
   "█",
 ] as const
-const BRAILLE_BANDS = [
-  [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80],
-  [0x03, 0x09, 0x12, 0x24, 0x41, 0x82, 0xc0, 0x48],
-  [0x13, 0x2c, 0x61, 0x86, 0x3c, 0xc3, 0x7e, 0xdb],
-  [0x17, 0x2f, 0x77, 0xb7, 0xef, 0xfb, 0xff],
-] as const
-const BRAILLE_DITHER_GLYPHS = [...new Set(BRAILLE_BANDS.flat())].map((mask) => String.fromCodePoint(0x2800 + mask))
+const BRAILLE_DITHER_GLYPHS = Array.from({ length: 255 }, (_, index) => String.fromCodePoint(0x2800 + index + 1))
 export const HOME_DITHER_GLYPHS: readonly string[] = [...ASCII_DITHER_GLYPHS, ...BRAILLE_DITHER_GLYPHS]
 
-/**
- * A small motif tile keeps the field feeling like a mesh instead of a sheet of
- * unrelated noise. Tone still controls the minimum glyph weight per cell.
- */
-const GLYPH_PATTERN = [
-  [0, 1, 0, 0, 2, 0, 1, 3],
-  [0, 0, 1, 2, 0, 1, 0, 0],
-  [2, 0, 1, 0, 0, 2, 0, 1],
-  [0, 2, 0, 1, 4, 0, 1, 5],
+/** Braille bit for [column][row] inside one terminal cell. */
+const BRAILLE_BITS = [
+  [0x01, 0x02, 0x04, 0x40],
+  [0x08, 0x10, 0x20, 0x80],
 ] as const
 
 const BAYER_8X8 = [
@@ -90,8 +80,137 @@ const BAYER_8X8 = [
 ] as const
 
 export type HomeBackdropSeed = number
+export type HomeDitherCell = Readonly<{
+  x: number
+  y: number
+  /** Braille bitmask for this cell; the primary ink shape of the raster. */
+  mask: number
+  /** Final envelope strength used for glyph ink alpha. */
+  strength: number
+  /** Mean dithered luminance across the cell's eight braille dots. */
+  tone: number
+  /** Four-level quantized tone used for accents and ink weight. */
+  shade: number
+  /** Local luminance contrast used for sparse contour accents. */
+  definition: number
+  /** Seeded glyph variation; it is stable for this terminal cell. */
+  variant: number
+}>
 
-export type HomeSceneField = (x: number, y: number, seed: HomeBackdropSeed) => number
+export type HomeSceneProfile = (x: number, seed: HomeBackdropSeed) => number
+export type HomeSceneLight = Readonly<{ x: number; y: number }>
+export type HomeSceneSky = Readonly<{
+  /** Luminance at the top edge. */
+  top: number
+  /** Luminance at the horizon line. */
+  horizon: number
+  /** Star field density, 0 disables. */
+  stars: number
+  moon?: Readonly<{ x: number; y: number; r: number; phase: number }>
+}>
+
+export type HomeSceneTerrain = Readonly<{
+  kind: "terrain"
+  /** Ridge profile: the screen y of the top edge for a normalized column. */
+  profile: HomeSceneProfile
+  /** Body bottom; defaults to the bottom of the raster. */
+  bottom?: number
+  /** Tone at the ridge crest. */
+  crest: number
+  /** Tone at the body base. */
+  base: number
+  /** Facet-driven light contrast, 0 = flat fill. */
+  relief?: number
+  /** Surface grain strength. */
+  grain?: number
+  /** Surface grain frequency. */
+  scale?: number
+  /** Aerial haze; 1 dissolves the layer into the sky. */
+  fog: number
+  /** Strata band frequency, 0 disables. */
+  strata?: number
+  /** Extra seed salt so layers never share texture. */
+  salt?: number
+}>
+
+export type HomeSceneBlock = Readonly<{
+  kind: "block"
+  left: number
+  right: number
+  top: number
+  bottom: number
+  tone: number
+  fog: number
+  /** Strength of the two-tone light/shadow split across the face. */
+  relief?: number
+  /** Dark window speckle density, 0 disables. */
+  speckle?: number
+  salt?: number
+}>
+
+export type HomeSceneDome = Readonly<{
+  kind: "dome"
+  cx: number
+  cy: number
+  rx: number
+  ry: number
+  tone: number
+  fog: number
+}>
+
+export type HomeSceneCone = Readonly<{
+  kind: "cone"
+  cx: number
+  halfWidth: number
+  /** Apex y. */
+  top: number
+  /** Base y. */
+  bottom: number
+  tone: number
+  fog: number
+}>
+
+export type HomeSceneShadow = Readonly<{
+  kind: "shadow"
+  cx: number
+  cy: number
+  rx: number
+  ry: number
+  /** Multiplier taken away from whatever is already painted. */
+  strength: number
+  feather?: number
+}>
+
+export type HomeSceneHaze = Readonly<{
+  kind: "haze"
+  left: number
+  right: number
+  top: number
+  bottom: number
+  tone: number
+  strength: number
+  feather?: number
+}>
+
+export type HomeSceneWater = Readonly<{
+  /** Waterline in screen space. */
+  y: number
+  /** Base water luminance before reflection. */
+  tone: number
+  /** Reflection mix, 0 = flat water. */
+  reflection: number
+  /** Horizontal wave distortion in normalized units. */
+  wave: number
+  glint?: Readonly<{ x: number; spread: number; strength: number }>
+}>
+
+export type HomeScenePainter =
+  | HomeSceneTerrain
+  | HomeSceneBlock
+  | HomeSceneDome
+  | HomeSceneCone
+  | HomeSceneShadow
+  | HomeSceneHaze
 
 export type HomeSceneId =
   | "fortress"
@@ -104,8 +223,18 @@ export type HomeSceneId =
 export type HomeBackdropScene = Readonly<{
   id: HomeSceneId
   name: string
+  /**
+   * Legacy ASCII design reference. It documents the scene's intent for humans;
+   * the raster itself is produced by the ordered painters below.
+   */
   rows: readonly string[]
-  field: HomeSceneField
+  /** Key light direction in screen space; light comes FROM this direction. */
+  light: HomeSceneLight
+  /** Screen y of the horizon line used by the sky gradient. */
+  horizon: number
+  sky: HomeSceneSky
+  painters: readonly HomeScenePainter[]
+  water?: HomeSceneWater
 }>
 
 export type HomeDitherOptions = Readonly<{
@@ -115,34 +244,30 @@ export type HomeDitherOptions = Readonly<{
 
 export type HomeBackdropDitherProps = HomeDitherOptions
 
-export type HomeDitherCell = Readonly<{
-  x: number
-  y: number
-  /** Final envelope strength used for glyph ink alpha. */
-  strength: number
-  /** Combined scene, quiet-zone, and top-to-bottom tone used for dithering. */
-  tone: number
-  /** Four-level quantized tone used for the ordered retro shading pattern. */
-  shade: number
-  /** Local scene contrast used for sparse contour accents. */
-  definition: number
-  /** Seeded glyph variation; it is stable for this terminal cell. */
-  variant: number
-}>
-
 function sceneRows(...rows: string[]): readonly string[] {
   const width = Math.max(1, ...rows.map((row) => row.length))
   return rows.map((row) => row.padEnd(width, " "))
 }
 
-type SceneSpace = Readonly<{ x: number; y: number }>
-type SceneToneSample = Readonly<{ tone: number; definition: number }>
+function clamp(value: number, min = 0, max = 1) {
+  return Math.max(min, Math.min(max, value))
+}
 
-function sceneSpace(x: number, y: number): SceneSpace | undefined {
-  if (y > SCENE_SPAN) return
-  const sceneX = (clamp(x) - (1 - SCENE_WIDTH) / 2) / SCENE_WIDTH
-  if (sceneX < 0 || sceneX > 1) return
-  return { x: sceneX, y: clamp(y / SCENE_SPAN) }
+function mix(from: number, to: number, amount: number) {
+  return from + (to - from) * clamp(amount)
+}
+
+function integerDimension(value: number) {
+  return Math.max(0, Math.floor(Number.isFinite(value) ? value : 0))
+}
+
+function normalizeSeed(seed: number) {
+  return Number.isFinite(seed) ? seed >>> 0 : DEFAULT_SEED
+}
+
+function quantizeTone(value: number) {
+  const steps = DITHER_LEVELS - 1
+  return Math.round(clamp(value) * steps) / steps
 }
 
 function smoothstep(edge0: number, edge1: number, value: number) {
@@ -151,31 +276,15 @@ function smoothstep(edge0: number, edge1: number, value: number) {
   return normalized * normalized * (3 - 2 * normalized)
 }
 
-function softRect(x: number, y: number, left: number, right: number, top: number, bottom: number, feather = 0.025) {
-  const outsideX = Math.max(left - x, 0, x - right)
-  const outsideY = Math.max(top - y, 0, y - bottom)
-  const outside = Math.max(outsideX, outsideY)
-  return outside === 0 ? 1 : 1 - smoothstep(0, Math.max(feather, 0.035), outside)
+function cellRank(seed: HomeBackdropSeed, x: number, y: number) {
+  let value = Math.imul(x + 1, 374761393) ^ Math.imul(y + 1, 668265263) ^ normalizeSeed(seed)
+  value = Math.imul(value ^ (value >>> 13), 1274126177)
+  value ^= value >>> 16
+  return (value >>> 0) / 0x1_0000_0000
 }
 
-function softEllipse(x: number, y: number, centerX: number, centerY: number, radiusX: number, radiusY: number, feather = 0.05) {
-  const distance = Math.hypot((x - centerX) / radiusX, (y - centerY) / radiusY)
-  return 1 - smoothstep(1, 1 + Math.max(feather, 0.07), distance - 0.0001)
-}
-
-function softTriangle(
-  x: number,
-  y: number,
-  centerX: number,
-  halfWidth: number,
-  top: number,
-  bottom: number,
-  feather = 0.025,
-) {
-  const normalizedX = Math.abs(x - centerX) / halfWidth
-  const roofLine = top + normalizedX * (bottom - top)
-  const outside = Math.max(normalizedX - 1, top - y, y - bottom, roofLine - y)
-  return outside <= 0 ? 1 : 1 - smoothstep(0, Math.max(feather, 0.035), outside)
+function seeded(seed: HomeBackdropSeed, salt: number) {
+  return (normalizeSeed(seed) ^ Math.imul(salt + 1, 0x9e3779b9)) >>> 0
 }
 
 function smoothNoise(seed: HomeBackdropSeed, x: number, y: number) {
@@ -188,119 +297,81 @@ function smoothNoise(seed: HomeBackdropSeed, x: number, y: number) {
   return top * (1 - ty) + bottom * ty
 }
 
-function sceneTexture(seed: HomeBackdropSeed, x: number, y: number) {
-  return (
-    smoothNoise(seed ^ 0x13579bdf, x * 3.5, y * 2.5) * 0.55 +
-    smoothNoise(seed ^ 0x2468ace0, x * 8.5, y * 6.5) * 0.3 +
-    smoothNoise(seed ^ 0x9e3779b9, x * 19, y * 14) * 0.15
-  )
+function fbm(seed: HomeBackdropSeed, x: number, y: number, octaves = 4) {
+  let sum = 0
+  let amplitude = 0.5
+  let frequency = 1
+  let norm = 0
+  for (let octave = 0; octave < octaves; octave++) {
+    sum += smoothNoise(seeded(seed, octave * 13 + 1), x * frequency, y * frequency) * amplitude
+    norm += amplitude
+    amplitude *= 0.5
+    frequency *= 2.07
+  }
+  return sum / norm
+}
+
+function ridged(seed: HomeBackdropSeed, x: number, y: number, octaves = 4) {
+  let sum = 0
+  let amplitude = 0.5
+  let frequency = 1
+  let norm = 0
+  for (let octave = 0; octave < octaves; octave++) {
+    const noise = smoothNoise(seeded(seed, octave * 29 + 7), x * frequency, y * frequency)
+    const ridge = 1 - Math.abs(noise * 2 - 1)
+    sum += ridge * ridge * amplitude
+    norm += amplitude
+    amplitude *= 0.5
+    frequency *= 2.03
+  }
+  return sum / norm
 }
 
 /**
- * A low-frequency sky field keeps the dither from forming identical horizontal
- * stripes across the entire terminal. It is intentionally soft: the authored
- * scene remains the subject, while the atmosphere gives it photographic depth.
+ * A rolling ridge. `amplitude` is the full peak-to-valley swing in screen y.
  */
-function atmosphereTone(seed: HomeBackdropSeed, x: number, y: number) {
-  const cloud = smoothNoise(seed ^ 0x6d2b79f5, x * 2.2, y * 1.8)
-  const veil = smoothNoise(seed ^ 0x1b873593, x * 5.5, y * 3.2)
-  const horizon = 1 - smoothstep(0.35, 0.9, y)
-  return clamp(0.72 + cloud * 0.42 + veil * 0.12 + horizon * 0.08)
+function ridge(baseY: number, amplitude: number, frequency: number, salt: number, octaves = 4): HomeSceneProfile {
+  return (x, seed) => baseY - amplitude * (fbm(seed, x * frequency, salt * 0.37, octaves) - 0.5) * 2
 }
 
-function fortressField(x: number, y: number, seed: HomeBackdropSeed) {
-  const ridge = 0.56 + Math.sin(x * 7.5 + seed * 0.000001) * 0.035 + (sceneTexture(seed, x, y) - 0.5) * 0.06
-  const distantHill = smoothstep(ridge - 0.04, ridge + 0.08, y) * 0.2
-  const moon = softEllipse(x, y, 0.78, 0.13, 0.075, 0.085, 0.1)
-  const moonShadow = softEllipse(x, y, 0.805, 0.115, 0.064, 0.073, 0.1)
-  const leftTower = softRect(x, y, 0.14, 0.28, 0.23, 0.72, 0.018)
-  const rightTower = softRect(x, y, 0.71, 0.84, 0.17, 0.72, 0.018)
-  const leftRoof = softTriangle(x, y, 0.21, 0.11, 0.08, 0.27, 0.018)
-  const rightRoof = softTriangle(x, y, 0.775, 0.12, 0.02, 0.2, 0.018)
-  const keep = softRect(x, y, 0.34, 0.66, 0.28, 0.7, 0.02)
-  const keepRoof = softTriangle(x, y, 0.5, 0.19, 0.1, 0.31, 0.02)
-  const wall = softRect(x, y, 0.23, 0.78, 0.48, 0.76, 0.025)
-  const gate = softEllipse(x, y, 0.5, 0.68, 0.07, 0.17, 0.08)
-  const masonry = 0.78 + sceneTexture(seed ^ 0x51ed2705, x * 4, y * 5) * 0.22
-  return clamp(
-    distantHill +
-      moon * 0.34 -
-      moonShadow * 0.24 +
-      (leftTower * 0.7 + rightTower * 0.78 + keep * 0.8 + wall * 0.45) * masonry +
-      (leftRoof * 0.58 + rightRoof * 0.72 + keepRoof * 0.9) -
-      gate * 0.28,
-  )
+/** A sharper, mountain-like ridge built from ridged noise. */
+function peaks(baseY: number, amplitude: number, frequency: number, salt: number, octaves = 4): HomeSceneProfile {
+  return (x, seed) => baseY - amplitude * ridged(seed, x * frequency, salt * 0.31, octaves)
 }
 
-function mountainPassField(x: number, y: number, seed: HomeBackdropSeed) {
-  const primary = 0.42 + Math.sin(x * 5.8 + seed * 0.000002) * 0.08 + Math.sin(x * 13.2) * 0.025
-  const secondary = 0.58 + Math.sin(x * 8.2 + 1.4) * 0.1 + (sceneTexture(seed, x, y) - 0.5) * 0.05
-  const rear = smoothstep(primary - 0.025, primary + 0.1, y) * 0.38
-  const front = smoothstep(secondary - 0.04, secondary + 0.1, y) * 0.62
-  const pass = softEllipse(x, y, 0.5, 0.58, 0.18, 0.24, 0.12)
-  const moon = softEllipse(x, y, 0.73, 0.15, 0.085, 0.085, 0.1)
-  const moonShadow = softEllipse(x, y, 0.758, 0.13, 0.072, 0.07, 0.1)
-  return clamp(
-    moon * 0.32 -
-      moonShadow * 0.2 +
-      rear +
-      front * (1 - pass * 0.55) +
-      sceneTexture(seed ^ 0x17c6e3, x * 3, y * 4) * 0.12,
-  )
+/** A ridged profile pulled toward discrete steps, for mesas and canyon walls. */
+function terraces(
+  baseY: number,
+  amplitude: number,
+  frequency: number,
+  salt: number,
+  steps: number,
+  blend = 0.65,
+  octaves = 4,
+): HomeSceneProfile {
+  return (x, seed) => {
+    const raw = baseY - amplitude * ridged(seed, x * frequency, salt * 0.31, octaves)
+    const stepped = Math.round(raw * steps) / steps
+    return mix(raw, stepped, blend)
+  }
 }
 
-function observatoryField(x: number, y: number, seed: HomeBackdropSeed) {
-  const hill = smoothstep(0.62, 0.76, y) * 0.24
-  const dome = softEllipse(x, y, 0.5, 0.35, 0.23, 0.2, 0.055)
-  const domeCut = softEllipse(x, y, 0.5, 0.39, 0.19, 0.12, 0.05)
-  const tower = softRect(x, y, 0.4, 0.6, 0.35, 0.72, 0.018)
-  const leftWing = softRect(x, y, 0.27, 0.42, 0.48, 0.7, 0.02)
-  const rightWing = softRect(x, y, 0.58, 0.73, 0.48, 0.7, 0.02)
-  const antenna = softRect(x, y, 0.495, 0.505, 0.06, 0.25, 0.012)
-  return clamp(hill + dome * 0.76 + tower * 0.64 + leftWing * 0.34 + rightWing * 0.34 + antenna * 0.38 - domeCut * 0.42 + sceneTexture(seed, x * 6, y * 5) * 0.12)
+function block(spec: Omit<HomeSceneBlock, "kind">): HomeSceneBlock {
+  return { kind: "block", ...spec }
 }
 
-function templeRuinsField(x: number, y: number, seed: HomeBackdropSeed) {
-  const ground = smoothstep(0.58, 0.78, y) * 0.22
-  const pediment = softTriangle(x, y, 0.5, 0.31, 0.18, 0.43, 0.025)
-  const base = softRect(x, y, 0.18, 0.82, 0.42, 0.7, 0.02)
-  const columns = [0.24, 0.36, 0.5, 0.64, 0.77].reduce((sum, center, index) => {
-    const top = 0.3 + (index % 2) * 0.055
-    return sum + softRect(x, y, center - 0.032, center + 0.032, top, 0.69, 0.018) * (index === 2 ? 0.9 : 0.62)
-  }, 0)
-  const brokenWing = softRect(x, y, 0.06, 0.29, 0.38, 0.65, 0.03) * (0.55 + sceneTexture(seed, x * 5, y * 4) * 0.25)
-  return clamp(ground + pediment * 0.62 + base * 0.38 + columns * 0.22 + brokenWing * 0.35)
+function cone(spec: Omit<HomeSceneCone, "kind">): HomeSceneCone {
+  return { kind: "cone", ...spec }
 }
 
-function harborSkylineField(x: number, y: number, seed: HomeBackdropSeed) {
-  const water = smoothstep(0.62, 0.76, y) * 0.32
-  const skyline = [
-    [0.08, 0.2, 0.36],
-    [0.21, 0.13, 0.32],
-    [0.34, 0.24, 0.4],
-    [0.48, 0.11, 0.3],
-    [0.58, 0.2, 0.36],
-    [0.72, 0.15, 0.34],
-    [0.86, 0.28, 0.44],
-  ].reduce((sum, [center, width, top]) => sum + softRect(x, y, center - width / 2, center + width / 2, top, 0.7, 0.02) * 0.46, 0)
-  const masts = softRect(x, y, 0.28, 0.292, 0.12, 0.69, 0.01) * 0.24 + softRect(x, y, 0.68, 0.692, 0.18, 0.69, 0.01) * 0.2
-  const reflections = water * (0.65 + sceneTexture(seed ^ 0x32f0a9, x * 12, y * 8) * 0.35)
-  return clamp(skyline + masts + reflections)
+function dome(spec: Omit<HomeSceneDome, "kind">): HomeSceneDome {
+  return { kind: "dome", ...spec }
 }
 
-function canyonArchipelagoField(x: number, y: number, seed: HomeBackdropSeed) {
-  const leftRidge = softTriangle(x, y, 0.02, 0.42, 0.2, 0.82, 0.04)
-  const rightRidge = softTriangle(x, y, 0.98, 0.4, 0.25, 0.84, 0.04)
-  const island = softEllipse(x, y, 0.52, 0.61, 0.26, 0.13, 0.08)
-  const archOpening = softEllipse(x, y, 0.52, 0.59, 0.12, 0.09, 0.07)
-  const strata = (0.5 + 0.5 * Math.sin((y * 30 + x * 6 + seed * 0.00001))) * 0.18
-  return clamp(leftRidge * 0.62 + rightRidge * 0.68 + island * 0.54 - archOpening * 0.32 + strata)
-}
+// ---------------------------------------------------------------------------
+// Scene library
+// ---------------------------------------------------------------------------
 
-/**
- * Generic iconic environments are authored as compact masks, not external
- * image assets. The texture and glyph choices around them still vary by seed.
- */
 export const HOME_BACKDROP_SCENES: readonly HomeBackdropScene[] = [
   {
     id: "fortress",
@@ -324,7 +395,48 @@ export const HOME_BACKDROP_SCENES: readonly HomeBackdropScene[] = [
       " /                  \\/                         \\/                  \\      ",
       " .----..----..----..----..----..----..----..----..----..----..----..----.  ",
     ),
-    field: fortressField,
+    light: { x: -0.7, y: -0.5 },
+    horizon: 0.21,
+    sky: { top: 0.004, horizon: 0.028, stars: 0.5, moon: { x: 0.79, y: 0.085, r: 0.042, phase: 0.6 } },
+    painters: [
+      {
+        kind: "terrain",
+        profile: ridge(0.215, 0.045, 3.2, 11),
+        crest: 0.5,
+        base: 0.3,
+        fog: 0.38,
+        grain: 0.22,
+        scale: 4.5,
+      },
+      {
+        kind: "terrain",
+        profile: ridge(0.29, 0.05, 5.6, 23),
+        bottom: 0.85,
+        crest: 0.5,
+        base: 0.3,
+        fog: 0.16,
+        grain: 0.35,
+        scale: 6,
+      },
+      block({ left: 0.14, right: 0.86, top: 0.19, bottom: 0.3, tone: 0.6, fog: 0.18, relief: 0.85 }),
+      block({ left: 0.12, right: 0.21, top: 0.115, bottom: 0.31, tone: 0.64, fog: 0.16, relief: 0.9 }),
+      block({ left: 0.79, right: 0.88, top: 0.135, bottom: 0.31, tone: 0.6, fog: 0.16, relief: 0.9 }),
+      block({ left: 0.43, right: 0.57, top: 0.09, bottom: 0.31, tone: 0.68, fog: 0.14, relief: 0.9 }),
+      cone({ cx: 0.5, halfWidth: 0.095, top: 0.04, bottom: 0.095, tone: 0.66, fog: 0.14 }),
+      cone({ cx: 0.165, halfWidth: 0.06, top: 0.075, bottom: 0.12, tone: 0.62, fog: 0.16 }),
+      cone({ cx: 0.835, halfWidth: 0.06, top: 0.095, bottom: 0.14, tone: 0.6, fog: 0.16 }),
+      { kind: "shadow", cx: 0.5, cy: 0.275, rx: 0.03, ry: 0.045, strength: 0.6 },
+      {
+        kind: "terrain",
+        profile: ridge(0.42, 0.055, 4.4, 41),
+        bottom: 1.1,
+        crest: 0.55,
+        base: 0.26,
+        fog: 0.05,
+        grain: 0.5,
+        scale: 7,
+      },
+    ],
   },
   {
     id: "mountain-pass",
@@ -342,7 +454,41 @@ export const HOME_BACKDROP_SCENES: readonly HomeBackdropScene[] = [
       "      :        :        :        :        :        :            ",
       "  ..---..  ..---..  ..---..  ..---..  ..---..  ..---..         ",
     ),
-    field: mountainPassField,
+    light: { x: -0.4, y: -0.62 },
+    horizon: 0.24,
+    sky: { top: 0.004, horizon: 0.032, stars: 0.85, moon: { x: 0.67, y: 0.065, r: 0.028, phase: 0.35 } },
+    painters: [
+      {
+        kind: "terrain",
+        profile: peaks(0.255, 0.1, 2.4, 5),
+        crest: 0.5,
+        base: 0.28,
+        fog: 0.36,
+        grain: 0.26,
+        scale: 4,
+      },
+      {
+        kind: "terrain",
+        profile: peaks(0.46, 0.18, 3.6, 17),
+        bottom: 1.1,
+        crest: 0.5,
+        base: 0.24,
+        fog: 0.12,
+        grain: 0.45,
+        scale: 6,
+      },
+      { kind: "haze", left: 0.18, right: 0.82, top: 0.3, bottom: 0.37, tone: 0.16, strength: 0.45, feather: 0.05 },
+      {
+        kind: "terrain",
+        profile: ridge(0.62, 0.08, 5.2, 33),
+        bottom: 1.1,
+        crest: 0.52,
+        base: 0.2,
+        fog: 0.04,
+        grain: 0.5,
+        scale: 8,
+      },
+    ],
   },
   {
     id: "observatory",
@@ -360,7 +506,36 @@ export const HOME_BACKDROP_SCENES: readonly HomeBackdropScene[] = [
       "              |########################| ___/   \\___        ",
       "              +------------------------+---+-----+---        ",
     ),
-    field: observatoryField,
+    light: { x: -0.55, y: -0.52 },
+    horizon: 0.2,
+    sky: { top: 0.004, horizon: 0.028, stars: 1, moon: { x: 0.2, y: 0.07, r: 0.028, phase: 0.5 } },
+    painters: [
+      {
+        kind: "terrain",
+        profile: ridge(0.27, 0.05, 3.1, 7),
+        crest: 0.48,
+        base: 0.28,
+        fog: 0.34,
+        grain: 0.24,
+        scale: 4.5,
+      },
+      block({ left: 0.29, right: 0.44, top: 0.2, bottom: 0.3, tone: 0.5, fog: 0.24, relief: 0.8 }),
+      block({ left: 0.56, right: 0.71, top: 0.2, bottom: 0.3, tone: 0.5, fog: 0.24, relief: 0.8 }),
+      block({ left: 0.44, right: 0.56, top: 0.145, bottom: 0.3, tone: 0.6, fog: 0.18, relief: 0.9 }),
+      dome({ cx: 0.5, cy: 0.145, rx: 0.075, ry: 0.065, tone: 0.72, fog: 0.14 }),
+      { kind: "shadow", cx: 0.53, cy: 0.135, rx: 0.008, ry: 0.05, strength: 0.5, feather: 0.03 },
+      block({ left: 0.497, right: 0.503, top: 0.03, bottom: 0.135, tone: 0.5, fog: 0.2 }),
+      {
+        kind: "terrain",
+        profile: ridge(0.5, 0.06, 4.7, 29),
+        bottom: 1.1,
+        crest: 0.52,
+        base: 0.2,
+        fog: 0.04,
+        grain: 0.5,
+        scale: 7,
+      },
+    ],
   },
   {
     id: "temple-ruins",
@@ -378,7 +553,39 @@ export const HOME_BACKDROP_SCENES: readonly HomeBackdropScene[] = [
       "  ..---+---..---+---..---+---..---+---..---+---..---..          ",
       "       .          .          .          .          .             ",
     ),
-    field: templeRuinsField,
+    light: { x: -0.62, y: -0.42 },
+    horizon: 0.27,
+    sky: { top: 0.005, horizon: 0.038, stars: 0.45 },
+    painters: [
+      {
+        kind: "terrain",
+        profile: ridge(0.335, 0.04, 2.7, 13),
+        crest: 0.46,
+        base: 0.26,
+        fog: 0.36,
+        grain: 0.26,
+        scale: 4,
+      },
+      block({ left: 0.17, right: 0.83, top: 0.255, bottom: 0.315, tone: 0.5, fog: 0.24, relief: 0.75 }),
+      block({ left: 0.22, right: 0.78, top: 0.19, bottom: 0.235, tone: 0.6, fog: 0.2, relief: 0.8 }),
+      cone({ cx: 0.5, halfWidth: 0.29, top: 0.105, bottom: 0.19, tone: 0.64, fog: 0.2 }),
+      block({ left: 0.243, right: 0.277, top: 0.235, bottom: 0.26, tone: 0.68, fog: 0.18, relief: 0.95 }),
+      block({ left: 0.353, right: 0.387, top: 0.235, bottom: 0.26, tone: 0.68, fog: 0.18, relief: 0.95 }),
+      block({ left: 0.483, right: 0.517, top: 0.235, bottom: 0.26, tone: 0.68, fog: 0.18, relief: 0.95 }),
+      block({ left: 0.613, right: 0.647, top: 0.235, bottom: 0.26, tone: 0.68, fog: 0.18, relief: 0.95 }),
+      block({ left: 0.723, right: 0.757, top: 0.235, bottom: 0.26, tone: 0.68, fog: 0.18, relief: 0.95 }),
+      block({ left: 0.08, right: 0.2, top: 0.22, bottom: 0.315, tone: 0.44, fog: 0.3, relief: 0.7 }),
+      {
+        kind: "terrain",
+        profile: ridge(0.5, 0.05, 4.6, 29),
+        bottom: 1.1,
+        crest: 0.52,
+        base: 0.2,
+        fog: 0.04,
+        grain: 0.5,
+        scale: 7,
+      },
+    ],
   },
   {
     id: "harbor-skyline",
@@ -396,7 +603,33 @@ export const HOME_BACKDROP_SCENES: readonly HomeBackdropScene[] = [
       " ~~~~~~ ~~~~~~ ~~~~~~ ~~~~~~ ~~~~~~ ~~~~~~ ~~~~~~             ",
       " ..---.. ..---.. ..---.. ..---.. ..---.. ..---.. ..---..       ",
     ),
-    field: harborSkylineField,
+    light: { x: -0.6, y: -0.45 },
+    horizon: 0.235,
+    sky: { top: 0.004, horizon: 0.03, stars: 0.7, moon: { x: 0.72, y: 0.07, r: 0.034, phase: 0.45 } },
+    painters: [
+      {
+        kind: "terrain",
+        profile: ridge(0.245, 0.035, 3.4, 9),
+        bottom: 0.75,
+        crest: 0.44,
+        base: 0.26,
+        fog: 0.42,
+        grain: 0.24,
+        scale: 4.5,
+      },
+      block({ left: 0.05, right: 0.135, top: 0.185, bottom: 0.3, tone: 0.52, fog: 0.3, relief: 0.8, speckle: 0.05 }),
+      block({ left: 0.15, right: 0.2, top: 0.145, bottom: 0.3, tone: 0.58, fog: 0.24, relief: 0.85, speckle: 0.05 }),
+      block({ left: 0.215, right: 0.3, top: 0.2, bottom: 0.3, tone: 0.46, fog: 0.34, relief: 0.75, speckle: 0.05 }),
+      block({ left: 0.325, right: 0.375, top: 0.12, bottom: 0.3, tone: 0.62, fog: 0.2, relief: 0.9, speckle: 0.05 }),
+      block({ left: 0.4, right: 0.47, top: 0.175, bottom: 0.3, tone: 0.54, fog: 0.28, relief: 0.8, speckle: 0.05 }),
+      block({ left: 0.5, right: 0.545, top: 0.155, bottom: 0.3, tone: 0.58, fog: 0.24, relief: 0.85, speckle: 0.05 }),
+      block({ left: 0.57, right: 0.66, top: 0.2, bottom: 0.3, tone: 0.44, fog: 0.36, relief: 0.75, speckle: 0.05 }),
+      block({ left: 0.7, right: 0.75, top: 0.165, bottom: 0.3, tone: 0.56, fog: 0.26, relief: 0.85, speckle: 0.05 }),
+      block({ left: 0.78, right: 0.87, top: 0.135, bottom: 0.3, tone: 0.6, fog: 0.22, relief: 0.85, speckle: 0.05 }),
+      block({ left: 0.28, right: 0.286, top: 0.075, bottom: 0.3, tone: 0.5, fog: 0.25, relief: 0.7 }),
+      block({ left: 0.6, right: 0.606, top: 0.1, bottom: 0.3, tone: 0.5, fog: 0.25, relief: 0.7 }),
+    ],
+    water: { y: 0.3, tone: 0.05, reflection: 0.55, wave: 0.0035, glint: { x: 0.72, spread: 0.05, strength: 0.16 } },
   },
   {
     id: "canyon-archipelago",
@@ -414,31 +647,61 @@ export const HOME_BACKDROP_SCENES: readonly HomeBackdropScene[] = [
       "  ..---..---..---..---..---..---..---..---..---..---..        ",
       "       .        .        .        .        .        .          ",
     ),
-    field: canyonArchipelagoField,
+    light: { x: -0.5, y: -0.5 },
+    horizon: 0.22,
+    sky: { top: 0.004, horizon: 0.032, stars: 0.5 },
+    painters: [
+      {
+        kind: "terrain",
+        profile: terraces(0.3, 0.09, 2.2, 5, 5, 0.55),
+        crest: 0.48,
+        base: 0.26,
+        fog: 0.38,
+        grain: 0.28,
+        scale: 4,
+        strata: 26,
+      },
+      {
+        kind: "terrain",
+        profile: terraces(0.42, 0.16, 3.2, 19, 4, 0.6),
+        bottom: 0.95,
+        crest: 0.5,
+        base: 0.24,
+        fog: 0.16,
+        grain: 0.4,
+        scale: 5.5,
+        strata: 20,
+      },
+      { kind: "haze", left: 0.47, right: 0.57, top: 0.1, bottom: 0.3, tone: 0.16, strength: 0.5, feather: 0.02 },
+      block({ left: 0.43, right: 0.49, top: 0.115, bottom: 0.3, tone: 0.6, fog: 0.14, relief: 0.9 }),
+      block({ left: 0.555, right: 0.615, top: 0.115, bottom: 0.3, tone: 0.6, fog: 0.14, relief: 0.9 }),
+      block({ left: 0.42, right: 0.625, top: 0.085, bottom: 0.12, tone: 0.66, fog: 0.12, relief: 0.85 }),
+      {
+        kind: "terrain",
+        profile: (x, seed) => 0.34 + x * 0.85 + 0.03 * (fbm(seed, x * 6, 0.3, 3) - 0.5),
+        bottom: 1.1,
+        crest: 0.54,
+        base: 0.2,
+        fog: 0.04,
+        grain: 0.55,
+        scale: 7,
+        strata: 14,
+      },
+      {
+        kind: "terrain",
+        profile: (x, seed) => 0.34 + (1 - x) * 0.85 + 0.03 * (fbm(seed, x * 6, 9.3, 3) - 0.5),
+        bottom: 1.1,
+        crest: 0.54,
+        base: 0.2,
+        fog: 0.04,
+        grain: 0.55,
+        scale: 7,
+        strata: 14,
+      },
+    ],
   },
 ] as const
 
-function clamp(value: number, min = 0, max = 1) {
-  return Math.max(min, Math.min(max, value))
-}
-
-function integerDimension(value: number) {
-  return Math.max(0, Math.floor(Number.isFinite(value) ? value : 0))
-}
-
-function normalizeSeed(seed: number) {
-  return Number.isFinite(seed) ? seed >>> 0 : DEFAULT_SEED
-}
-
-function quantizeTone(value: number) {
-  const steps = DITHER_LEVELS - 1
-  return Math.round(clamp(value) * steps) / steps
-}
-
-/**
- * Generate a launch seed once. It is never sampled inside the render loop.
- * Tests and visual fixtures can pass an explicit seed for reproducibility.
- */
 export function createHomeBackdropSeed(): HomeBackdropSeed {
   const values = new Uint32Array(1)
   try {
@@ -471,13 +734,6 @@ export function homeDitherRowStrength(height: number, row: number) {
   return (1 - normalized) ** VERTICAL_FADE_EXPONENT
 }
 
-function cellRank(seed: HomeBackdropSeed, x: number, y: number) {
-  let value = Math.imul(x + 1, 374761393) ^ Math.imul(y + 1, 668265263) ^ normalizeSeed(seed)
-  value = Math.imul(value ^ (value >>> 13), 1274126177)
-  value ^= value >>> 16
-  return (value >>> 0) / 0x1_0000_0000
-}
-
 function sceneFor(options: HomeDitherOptions) {
   if (options.scene && typeof options.scene !== "string") return options.scene
   if (typeof options.scene === "string") {
@@ -487,38 +743,344 @@ function sceneFor(options: HomeDitherOptions) {
   return selectHomeScene(options.seed ?? DEFAULT_SEED)
 }
 
-/**
- * Sample the authored environment as a continuous luminance field. The scene
- * is deliberately not rendered from its ASCII reference rows: those rows are
- * metadata and a design reference, while the field is what gives the output
- * its soft, image-like halftone treatment.
- */
-function sceneToneAt(scene: HomeBackdropScene, x: number, y: number, seed: HomeBackdropSeed): SceneToneSample {
-  const space = sceneSpace(x, y)
-  if (!space) return { tone: 0, definition: 0 }
+// ---------------------------------------------------------------------------
+// Raster
+// ---------------------------------------------------------------------------
 
-  // A small cross-shaped footprint gives the masks a measured photographic
-  // edge instead of a one-cell outline. The relief term restores a little
-  // local contrast at ridges, roofs, and shorelines without drawing a hard
-  // contour over the scene.
-  const sample = (offsetX: number, offsetY: number) =>
-    clamp(scene.field(clamp(space.x + offsetX), clamp(space.y + offsetY), seed))
-  const center = sample(0, 0)
-  const horizontal = (sample(SCENE_SAMPLE_X, 0) + sample(-SCENE_SAMPLE_X, 0)) / 2
-  const vertical = (sample(0, SCENE_SAMPLE_Y) + sample(0, -SCENE_SAMPLE_Y)) / 2
-  const neighborhood = horizontal * 0.58 + vertical * 0.42
-  const body = center * 0.72 + neighborhood * 0.28
-  const relief = Math.abs(center - neighborhood)
-  return { tone: clamp(body + relief * SCENE_RELIEF_GAIN), definition: clamp(relief) }
+type LuminanceField = Readonly<{ width: number; height: number; data: Float32Array }>
+
+type RenderState = Readonly<{
+  data: Float32Array
+  width: number
+  height: number
+  seed: HomeBackdropSeed
+  horizon: number
+  light: HomeSceneLight
+}>
+
+function paintSky(state: RenderState, sky: HomeSceneSky) {
+  const { data, width, height, horizon, seed } = state
+  const moon = sky.moon
+  for (let j = 0; j < height; j++) {
+    const y = (j + 0.5) / height
+    const grad = smoothstep(0, 1, clamp(y / Math.max(0.001, horizon)))
+    const glow = Math.exp(-(((y - horizon) / 0.06) ** 2)) * 0.03
+    const base = mix(sky.top, sky.horizon, grad) + glow
+    for (let i = 0; i < width; i++) {
+      const x = (i + 0.5) / width
+      let value = base
+      if (moon) {
+        const dx = (x - moon.x) / moon.r
+        const dy = (y - moon.y) / moon.r
+        const distance = Math.sqrt(dx * dx + dy * dy)
+        if (distance < 2.2) value += Math.exp(-(((distance - 1) / 0.45) ** 2)) * 0.07
+        if (distance <= 1) {
+          const shadow = Math.sqrt((x - moon.x - moon.phase * moon.r * 1.15) ** 2 / (moon.r * moon.r) + dy * dy)
+          const lit = shadow > 1
+          const edge = 1 - smoothstep(0.86, 1, distance)
+          value = Math.max(value, lit ? 0.42 + 0.3 * edge : 0.08 + 0.06 * edge)
+        }
+      }
+      if (sky.stars > 0 && y < horizon * 0.95) {
+        const star = cellRank(seed ^ 0x5bd1e995, i, j)
+        if (star > 1 - 0.0016 * sky.stars) value = Math.min(1, value + 0.7)
+      }
+      data[j * width + i] = value
+    }
+  }
+}
+
+function paintTerrain(state: RenderState, layer: HomeSceneTerrain) {
+  const { data, width, height, seed, horizon } = state
+  const bottom = layer.bottom ?? 1.06
+  const relief = layer.relief ?? 0.7
+  const grain = layer.grain ?? 0.3
+  const scale = layer.scale ?? 5
+  const salt = layer.salt ?? 0
+  // Aerial haze lands between the sky and the body, never on the sky itself.
+  const fogTone = clamp(horizon * 2.4 + 0.015)
+  const tops = new Float32Array(width)
+  for (let i = 0; i < width; i++) tops[i] = layer.profile((i + 0.5) / width, seed)
+  const facetGrid = new Float32Array(width * DEPTH_BUCKETS)
+  const grainGrid = new Float32Array(width * DEPTH_BUCKETS)
+  for (let i = 0; i < width; i++) {
+    const x = (i + 0.5) / width
+    for (let bucket = 0; bucket < DEPTH_BUCKETS; bucket++) {
+      const depth = (bucket + 0.5) / DEPTH_BUCKETS
+      facetGrid[i * DEPTH_BUCKETS + bucket] = ridged(
+        seeded(seed, salt + 101),
+        x * scale * 1.6,
+        salt * 0.5 + depth * scale * 1.1,
+        3,
+      )
+      grainGrid[i * DEPTH_BUCKETS + bucket] = fbm(
+        seeded(seed, salt),
+        x * scale * (0.5 + depth * 1.6),
+        salt * 0.13 + depth * scale * 0.35,
+        3,
+      )
+    }
+  }
+  for (let i = 0; i < width; i++) {
+    const x = (i + 0.5) / width
+    const top = tops[i]!
+    const slope =
+      (layer.profile(Math.min(1, x + 0.004), seed) - layer.profile(Math.max(0, x - 0.004), seed)) / 0.008
+    const j0 = Math.max(0, Math.floor(top * height))
+    const j1 = Math.min(height - 1, Math.ceil(bottom * height))
+    for (let j = j0; j <= j1; j++) {
+      const y = (j + 0.5) / height
+      if (y < top || y > bottom) continue
+      const depth = clamp((y - top) / Math.max(0.001, bottom - top))
+      // Facet noise gives the body lit and shadowed rock faces instead of one
+      // flat fill; the profile slope tells the eye which way a ridge is facing.
+      const position = depth * DEPTH_BUCKETS - 0.5
+      const bucket = clamp(Math.floor(position), 0, DEPTH_BUCKETS - 1)
+      const next = Math.min(DEPTH_BUCKETS - 1, bucket + 1)
+      const blend = clamp(position - bucket)
+      const facet = mix(facetGrid[i * DEPTH_BUCKETS + bucket]!, facetGrid[i * DEPTH_BUCKETS + next]!, blend)
+      const texture = mix(grainGrid[i * DEPTH_BUCKETS + bucket]!, grainGrid[i * DEPTH_BUCKETS + next]!, blend)
+      const lambert = clamp(0.42 + facet * 0.95 - slope * state.light.x * 2.4)
+      // The shoulder just below the ridge catches the sky; deeper rows fall
+      // into the valley shadow, which is what makes the body recede in depth.
+      const shoulder = Math.exp(-(((depth - 0.14) / 0.2) ** 2))
+      let tone = layer.crest + (layer.base - layer.crest) * depth
+      tone *= 0.5 + lambert * relief * 1.05
+      tone += (texture - 0.5) * grain * (0.35 + depth * 0.85)
+      if (layer.strata) tone += Math.sin(depth * layer.strata + texture * 3) * 0.045
+      tone *= 0.82 + 0.42 * shoulder
+      // Seat the body with a soft occlusion, then let the ridge lip catch the
+      // sky so the silhouette stays legible against the empty upper rows.
+      tone -= 0.1 * depth
+      tone += Math.exp(-((y - top) * height) / RIDGE_LIP_ROWS) * 0.07
+      const haze = clamp(layer.fog * (1 - depth * 0.55) ** 1.1)
+      tone = mix(tone, fogTone, haze)
+      data[j * width + i] = clamp(tone)
+    }
+  }
+}
+
+function paintBlock(state: RenderState, form: HomeSceneBlock) {
+  const { data, width, height, seed, horizon, light } = state
+  const relief = form.relief ?? 0.7
+  const i0 = Math.max(0, Math.floor(form.left * width))
+  const i1 = Math.min(width - 1, Math.ceil(form.right * width))
+  const j0 = Math.max(0, Math.floor(form.top * height))
+  const j1 = Math.min(height - 1, Math.ceil(form.bottom * height))
+  const span = Math.max(0.001, form.bottom - form.top)
+  const topBand = Math.max(0.004, span * 0.16)
+  const salt = form.salt ?? 0
+  for (let j = j0; j <= j1; j++) {
+    const y = (j + 0.5) / height
+    if (y < form.top || y > form.bottom) continue
+    const depth = (y - form.top) / span
+    for (let i = i0; i <= i1; i++) {
+      const x = (i + 0.5) / width
+      if (x < form.left || x > form.right) continue
+      const across = (x - form.left) / Math.max(0.001, form.right - form.left)
+      const lit = smoothstep(0.34, 0.66, light.x < 0 ? 1 - across : across)
+      let tone = form.tone * (0.4 + relief * 1.05 * lit)
+      tone += smoothstep(0, 1, 1 - (y - form.top) / topBand) * 0.18 * (0.4 + 0.6 * lit)
+      tone *= 1 - 0.22 * smoothstep(0.85, 1, depth)
+      if (form.speckle && cellRank(seeded(seed, salt ^ 0x51ed), i, j) > 1 - form.speckle) tone *= 0.35
+      data[j * width + i] = clamp(mix(tone, horizon, form.fog))
+    }
+  }
+}
+
+function paintDome(state: RenderState, form: HomeSceneDome) {
+  const { data, width, height, horizon, light } = state
+  const i0 = Math.max(0, Math.floor((form.cx - form.rx) * width))
+  const i1 = Math.min(width - 1, Math.ceil((form.cx + form.rx) * width))
+  const j0 = Math.max(0, Math.floor((form.cy - form.ry) * height))
+  const j1 = Math.min(height - 1, Math.ceil((form.cy + form.ry) * height))
+  for (let j = j0; j <= j1; j++) {
+    const y = (j + 0.5) / height
+    const ny = (y - form.cy) / form.ry
+    for (let i = i0; i <= i1; i++) {
+      const x = (i + 0.5) / width
+      const nx = (x - form.cx) / form.rx
+      const radius = nx * nx + ny * ny
+      if (radius > 1) continue
+      const nz = Math.sqrt(Math.max(0, 1 - radius))
+      const lambert = clamp(0.24 + (nx * light.x + ny * light.y + nz * 0.62) * 0.9)
+      const tone = form.tone * lambert * (0.78 + 0.22 * nz)
+      data[j * width + i] = clamp(mix(tone, horizon, form.fog))
+    }
+  }
+}
+
+function paintCone(state: RenderState, form: HomeSceneCone) {
+  const { data, width, height, horizon, light } = state
+  const i0 = Math.max(0, Math.floor((form.cx - form.halfWidth) * width))
+  const i1 = Math.min(width - 1, Math.ceil((form.cx + form.halfWidth) * width))
+  const j0 = Math.max(0, Math.floor(form.top * height))
+  const j1 = Math.min(height - 1, Math.ceil(form.bottom * height))
+  const span = Math.max(0.001, form.bottom - form.top)
+  for (let j = j0; j <= j1; j++) {
+    const y = (j + 0.5) / height
+    if (y < form.top || y > form.bottom) continue
+    for (let i = i0; i <= i1; i++) {
+      const x = (i + 0.5) / width
+      const across = (x - form.cx) / form.halfWidth
+      if (across < -1 || across > 1) continue
+      const roof = form.top + Math.abs(across) * span
+      if (y < roof) continue
+      const lit = smoothstep(0.05, 0.75, light.x < 0 ? -across : across)
+      const tone = form.tone * (0.5 + 0.8 * lit) * (0.86 + 0.14 * ((y - form.top) / span))
+      data[j * width + i] = clamp(mix(tone, horizon, form.fog))
+    }
+  }
+}
+
+function paintShadow(state: RenderState, form: HomeSceneShadow) {
+  const { data, width, height } = state
+  const feather = form.feather ?? 0.02
+  const i0 = Math.max(0, Math.floor((form.cx - form.rx - feather) * width))
+  const i1 = Math.min(width - 1, Math.ceil((form.cx + form.rx + feather) * width))
+  const j0 = Math.max(0, Math.floor((form.cy - form.ry - feather) * height))
+  const j1 = Math.min(height - 1, Math.ceil((form.cy + form.ry + feather) * height))
+  for (let j = j0; j <= j1; j++) {
+    const y = (j + 0.5) / height
+    const ny = (y - form.cy) / form.ry
+    for (let i = i0; i <= i1; i++) {
+      const x = (i + 0.5) / width
+      const nx = (x - form.cx) / form.rx
+      const distance = Math.sqrt(nx * nx + ny * ny)
+      if (distance > 1 + feather * 8) continue
+      const amount = form.strength * (1 - smoothstep(1, 1 + feather * 8, distance))
+      data[j * width + i] = clamp(data[j * width + i]! * (1 - amount))
+    }
+  }
+}
+
+function paintHaze(state: RenderState, form: HomeSceneHaze) {
+  const { data, width, height } = state
+  const feather = Math.max(0.005, form.feather ?? 0.03)
+  const i0 = Math.max(0, Math.floor((form.left - feather) * width))
+  const i1 = Math.min(width - 1, Math.ceil((form.right + feather) * width))
+  const j0 = Math.max(0, Math.floor((form.top - feather) * height))
+  const j1 = Math.min(height - 1, Math.ceil((form.bottom + feather) * height))
+  for (let j = j0; j <= j1; j++) {
+    const y = (j + 0.5) / height
+    const outsideY = Math.max(form.top - y, 0, y - form.bottom)
+    for (let i = i0; i <= i1; i++) {
+      const x = (i + 0.5) / width
+      const outsideX = Math.max(form.left - x, 0, x - form.right)
+      const outside = Math.max(outsideX, outsideY)
+      if (outside > feather) continue
+      const amount = form.strength * (1 - smoothstep(0, feather, outside))
+      data[j * width + i] = clamp(mix(data[j * width + i]!, form.tone, amount))
+    }
+  }
+}
+
+function paintWater(state: RenderState, water: HomeSceneWater) {
+  const { data, width, height, seed } = state
+  const start = Math.max(0, Math.floor(water.y * height))
+  for (let j = start; j < height; j++) {
+    const y = (j + 0.5) / height
+    const dy = y - water.y
+    const sourceY = water.y - dy * 0.92
+    if (sourceY < 0 || start === 0) continue
+    // Reflections always read above the waterline; row `start` is written by
+    // this pass, so it can never be its own source.
+    const sourceJ = Math.min(start - 1, Math.max(0, Math.floor(sourceY * height)))
+    const damp = water.reflection * Math.pow(0.9, dy * height * 0.32)
+    for (let i = 0; i < width; i++) {
+      const x = (i + 0.5) / width
+      const wave = (smoothNoise(seeded(seed, 0x71a3), x * 26, y * 30) - 0.5) * water.wave * width
+      const sourceX = clamp(i + wave, 0, width - 1)
+      const x0 = Math.floor(sourceX)
+      const x1 = Math.min(width - 1, x0 + 1)
+      const blendX = sourceX - x0
+      const mirrored = data[sourceJ * width + x0]! * (1 - blendX) + data[sourceJ * width + x1]! * blendX
+      let tone = mix(water.tone, mirrored, clamp(damp))
+      if (water.glint) {
+        const across = (x - water.glint.x) / water.glint.spread
+        const shimmer = 0.5 + 0.5 * Math.sin(y * 90 + smoothNoise(seeded(seed, 0x18f), x * 10, y * 16) * 8)
+        tone += Math.exp(-(across * across)) * water.glint.strength * shimmer * Math.exp(-dy * 8)
+      }
+      data[j * width + i] = clamp(tone)
+    }
+  }
+}
+
+function paintPainter(state: RenderState, painter: HomeScenePainter) {
+  switch (painter.kind) {
+    case "terrain":
+      paintTerrain(state, painter)
+      return
+    case "block":
+      paintBlock(state, painter)
+      return
+    case "dome":
+      paintDome(state, painter)
+      return
+    case "cone":
+      paintCone(state, painter)
+      return
+    case "shadow":
+      paintShadow(state, painter)
+      return
+    case "haze":
+      paintHaze(state, painter)
+  }
+}
+
+function renderScene(scene: HomeBackdropScene, seed: HomeBackdropSeed, width: number, height: number): LuminanceField {
+  const data = new Float32Array(width * height)
+  const state: RenderState = {
+    data,
+    width,
+    height,
+    seed,
+    horizon: scene.sky.horizon,
+    light: scene.light,
+  }
+  paintSky(state, scene.sky)
+  for (const painter of scene.painters) paintPainter(state, painter)
+  if (scene.water) paintWater(state, scene.water)
+  return { width, height, data }
+}
+
+function resampleField(field: LuminanceField, width: number, height: number): LuminanceField {
+  if (field.width === width && field.height === height) return field
+  const data = new Float32Array(width * height)
+  const scaleX = field.width / width
+  const scaleY = field.height / height
+  for (let j = 0; j < height; j++) {
+    const fy = (j + 0.5) * scaleY - 0.5
+    const y0 = clamp(Math.floor(fy), 0, field.height - 1)
+    const y1 = Math.min(field.height - 1, y0 + 1)
+    const ty = clamp(fy - y0)
+    for (let i = 0; i < width; i++) {
+      const fx = (i + 0.5) * scaleX - 0.5
+      const x0 = clamp(Math.floor(fx), 0, field.width - 1)
+      const x1 = Math.min(field.width - 1, x0 + 1)
+      const tx = clamp(fx - x0)
+      const top = field.data[y0 * field.width + x0]! * (1 - tx) + field.data[y0 * field.width + x1]! * tx
+      const bottom = field.data[y1 * field.width + x0]! * (1 - tx) + field.data[y1 * field.width + x1]! * tx
+      data[j * width + i] = top * (1 - ty) + bottom * ty
+    }
+  }
+  return { width, height, data }
 }
 
 function roundedZoneFactor(x: number, y: number, left: number, right: number, top: number, bottom: number) {
   const dx = Math.max(left - x, 0, x - right)
   const dy = Math.max(top - y, 0, y - bottom)
   if (dx === 0 && dy === 0) return 0
-  return clamp(Math.hypot(dx, dy) / QUIET_FEATHER)
+  // Math.hypot is noticeably slower than the explicit form, and this runs once
+  // per braille dot.
+  return clamp(Math.sqrt(dx * dx + dy * dy) / QUIET_FEATHER)
 }
 
+/**
+ * The Home identity and prompt keep their negative space. Everything inside
+ * these rounded rectangles is fully quiet; the feather returns the raster to
+ * full strength outside them.
+ */
 function quietZoneFactor(x: number, y: number) {
   const logo = roundedZoneFactor(x, y, 0.3, 0.7, 0.26, 0.65)
   const prompt = roundedZoneFactor(x, y, 0.18, 0.82, 0.7, 0.98)
@@ -531,46 +1093,63 @@ function vignetteFactor(x: number) {
   return smoothstep(0.02, 0.2, Math.min(x, 1 - x))
 }
 
-function rowStratifiedSample(cells: readonly HomeDitherCell[], seed: HomeBackdropSeed, rows: number) {
-  if (cells.length <= MAX_DITHER_CELLS) return [...cells]
-
-  const buckets = Array.from({ length: rows }, () => [] as HomeDitherCell[])
-  for (const cell of cells) buckets[cell.y]?.push(cell)
-
-  const scale = MAX_DITHER_CELLS / cells.length
-  const allocations = buckets.map((bucket, y) => ({
-    bucket,
-    y,
-    quota: Math.min(bucket.length, Math.floor(bucket.length * scale)),
-    remainder: bucket.length * scale,
-  }))
-  let allocated = allocations.reduce((sum, item) => sum + item.quota, 0)
-  for (const item of allocations.sort((a, b) => b.remainder - a.remainder)) {
-    if (allocated >= MAX_DITHER_CELLS) break
-    if (item.quota >= item.bucket.length) continue
-    item.quota++
-    allocated++
+function applyEnvelope(field: LuminanceField) {
+  const { width, height, data } = field
+  const composed = new Float32Array(data.length)
+  for (let j = 0; j < height; j++) {
+    const rowStrength = homeDitherRowStrength(height, j)
+    const scanline = Math.floor(j / 4) % 2 === 0 ? 1 : 1 - CRT_SCANLINE_DROP
+    for (let i = 0; i < width; i++) {
+      const x = (i + 0.5) / width
+      const y = (j + 0.5) / height
+      const envelope = rowStrength * scanline * vignetteFactor(x) * quietZoneFactor(x, y)
+      composed[j * width + i] = data[j * width + i]! * envelope
+    }
   }
+  return composed
+}
 
-  const sampled: HomeDitherCell[] = []
-  for (const item of allocations) {
-    if (item.quota === 0) continue
-    sampled.push(
-      ...item.bucket
-        .slice()
-        .sort((a, b) => cellRank(seed ^ 0x9e3779b9, a.x, a.y) - cellRank(seed ^ 0x9e3779b9, b.x, b.y))
-        .slice(0, item.quota),
-    )
+type SceneRender = Readonly<{ image: LuminanceField; composed: Float32Array }>
+
+const renderCache = new Map<string, SceneRender>()
+
+function cacheRender(key: string, render: SceneRender) {
+  renderCache.set(key, render)
+  while (renderCache.size > MAX_RENDER_CACHE) {
+    const oldest = renderCache.keys().next().value
+    if (oldest === undefined) break
+    renderCache.delete(oldest)
   }
-  return sampled.sort((a, b) => a.y - b.y || a.x - b.x)
 }
 
 /**
- * Generate a deterministic seeded scene mask for the static backdrop.
- *
- * The Bayer threshold supplies a repeatable mesh rhythm; the seed jitter keeps
- * wider terminals from showing obvious horizontal bands. No per-frame
- * randomness or animation state is involved.
+ * Render the scene into a luminance raster at braille dot resolution. The
+ * result is memoized because the backdrop is static: resizes and theme changes
+ * reuse the same image, and the ink color is applied later, per chunk.
+ */
+function sceneRender(scene: HomeBackdropScene, seed: HomeBackdropSeed, dotWidth: number, dotHeight: number): SceneRender {
+  const key = `${scene.id}|${seed}|${dotWidth}x${dotHeight}`
+  const cached = renderCache.get(key)
+  if (cached) {
+    renderCache.delete(key)
+    renderCache.set(key, cached)
+    return cached
+  }
+  const dots = dotWidth * dotHeight
+  const scale = dots > MAX_DITHER_DOTS ? Math.sqrt(MAX_DITHER_DOTS / dots) : 1
+  const sampleWidth = Math.max(1, Math.round(dotWidth * scale))
+  const sampleHeight = Math.max(1, Math.round(dotHeight * scale))
+  const sampled = renderScene(scene, seed, sampleWidth, sampleHeight)
+  const image = scale < 1 ? resampleField(sampled, dotWidth, dotHeight) : sampled
+  const render: SceneRender = { image, composed: applyEnvelope(image) }
+  cacheRender(key, render)
+  return render
+}
+
+/**
+ * Generate the static backdrop raster for one terminal size. Cells carry the
+ * braille mask, the envelope strength and the local contrast needed by the
+ * glyph pass; all values are deterministic for a given seed.
  */
 export function homeDitherCells(width: number, height: number, options: HomeDitherOptions = {}): HomeDitherCell[] {
   const columns = integerDimension(width)
@@ -579,91 +1158,84 @@ export function homeDitherCells(width: number, height: number, options: HomeDith
 
   const seed = normalizeSeed(options.seed ?? DEFAULT_SEED)
   const scene = sceneFor(options)
+  const dotWidth = columns * 2
+  const dotHeight = rows * 4
+  const { image, composed } = sceneRender(scene, seed, dotWidth, dotHeight)
   const cells: HomeDitherCell[] = []
   const phaseX = seed & 7
   const phaseY = (seed >>> 3) & 7
 
-  for (let y = 0; y < rows; y++) {
-    const rowStrength = homeDitherRowStrength(rows, y)
-    if (rowStrength <= 0) continue
-    for (let x = 0; x < columns; x++) {
-      const normalizedX = (x + 0.5) / columns
-      const normalizedY = (y + 0.5) / rows
-      const quiet = quietZoneFactor(normalizedX, normalizedY)
-      if (quiet <= 0) continue
+  for (let cy = 0; cy < rows; cy++) {
+    for (let cx = 0; cx < columns; cx++) {
+      let mask = 0
+      let total = 0
+      for (let b = 0; b < 2; b++) {
+        for (let d = 0; d < 4; d++) {
+          const i = cx * 2 + b
+          const j = cy * 4 + d
+          const lum = clamp(composed[j * dotWidth + i]!) * DITHER_DENSITY
+          total += Math.min(1, lum)
+          if (lum <= 0) continue
+          const ordered = (BAYER_8X8[(j + phaseY) & 7]![(i + phaseX) & 7]! + 0.5) / 64
+          const grain = cellRank(seed ^ 0x7f4a7c15, i, j)
+          const jitter = (cellRank(seed ^ 0x94d049bb, i, j) - 0.5) * DITHER_JITTER
+          if (ordered * 0.78 + grain * 0.22 + jitter * 0.35 >= lum) continue
+          mask |= BRAILLE_BITS[b]![d]!
+        }
+      }
+      if (mask === 0) continue
 
-      const sceneSample = sceneToneAt(scene, normalizedX, normalizedY, seed)
-      const structure = sceneSample.tone
-      const definition = sceneSample.definition
-      // Keep the upper field richly textured; the monotonic envelope still
-      // carries it gently into the untouched dark background below. The
-      // atmosphere term varies the sky horizontally so the halftone feels like
-      // a luminance image instead of a repeated terminal-wide stripe.
-      const atmosphere = atmosphereTone(seed, normalizedX, normalizedY)
-      const ambient = AMBIENT_GAIN * atmosphere * (1 - normalizedY) ** ATMOSPHERE_FADE_EXPONENT
-      // A fixed, low-amplitude CRT cadence gives the phosphor surface texture
-      // without making the backdrop animate or compete with foreground text.
-      const scanline = y % 2 === 0 ? 1 : 1 - CRT_SCANLINE_DROP
-      // Below the authored scene, leave only grouped, broken scanline fragments
-      // as a residual signal. They keep the fade feeling intentional instead of
-      // ending on a perfectly clean horizontal cutoff.
-      const fragmentSeed = cellRank(seed ^ SCANLINE_FRAGMENT_SEED, Math.floor(x / SCANLINE_FRAGMENT_GROUP), y)
-      const scanlineFragment =
-        normalizedY > 0.48 && y % SCANLINE_FRAGMENT_PERIOD === 1 && fragmentSeed > SCANLINE_FRAGMENT_THRESHOLD
-          ? SCANLINE_FRAGMENT_GAIN * (1 - normalizedY) ** 0.7
-          : 0
-      const edgeFade = vignetteFactor(normalizedX)
-      const envelope = rowStrength * scanline * edgeFade * quiet
-      const tone = clamp(
-        (ambient + structure * (STRUCTURE_GAIN + atmosphere * STRUCTURE_ATMOSPHERE_GAIN) + definition * DEFINITION_TONE_GAIN + scanlineFragment) * envelope,
+      const y = (cy + 0.5) / rows
+      const x = (cx + 0.5) / columns
+      const strength = clamp(
+        homeDitherRowStrength(rows, cy) *
+          (cy % 2 === 0 ? 1 : 1 - CRT_SCANLINE_DROP) *
+          vignetteFactor(x) *
+          quietZoneFactor(x, y),
       )
-      if (tone <= 0.015) continue
-      // Keep a non-zero display band for the very last cells in the fade. The
-      // continuous tone still controls whether a cell is emitted, preventing
-      // quantization from cutting the backdrop off in a hard horizontal line.
-      const shade = Math.max(1 / (DITHER_LEVELS - 1), quantizeTone(tone))
+      if (strength <= 0) continue
 
-      const ordered = (BAYER_8X8[(y + phaseY) & 7]![(x + phaseX) & 7]! + 0.5) / 64
-      // Blend the ordered matrix with a deterministic grain sample. Pure
-      // Bayer thresholds can reveal eight-cell stripes at small terminal
-      // sizes; the grain preserves the ordered character while breaking that
-      // mechanical banding into a finer, blue-noise-like surface.
-      const grain = cellRank(seed ^ 0x7f4a7c15, x, y)
-      const jitter = (cellRank(seed ^ 0x94d049bb, x, y) - 0.5) * DITHER_JITTER
-      const threshold = ordered * 0.78 + grain * 0.22 + jitter * 0.35
-      if (threshold >= tone * DITHER_DENSITY) continue
+      const centerI = cx * 2
+      const centerJ = cy * 4
+      const left = Math.max(0, centerI - 2)
+      const right = Math.min(dotWidth - 1, centerI + 2)
+      const up = Math.max(0, centerJ - 2)
+      const down = Math.min(dotHeight - 1, centerJ + 2)
+      const gx = Math.abs(image.data[centerJ * dotWidth + right]! - image.data[centerJ * dotWidth + left]!)
+      const gy = Math.abs(image.data[down * dotWidth + centerI]! - image.data[up * dotWidth + centerI]!)
+      const definition = clamp((gx + gy) * 0.85)
+      const tone = Math.max(1 / 255, total / 8)
+
       cells.push({
-        x,
-        y,
-        strength: clamp(envelope),
+        x: cx,
+        y: cy,
+        mask,
+        strength,
         tone,
-        shade,
+        shade: Math.max(1 / (DITHER_LEVELS - 1), quantizeTone(tone)),
         definition,
-        variant: cellRank(seed ^ 0xa5a5a5a5, x, y),
+        variant: cellRank(seed ^ 0xa5a5a5a5, cx, cy),
       })
     }
   }
 
-  return rowStratifiedSample(cells, seed, rows)
+  return cells
 }
 
 function ditherGlyph(cell: HomeDitherCell) {
   const band = Math.max(0, Math.min(DITHER_LEVELS - 1, Math.round(cell.shade * (DITHER_LEVELS - 1))))
-  const motif = GLYPH_PATTERN[cell.y & 3]![cell.x & 7]! / 8
-  const sample = clamp(cell.variant * 0.78 + motif * 0.22)
-
-  // Keep a few ASCII accents in the deepest values. They are spatially rare,
-  // so the eye reads them as grain and contour texture rather than lettering.
-  const accentRoll = (cell.x * 17 + cell.y * 31) & 63
-  // Local relief gets an even smaller family of directional marks. They give
-  // a roofline, ridge, or shoreline definition without turning every edge into
-  // a literal ASCII outline.
+  // Local relief gets a small family of directional marks. They give a
+  // roofline, ridge, or shoreline definition without turning every edge into a
+  // literal ASCII outline.
   const contourRoll = (cell.x * 29 + cell.y * 13 + Math.floor(cell.variant * 17)) & 127
   if (cell.definition > CONTOUR_DEFINITION_THRESHOLD && band >= 2) {
     if (contourRoll === 0) return "|"
     if (contourRoll === 1) return cell.y & 1 ? "\\" : "/"
     if (contourRoll === 2) return "~"
   }
+  // Keep a few ASCII accents in the deepest values. They are spatially rare,
+  // so the eye reads them as grain and contour texture rather than lettering.
+  const accentRoll = (cell.x * 17 + cell.y * 31) & 63
   if (band >= 2 && accentRoll === 0) return "-"
   if (band >= 2 && accentRoll === 1) return "+"
   if (band >= 2 && accentRoll === 2) return "x"
@@ -672,10 +1244,7 @@ function ditherGlyph(cell: HomeDitherCell) {
   if (band === 3 && accentRoll === 5) return "▓"
   if (band === 3 && accentRoll === 6) return "█"
   if (band === 3 && accentRoll === 7) return "#"
-
-  const palette = BRAILLE_BANDS[band] ?? BRAILLE_BANDS[0]
-  const mask = palette[Math.min(palette.length - 1, Math.floor(sample * palette.length))]!
-  return String.fromCodePoint(0x2800 + mask)
+  return String.fromCodePoint(0x2800 + cell.mask)
 }
 
 function ditherInk(background: RGBA, ink: RGBA, strength: number, tone: number, glyph: string) {
@@ -693,7 +1262,7 @@ function ditherInk(background: RGBA, ink: RGBA, strength: number, tone: number, 
 
 /**
  * Convert the mask into background-only text chunks. Every visible cell is a
- * low-contrast mesh glyph; gaps remain spaces so the layer never captures
+ * low-contrast dithered glyph; gaps remain spaces so the layer never captures
  * input or paints a surface behind the foreground UI.
  */
 export function buildHomeDitherChunks(

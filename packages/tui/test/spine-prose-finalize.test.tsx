@@ -1,6 +1,7 @@
 /** @jsxImportSource @opentui/solid */
 import { afterEach, expect, test } from "bun:test"
 import { testRender, type JSX } from "@opentui/solid"
+import { RGBA, SyntaxStyle } from "@opentui/core"
 import { createSignal } from "solid-js"
 import { ArgsProvider } from "../src/context/args"
 import { ExitProvider } from "../src/context/exit"
@@ -66,6 +67,10 @@ function findMarkdown(): any {
   return walk(app!.renderer.root).find((node) => node.constructor?.name === "MarkdownRenderable")
 }
 
+const syntaxStyle = SyntaxStyle.fromStyles({
+  default: { fg: RGBA.fromHex("#ffffff") },
+})
+
 /**
  * The streaming→idle flip must reuse the existing block renderables, not
  * destroy and re-create them. Upstream `set streaming` forces a full
@@ -85,6 +90,7 @@ test("streaming→idle flip reuses block renderables", async () => {
             width={90}
             content={content()}
             streaming={streaming()}
+            syntaxStyle={syntaxStyle}
             internalBlockMode="top-level"
             conceal={true}
           />
@@ -124,6 +130,7 @@ test("trailing block finalizes its content on idle", async () => {
             width={90}
             content={content()}
             streaming={streaming()}
+            syntaxStyle={syntaxStyle}
             internalBlockMode="top-level"
             conceal={true}
           />
@@ -137,5 +144,8 @@ test("trailing block finalizes its content on idle", async () => {
   setStreaming(false)
   await pump()
 
-  expect(app!.captureCharFrame()).toContain("hello **world**")
+  // Final form: the closed ** pair renders as styled emphasis, consuming the
+  // literal markers. The unfinalized streaming form ("hello **wor") never
+  // contains this sequence.
+  expect(app!.captureCharFrame()).toContain("hello world")
 })

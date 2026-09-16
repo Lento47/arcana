@@ -17,6 +17,7 @@ import { useTerminalDimensions } from "@opentui/solid"
 import * as fuzzysort from "fuzzysort"
 import { useDialog, type DialogContext } from "./dialog"
 import { Locale } from "../util/locale"
+import { dialogContentMaxHeight } from "../util/geometry"
 import { getScrollAcceleration } from "../util/scroll"
 import { useTuiConfig } from "../config"
 import { formatKeyBindings, useBindings, useKeymapSelector } from "../keymap"
@@ -238,10 +239,28 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
   })
 
   const dimensions = useTerminalDimensions()
-  // Keep the picker body useful on short terminals. The previous expression
-  // could hand Yoga a zero/negative maxHeight, collapsing the dialog and
-  // making the filter/footer appear detached from the card.
+  // The picker's *preferred* list height. Keep the picker body useful on short
+  // terminals; the previous expression could hand Yoga a zero/negative
+  // maxHeight, collapsing the dialog and making the filter/footer appear
+  // detached from the card.
   const height = createMemo(() => Math.max(1, Math.min(rows(), Math.floor(dimensions().height / 2) - 6)))
+
+  /**
+   * What the dialog actually has to give.
+   *
+   * The picker is hosted inside the dialog body, which is a scroll viewport
+   * capped at `dialogContentMaxHeight`. Left unconstrained, the picker claimed
+   * its full preferred height and overflowed that viewport, so the body scrolled
+   * *as a whole*: the filter row and the action footer — the two things that
+   * must stay pinned — moved off-screen, and a second scrollbar appeared beside
+   * the list's own. On a 20-row terminal the footer sat below the fold entirely.
+   *
+   * Capping the root at the viewport's own budget lets the list wrapper (the
+   * only flexible child) absorb the difference, so the chrome stays put and the
+   * list scrolls inside itself — one scrollbar, in the surface that is actually
+   * a list.
+   */
+  const bodyBudget = createMemo(() => dialogContentMaxHeight(dimensions().height))
 
   const selected = createMemo(() => flat()[store.selected])
 
@@ -523,15 +542,20 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
       width="100%"
       minWidth={0}
       minHeight={0}
+      maxHeight={bodyBudget()}
       flexDirection="column"
       overflow="hidden"
       backgroundColor={theme.background}
     >
-      {/* Header — background panel, gold title, sigil close */}
+      {/*
+        Header — background panel, gold title, close hint.
+        No `paddingTop`: the dialog card already insets its body by one row, and
+        stacking the picker's own on top of it put two blank rows above the
+        title where every other dialog has one.
+      */}
       <box
         paddingLeft={3}
         paddingRight={3}
-        paddingTop={1}
         paddingBottom={1}
         backgroundColor={theme.backgroundPanel}
         border={["bottom"]}
@@ -595,6 +619,18 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
             )
           }
         >
+          {/*
+            `scrollbarOptions` configures BOTH axes — `{ visible: true }` there
+            also turned on the horizontal bar, which painted a full-width row of
+            block glyphs through the bottom of the list and stole a row from the
+            options on every open, whatever the content. The list has no
+            horizontal scrolling (`scrollX` defaults to false); only the vertical
+            bar belongs here.
+
+            Track colours come from the theme so the thumb is part of the card
+            rather than a default the rest of the app does not use — the shell's
+            scrollbar already sets the same pair.
+          */}
           <scrollbox
             width="100%"
             minWidth={0}
@@ -603,7 +639,9 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
             flexShrink={1}
             paddingLeft={1}
             paddingRight={1}
-            scrollbarOptions={{ visible: true }}
+            verticalScrollbarOptions={{
+              trackOptions: { backgroundColor: theme.backgroundElement, foregroundColor: theme.border },
+            }}
             scrollAcceleration={scrollAcceleration()}
             ref={(r: ScrollBoxRenderable) => (scroll = r)}
             maxHeight={height()}
