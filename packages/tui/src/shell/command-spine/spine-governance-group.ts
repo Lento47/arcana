@@ -5,10 +5,11 @@
  *
  *   18 ✓ governed
  *      3 governed actions · 6 authorized · 6 executed · 0 denied
- *      ▸ inspect evidence
  *
  * The individual events remain as children and keep their full committed
- * payloads; expanding the group is the forensic inspector. Leftover RunProof and trace
+ * payloads; expanding the group is the forensic inspector, and the collapsed
+ * row's affordance for it is the disclosure chevron the entry chrome paints
+ * (`spine-chrome.ts`), not a text label of its own. Leftover RunProof and trace
  * rows are standalone summaries and never merged into an event burst.
  */
 

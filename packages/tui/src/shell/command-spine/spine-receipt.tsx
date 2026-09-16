@@ -98,10 +98,11 @@ function renderPatchReceipt(r: SpineReceiptType, layout: SpineLayout, t: Theme) 
 
   const added = r.stats?.added
   const removed = r.stats?.removed
-  if (added === undefined && removed === undefined) {
-    if (r.status === "pending") return null
-    return null
-  }
+  // No counts to draw. The header chip owns status for this row (see the note
+  // on renderReceiptDetails), so there is nothing left to render here — for
+  // `pending` no more than for any other status, which is what the pair of
+  // branches here used to imply otherwise.
+  if (added === undefined && removed === undefined) return null
 
   if (layout === "minimal") {
     return <text fg={t.spineOk}>+{added ?? 0}/-{removed ?? 0}</text>
@@ -169,10 +170,12 @@ function renderFallbackReceipt(r: SpineReceiptType, layout: SpineLayout, t: Them
     }
     return <text fg={t.spineDiffMuted}>{r.label} · Done</text>
   }
-  if (layout === "minimal") {
-    return <text fg={t.spineDiffMuted}>{r.status}</text>
-  }
-  return <text fg={t.spineDiffMuted}>{r.label} · {r.status}</text>
+  // `interrupted` is the only member left, and the caller intercepts it before
+  // the switch — so this tail is unreachable through `content()`. It used to
+  // print `r.status` verbatim here, which is a raw token on screen the moment
+  // anyone calls this directly; both paths now agree instead.
+  if (r.status === "interrupted") return renderInterruptedReceipt(r, layout, t)
+  return null
 }
 
 /**
