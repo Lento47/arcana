@@ -371,7 +371,7 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
               </Match>
             </Switch>
           }
-          options={{ confirm: "Confirm", cancel: "Cancel" }}
+          options={{ confirm: "Allow Always", cancel: "Cancel" }}
           escapeKey="cancel"
           onSelect={(option) => {
             setStore("stage", "permission")

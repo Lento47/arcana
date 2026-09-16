@@ -379,7 +379,7 @@ export function useAppEffects(props: {
 
       toast.show({
         variant: "info",
-        message: `Updating to v${version}...`,
+        message: `Updating to v${version}…`,
         duration: 30000,
       })
 
@@ -389,7 +389,7 @@ export function useAppEffects(props: {
         toast.show({
           variant: "error",
           title: "Update Failed",
-          message: "Update failed",
+          message: "Nothing was changed — run arcana upgrade in a terminal to retry.",
           duration: 10000,
         })
         return
@@ -398,7 +398,7 @@ export function useAppEffects(props: {
       await DialogAlert.show(
         dialog,
         "Update Complete",
-        `Successfully updated to ${APP_NAME} v${result.data.version}. Please restart the application.`,
+        `Updated to ${APP_NAME} v${result.data.version}. Restart the app to apply it.`,
       )
 
       void exit()

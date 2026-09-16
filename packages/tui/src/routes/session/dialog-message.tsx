@@ -5,6 +5,7 @@ import { useRoute } from "../../context/route"
 import { useClipboard } from "../../context/clipboard"
 import { useTheme } from "../../context/theme"
 import { useDialog } from "../../ui/dialog"
+import { DialogConfirm } from "../../ui/dialog-confirm"
 import { useToast } from "../../ui/toast"
 import { useTuiConfig } from "../../config"
 import { useBindings } from "../../keymap"
@@ -51,9 +52,19 @@ export function DialogMessage(props: {
       key: "unravel",
       label: "Unravel",
       desc: "rewind before this point",
-      onSelect() {
+      async onSelect() {
         const msg = message()
         if (!msg) return
+        // Destructive: rewinding drops every message after this point. Ask
+        // before acting; the message dialog is replaced by the confirm and the
+        // flow only continues on an explicit confirm.
+        const confirmed = await DialogConfirm.show(
+          dialog,
+          "Unravel Session",
+          "Rewind the session to before this message? Everything after it will be removed — this cannot be undone.",
+          "keep session",
+        )
+        if (confirmed !== true) return
         void sdk.client.session
           .revert({ sessionID: props.sessionID, messageID: msg.id })
           .then((res: { error?: unknown }) => {

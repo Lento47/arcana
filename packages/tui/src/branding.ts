@@ -184,7 +184,7 @@ export const PLAIN_BOOT_READY = "ready"
  */
 const DEFAULT_PLACEHOLDER = {
   normal: [
-    "Ask anything...  (!shell  /commands  @files)",
+    "Ask anything…  (!shell  /commands  @files)",
     "What secrets does this codebase hold?",
     "/goal fix the login bug",
     "Inscribe a change…",
@@ -230,7 +230,7 @@ const DEFAULT_PLACEHOLDER = {
 
 export const PLAIN_PLACEHOLDER: { normal: string[]; shell: string[] } = {
   normal: [
-    "Ask anything...  (!shell  /commands  @files)",
+    "Ask anything…  (!shell  /commands  @files)",
     "What does this codebase hold?",
     "/goal fix the login bug",
     "Make a change…",
