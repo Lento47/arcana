@@ -12,11 +12,48 @@ import {
 import { Lexicon, Glyph } from "../../branding"
 import { ShimmerText } from "../../component/shimmer-text"
 import { selectedForeground } from "../../context/theme"
+import { CliRenderEvents } from "@opentui/core"
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js"
 
 const id = "internal:statusbar"
 
+/**
+ * Below this the bar stops carrying its decorative meter and its cost. The bar
+ * is one content row, and its segments do not all earn their columns equally:
+ * the model name and the token readout are the parts an operator reads, while
+ * the meter run repeats the percentage printed beside it and the cost is the
+ * least urgent thing in the line. 100 is the width at which the whole line
+ * fits; below it the decorative pair gives way, because clipping a number to
+ * keep a bar that restates it is the wrong trade.
+ */
+const COMPACT_WIDTH = 100
+
+/**
+ * The narrowest the model name may become. Every other segment of the bar is
+ * `flexShrink={0}`, so the name absorbs the slack yoga has left and is clipped
+ * from the right; without a floor it was squeezed to `claud`, which reads as a
+ * different model. With one, the worst case is a recognisable prefix.
+ */
+const MODEL_MIN = 16
+
 interface BarSegment { filled: boolean }
+
+/**
+ * The width the bar lays out for, or `undefined` when there is none to measure.
+ * A plugin is handed the renderer, and this guards the value itself: arithmetic
+ * on a missing measurement silently becomes `NaN`, and a `NaN` model budget
+ * reached `Locale.truncate`, which answers `NaN` with an empty string — the
+ * name vanished from the bar entirely rather than merely going unmeasured.
+ */
+export function statusbarWidth(renderer: { width?: number } | undefined): number | undefined {
+  const width = renderer?.width
+  return typeof width === "number" && Number.isFinite(width) && width > 0 ? width : undefined
+}
+
+/** Narrow enough that the decorative meter and the cost give way. */
+export function isCompactWidth(width: number | undefined): boolean {
+  return width !== undefined && width < COMPACT_WIDTH
+}
 
 function renderBar(pct: number): BarSegment[] {
   const clamped = Math.max(0, Math.min(100, pct))
@@ -128,10 +165,31 @@ function View(props: { api: TuiPluginApi }) {
   })
 
   const busyVerb = createMemo(() => {
-    if (compacting()) return "Compacting context…"
+    // Compaction is already announced by the chip below, in the same line and
+    // in the warning colour. The shimmer used to repeat it as prose, so one
+    // fact was painted twice and the redundant copy was the longer of the two.
+    if (compacting()) return ""
     if (!busy()) return ""
     return "Thinking…"
   })
+
+  /**
+   * The bar lays out against the renderer it was handed rather than a context
+   * hook: a plugin is given the renderer, and `useTerminalDimensions()` is
+   * undefined outside a live terminal, which would leave the budget unmeasured.
+   * The subscription is what keeps it honest across a resize — a bar still laid
+   * out for the old width either clips or wastes the new one.
+   */
+  const [termWidth, setTermWidth] = createSignal(statusbarWidth(api.renderer))
+  createEffect(() => {
+    const renderer = api.renderer
+    if (!renderer) return
+    const update = () => setTermWidth(statusbarWidth(renderer))
+    update()
+    renderer.on(CliRenderEvents.RESIZE, update)
+    onCleanup(() => renderer.off(CliRenderEvents.RESIZE, update))
+  })
+  const compact = () => isCompactWidth(termWidth())
 
   // C4: the chip is flush with the bar's left edge when it is the first visible
   // element (no busy shimmer leads). The bar collapses its padding and the chip
@@ -139,6 +197,13 @@ function View(props: { api: TuiPluginApi }) {
   // of floating on the transparent bar background.
   const chipAtEdge = () => !busyVerb() && (compacting() || contextPressure())
 
+  // The bar is one content row and must stay one content row. Every segment
+  // below is `flexShrink={0}` with `wrapMode="none"`, so when the terminal is
+  // narrower than the readout the tail clips at the edge instead of wrapping.
+  // Wrapping was the real behaviour: a 48-column model name plus the meter, the
+  // token total and the cost overflowed a 100-column terminal and broke
+  // mid-token, and the bar grew to four rows — pushing the prompt down and
+  // shoving the top border away from the text it frames.
   return (
     <Show when={sessionID() && (shell() === "command-spine" ? (compacting() || contextPressure()) : (busy() || compacting() || model() || usage()))}>
       <box
@@ -156,11 +221,13 @@ function View(props: { api: TuiPluginApi }) {
         borderColor={theme().borderSubtle}
       >
         <Show when={busyVerb()}>
-          <ShimmerText text={busyVerb()} active={true} background={theme().background as any} />
+          <box flexShrink={0}>
+            <ShimmerText text={busyVerb()} active={true} background={theme().background as any} />
+          </box>
         </Show>
         <Show when={compacting()}>
-          <box backgroundColor={theme().warning} paddingLeft={chipAtEdge() ? 3 : 1} paddingRight={1}>
-            <text fg={selectedForeground(theme(), theme().warning)}>
+          <box flexShrink={0} backgroundColor={theme().warning} paddingLeft={chipAtEdge() ? 3 : 1} paddingRight={1}>
+            <text wrapMode="none" fg={selectedForeground(theme(), theme().warning)}>
               <span style={{ fg: selectedForeground(theme(), theme().warning), bold: true }}>
                 ⟳ COMPACTING
               </span>
@@ -169,8 +236,8 @@ function View(props: { api: TuiPluginApi }) {
         </Show>
         <Show when={contextPressure()}>
           {(pressure) => (
-            <box backgroundColor={pressure().color} paddingLeft={chipAtEdge() ? 3 : 1} paddingRight={1}>
-              <text fg={selectedForeground(theme(), pressure().color)}>
+            <box flexShrink={0} backgroundColor={pressure().color} paddingLeft={chipAtEdge() ? 3 : 1} paddingRight={1}>
+              <text wrapMode="none" fg={selectedForeground(theme(), pressure().color)}>
                 <span style={{ fg: selectedForeground(theme(), pressure().color), bold: true }}>
                   {pressure().label}
                 </span>
@@ -179,65 +246,82 @@ function View(props: { api: TuiPluginApi }) {
           )}
         </Show>
         <Show when={status()?.type === "retry"}>
-          <text fg={theme().warning}>↻ retry</text>
+          <text flexShrink={0} wrapMode="none" fg={theme().warning}>↻ retry</text>
         </Show>
         <Show when={model()}>
           {(value) => (
-            <text fg={theme().textMuted}>
-              {Glyph.sigil} {value()}
+            // The model name is the only segment that gives ground: it absorbs
+            // the slack the fixed segments leave, and is clipped from the right.
+            // `minWidth` is the floor that keeps a clipped name recognisable.
+            <text flexShrink={1} minWidth={MODEL_MIN} wrapMode="none" fg={theme().textMuted}>
+              {Glyph.sigil} {compactModelName(value())}
             </text>
           )}
         </Show>
         <Show when={mlRuntime()}>
-          <text fg={theme().primary}>
+          <text flexShrink={0} wrapMode="none" fg={theme().primary}>
             <span style={{ fg: theme().primary, bold: true }}>ML</span>
           </text>
         </Show>
-        <Show when={usage()}>
-          {(u) => (
-            <Show when={u().percent !== null}>
-              <text fg={theme().textMuted}>|</text>
-              <text fg={theme().primary}>
-                <For each={renderBar(u().percent!)}>
-                  {(seg) => {
-                    const soon = compactSoonPercent(compaction())
-                    const now = compactNowPercent(compaction())
-                    const fillColor =
-                      u().percent! >= now ? theme().error : u().percent! >= soon ? theme().warning : theme().primary
-                    return <span style={{ fg: seg.filled ? fillColor : theme().textMuted }}>{seg.filled ? "▰" : "▱"}</span>
-                  }}
-                </For>
-              </text>
-            </Show>
-          )}
+        <Show when={!compact()}>
+          <Show when={usage()}>
+            {(u) => (
+              <Show when={u().percent !== null}>
+                <text flexShrink={0} wrapMode="none" fg={theme().textMuted}>|</text>
+                <text flexShrink={0} wrapMode="none" fg={theme().primary}>
+                  <For each={renderBar(u().percent!)}>
+                    {(seg) => {
+                      const soon = compactSoonPercent(compaction())
+                      const now = compactNowPercent(compaction())
+                      const fillColor =
+                        u().percent! >= now ? theme().error : u().percent! >= soon ? theme().warning : theme().primary
+                      return <span style={{ fg: seg.filled ? fillColor : theme().textMuted }}>{seg.filled ? "▰" : "▱"}</span>
+                    }}
+                  </For>
+                </text>
+              </Show>
+            )}
+          </Show>
         </Show>
         <box flexGrow={1} minHeight={0} />
         <Show when={usage()}>
           {(value) => (
-            <text fg={theme().textMuted}>
+            <text flexShrink={0} wrapMode="none" fg={theme().textMuted}>
               <span style={{ fg: theme().primary }}>CTX</span>{" "}
-              <span style={{ fg: theme().primary }}>{Locale.number(value().tokens)}</span> {Lexicon.Token.label}
+              <span style={{ fg: theme().primary }}>{Locale.number(value().tokens)}</span>
+              {/* The separator space travels with the label it precedes, so
+                  dropping the label below the breakpoint leaves one space
+                  before the meter rather than two. */}
+              {compact() ? "" : ` ${Lexicon.Token.label}`}
               <Show when={value().percent !== null}>
+                {/* The space lives inside the run: JSX drops whitespace-only
+                    text between elements when it spans a line break, so
+                    `{label}` followed by a newline-indented `<span>` rendered
+                    as `glyphs▰` — the meter collided with the word. */}
                 <span style={{ fg: theme().secondary }}>
-                  {Glyph.meter} {value().percent + "%"}
+                  {" "}{Glyph.meter} {value().percent + "%"}
                 </span>
               </Show>
-              <span style={{ fg: compacting() ? theme().warning : theme().textMuted }}>
-                {" "}
-                {tokenStateLabel(
-                  value().percent,
-                  compacting(),
-                  compactSoonPercent(compaction()),
-                  compactNowPercent(compaction()),
-                )}
-              </span>
+              <Show when={!compact()}>
+                <span style={{ fg: compacting() ? theme().warning : theme().textMuted }}>
+                  {" "}
+                  {tokenStateLabel(
+                    value().percent,
+                    compacting(),
+                    compactSoonPercent(compaction()),
+                    compactNowPercent(compaction()),
+                  )}
+                </span>
+              </Show>
             </text>
           )}
         </Show>
-        <Show when={cost() !== undefined && cost()! > 0}>
-          <text fg={theme().textMuted}>
-            {Glyph.diamond} {Locale.currency(cost()!)}
-          </text>
+        <Show when={!compact()}>
+          <Show when={cost() !== undefined && cost()! > 0}>
+            <text flexShrink={0} wrapMode="none" fg={theme().textMuted}>
+              {Glyph.diamond} {Locale.currency(cost()!)}
+            </text>
+          </Show>
         </Show>
       </box>
     </Show>
