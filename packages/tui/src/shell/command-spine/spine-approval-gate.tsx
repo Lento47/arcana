@@ -1,5 +1,5 @@
 import { For, Show, createContext, createMemo, createSignal, useContext } from "solid-js"
-import { TextAttributes, type RGBA } from "@opentui/core"
+import { TextAttributes, type MouseEvent, type RGBA } from "@opentui/core"
 import { selectedForeground, useTheme } from "../../context/theme"
 import type { Theme } from "../../theme"
 import { RoundBorder } from "../../ui/chrome"
@@ -67,6 +67,24 @@ function ActionKeys(props: { theme: Theme; layout: SpineLayout }) {
     if (key === "v") return actions.inspect
     return undefined
   }
+  /**
+   * A chip is a leaf affordance inside the entry row, and OpenTUI mouse events
+   * bubble to every ancestor (`Renderable.processMouseEvent`), so without this
+   * the row's own handler acts on the way back up. The gate is the one part of
+   * the row that renders while the row is COLLAPSED, which is exactly when the
+   * row reads a click as "toggle me": approving a request also opened the
+   * banner's body.
+   *
+   * Only a chip that has something to run claims the click. The key line still
+   * renders without an actions provider (isolated renders, tests), and there it
+   * is a hint rather than a target — the click belongs to the row.
+   */
+  const handleActionMouseUp = (event: MouseEvent, key: string) => {
+    const handler = handlerFor(key)
+    if (!handler) return
+    event.stopPropagation?.()
+    handler()
+  }
   return (
     <box flexDirection="row" flexShrink={0} gap={1} paddingTop={1}>
       <For each={[...facts.keys]}>
@@ -80,7 +98,7 @@ function ActionKeys(props: { theme: Theme; layout: SpineLayout }) {
               paddingLeft={1}
               paddingRight={1}
               backgroundColor={active() ? props.theme.primary : props.theme.backgroundElement}
-              onMouseUp={() => handler()?.()}
+              onMouseUp={(event) => handleActionMouseUp(event, item.key)}
               onMouseOver={() => clickable() && setHover(item.key)}
               onMouseOut={() => setHover(undefined)}
             >

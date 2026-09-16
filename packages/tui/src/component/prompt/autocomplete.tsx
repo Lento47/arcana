@@ -1,4 +1,4 @@
-import type { BoxRenderable, TextareaRenderable, ScrollBoxRenderable } from "@opentui/core"
+import type { BoxRenderable, MouseEvent, TextareaRenderable, ScrollBoxRenderable } from "@opentui/core"
 import { pathToFileURL } from "bun"
 import fuzzysort from "fuzzysort"
 import path from "path"
@@ -793,6 +793,20 @@ export function Autocomplete(props: {
     setStore("visible", false)
   }
 
+  /**
+   * A completion row is a leaf affordance and OpenTUI mouse events bubble to
+   * every ancestor (`Renderable.processMouseEvent`), up to the app root's
+   * copy-on-select `onMouseUp`. `select()` closes the panel, and whether that
+   * removal lands during dispatch is what decides whether the walk reaches the
+   * app's copy handler — a shield by accident of timing rather than a decision.
+   * Claiming the click here makes it a decision: whatever text is selected in
+   * the transcript, accepting a completion must not copy it.
+   */
+  function selectOnMouseUp(event: MouseEvent) {
+    event.stopPropagation?.()
+    select()
+  }
+
   function expandDirectory() {
     const selected = options()[store.selected]
     if (!selected) return
@@ -1130,7 +1144,7 @@ export function Autocomplete(props: {
                 setStore("input", "mouse")
                 moveTo(index)
               }}
-              onMouseUp={() => select()}
+              onMouseUp={(event) => selectOnMouseUp(event)}
             >
               <text
                 fg={

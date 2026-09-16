@@ -4,7 +4,7 @@ import { useTheme } from "../context/theme"
 import { Glyph } from "../branding"
 import { useTerminalDimensions } from "@opentui/solid"
 import { SplitBorder } from "./border"
-import { TextAttributes } from "@opentui/core"
+import { TextAttributes, type MouseEvent } from "@opentui/core"
 import { Scramble } from "../component/scramble"
 
 export type ToastOptions = {
@@ -41,6 +41,21 @@ export function Toast() {
       <For each={toast.toasts.slice(-MAX_VISIBLE)}>
         {(item) => {
           const [dismissHovered, setDismissHovered] = createSignal(false)
+          /**
+           * The dismiss glyph is a leaf affordance and mouse events bubble to every
+           * ancestor (`Renderable.processMouseEvent`), up to the app root's
+           * copy-on-select `onMouseUp`. Dismissing empties the store during
+           * dispatch, which detaches this node before the walk reads
+           * `this.parent`, so the walk happens to dead-end here and the app
+           * handler happens not to run — a shield by accident of the removal
+           * being synchronous, not a decision. This claims the click outright,
+           * so a dismissal that lingers (a fade, a queued store update) cannot
+           * quietly start copying the operator's selection instead.
+           */
+          const handleDismissMouseUp = (event: MouseEvent) => {
+            event.stopPropagation?.()
+            toast.dismiss(item.id)
+          }
           return (
             <box
               maxWidth={Math.min(60, dimensions().width - 6)}
@@ -76,7 +91,7 @@ export function Toast() {
               <box flexShrink={0}>
                 <text
                   fg={dismissHovered() ? theme.text : theme.textMuted}
-                  onMouseUp={() => toast.dismiss(item.id)}
+                  onMouseUp={handleDismissMouseUp}
                   onMouseOver={() => setDismissHovered(true)}
                   onMouseOut={() => setDismissHovered(false)}
                 >
