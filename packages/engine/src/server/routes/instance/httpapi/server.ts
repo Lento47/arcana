@@ -2,7 +2,7 @@ import { Config as EffectConfig, ConfigProvider, Context, Effect, Layer } from "
 import { HttpApiBuilder, OpenApi } from "effect/unstable/httpapi"
 import { HttpClient, HttpMiddleware, HttpRouter, HttpServer, HttpServerResponse } from "effect/unstable/http"
 import * as Socket from "effect/unstable/socket/Socket"
-import { activityStatus, applyDaemonTimeouts } from "@/daemon/activity"
+import { activityStatus } from "@/daemon/activity"
 import { FSUtil } from "@arcana/core/fs-util"
 import * as Observability from "@arcana/core/observability"
 import { Account } from "@/account/account"
@@ -205,20 +205,6 @@ const healthRoute = HttpRouter.use((router) =>
   ),
 )
 
-/**
- * Read the engine config once at server build and hand the daemon lifecycle
- * values to the idle control. Env overrides win inside applyDaemonTimeouts.
- * Runs before lifecycle.armIdle (Server.listen completes first), so the fuses
- * arm with the operator's values.
- */
-const daemonLifecycleLayer = Layer.effectDiscard(
-  Effect.gen(function* () {
-    const config = yield* Config.Service
-    const value = yield* config.get()
-    applyDaemonTimeouts(value.daemon)
-  }),
-)
-
 const docRoute = HttpRouter.use((router) => router.add("GET", "/doc", () => Effect.succeed(docResponse()))).pipe(
   Layer.provide(authOnlyRouterLayer),
 )
@@ -316,7 +302,6 @@ export function createRoutes(
     healthRoute,
     docRoute,
     uiRoute,
-    daemonLifecycleLayer,
   ).pipe(
     Layer.provide([
       errorLayer,

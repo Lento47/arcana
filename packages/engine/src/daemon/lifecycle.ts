@@ -1,11 +1,50 @@
 import { readLock, acquireLock, removeLock, isLockStale } from "./lock"
-import { armIdle, clearIdle, resetActivity } from "./activity"
+import { applyDaemonTimeouts, armIdle, clearIdle, resetActivity } from "./activity"
 import { daemonLog } from "./log"
 import { Server } from "../server/server"
 
 const DAEMON_PORT_START = 9142
 const DAEMON_PORT_END = 9150
 const RESPAWN_DEBOUNCE_MS = 3_000 // prevent storms on network flap
+
+/**
+ * Read `arcana.json` daemon.* and apply it to the idle fuses before they arm.
+ *
+ * The HTTP server layer is intentionally built without an ambient InstanceRef
+ * (serve.ts: instances load per request), so the daemon — which IS the
+ * workspace instance host — loads the instance context for its cwd just for
+ * this read and disposes it again. Best-effort: a config problem must never
+ * block daemon boot (env overrides and defaults still arm).
+ */
+async function applyConfiguredDaemonTimeouts(cwd: string): Promise<void> {
+  try {
+    const { Effect } = await import("effect")
+    const [{ AppRuntime }, { InstanceStore }, { InstanceRef }, { Config }] = await Promise.all([
+      import("@/effect/app-runtime"),
+      import("@/project/instance-store"),
+      import("@/effect/instance-ref"),
+      import("@/config/config"),
+    ])
+    const { store, ctx } = await AppRuntime.runPromise(
+      InstanceStore.Service.use((store) =>
+        store.load({ directory: cwd }).pipe(Effect.map((ctx) => ({ store, ctx }))),
+      ),
+    )
+    try {
+      await AppRuntime.runPromise(
+        Effect.gen(function* () {
+          const config = yield* Config.Service
+          const value = yield* config.get()
+          applyDaemonTimeouts(value.daemon)
+        }).pipe(Effect.provideService(InstanceRef, ctx)),
+      )
+    } finally {
+      await AppRuntime.runPromise(store.dispose(ctx)).catch(() => {})
+    }
+  } catch (error) {
+    daemonLog(`[daemon] lifecycle config unavailable pid=${process.pid} ${String(error)}`)
+  }
+}
 
 export async function startDaemon(cwd: string, version: string): Promise<{ port: number; url: string }> {
   // Singleton guard: a live daemon already owns this workspace, so a
@@ -74,6 +113,8 @@ export async function startDaemon(cwd: string, version: string): Promise<{ port:
   // Idle timeout — shut down after inactivity. The timer lives in
   // daemon/activity.ts and is reset by any HTTP request, any SSE heartbeat,
   // and suspended while an SSE client is connected (see activity.ts).
+  // Config (arcana.json daemon.*) applies first; env overrides win inside.
+  await applyConfiguredDaemonTimeouts(cwd)
   armIdle(cwd, () => {
     void stopDaemon(server!, cwd, "idle").then(() => {
       // stopDaemon closes the listener but lingering stream fibers (SSE
