@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { bucketEvents, bucketTotal, barCells, stackCells, timeBuckets } from "../src/ui/kit/bars"
 import { BrailleGrid, brailleSeries, plotSeries } from "../src/ui/kit/braille"
 import { gaugeCells, labeledGauge } from "../src/ui/kit/gauge"
+import { jumpScrollTop, minimapRows, viewportBracket } from "../src/ui/kit/minimap"
 import { chunks, clamp01, extent, normalize } from "../src/ui/kit/scale"
 import { SparkMean, sparkline, SPARK_GLYPHS } from "../src/ui/kit/sparkline"
 import { burnSeries } from "../src/ui/kit/telemetry"
@@ -235,5 +236,54 @@ describe("kit timeline", () => {
     expect(dropped[0]!.every((cell) => cell === null)).toBe(true)
     const degenerate = timelineCells({ spans: [], marks: [], lanes: ["a"], start: 5, end: 5, width: 10 })
     expect(degenerate[0]!.every((cell) => cell === null)).toBe(true)
+  })
+})
+
+describe("kit minimap", () => {
+  test("marks survive compression by priority", () => {
+    const cells = minimapRows(
+      [
+        { kind: "ask" },
+        { kind: "tool", mark: "△" },
+        { kind: "tool", mark: "✗" },
+        { kind: "prose" },
+      ],
+      1,
+    )
+    expect(cells).toEqual([{ glyph: "✗", tone: "mark" }])
+  })
+
+  test("fewer entries than rows leave empty cells, never fabricated fill", () => {
+    const cells = minimapRows([{ kind: "tool" }, { kind: "ask" }], 6)
+    expect(cells.filter((cell) => cell.tone === "empty")).toHaveLength(4)
+    expect(minimapRows([], 3).every((cell) => cell.tone === "empty")).toBe(true)
+    expect(minimapRows([{ kind: "tool" }], 0)).toEqual([])
+  })
+
+  test("density cells are strong for packed slices", () => {
+    const cells = minimapRows(Array.from({ length: 12 }, () => ({ kind: "tool" })), 4)
+    expect(cells.map((cell) => cell.glyph)).toEqual(["█", "█", "█", "█"])
+  })
+
+  test("the viewport bracket maps proportionally and clamps at the end", () => {
+    expect(viewportBracket({ rows: 10, scrollTop: 0, scrollHeight: 1000, viewportHeight: 500 })).toEqual({
+      from: 0,
+      to: 5,
+    })
+    expect(viewportBracket({ rows: 10, scrollTop: 500, scrollHeight: 1000, viewportHeight: 500 })).toEqual({
+      from: 5,
+      to: 9,
+    })
+    expect(viewportBracket({ rows: 10, scrollTop: 0, scrollHeight: 0, viewportHeight: 100 })).toEqual({
+      from: 0,
+      to: -1,
+    })
+  })
+
+  test("clicking a map row lands proportionally in the transcript", () => {
+    expect(jumpScrollTop({ row: 9, rows: 10, scrollHeight: 1000, viewportHeight: 200 })).toBe(800)
+    expect(jumpScrollTop({ row: 0, rows: 10, scrollHeight: 1000, viewportHeight: 200 })).toBe(0)
+    expect(jumpScrollTop({ row: 5, rows: 1, scrollHeight: 1000, viewportHeight: 200 })).toBe(0)
+    expect(jumpScrollTop({ row: 1, rows: 2, scrollHeight: 100, viewportHeight: 200 })).toBe(0)
   })
 })

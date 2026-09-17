@@ -1,7 +1,9 @@
-import { ErrorBoundary, For, Show, createSignal } from "solid-js"
+import { ErrorBoundary, For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import type { Accessor } from "solid-js"
 import type { MouseEvent, ScrollAcceleration, ScrollBoxRenderable } from "@opentui/core"
 import { useTheme } from "../../context/theme"
+import { Minimap } from "../../ui/kit/minimap-view"
+import { jumpScrollTop, minimapRows, viewportBracket } from "../../ui/kit/minimap"
 import { Layer } from "../../ui/chrome"
 import { type SpineLayout, type SpineEntry, type SpineEntryAction } from "./spine-types"
 import { SpineEntryBinding } from "./spine-entry-binding"
@@ -53,15 +55,65 @@ export function SpineViewport(props: {
    * Defaults to 1 when omitted.
    */
   blockGap?: number
+  /**
+   * Entry-kinds for the minimap strip (one cell per slice of entries, marks
+   * survive compression). When present the map replaces the corner cues: the
+   * map already shows where hidden content is.
+   */
+  mapEntries?: readonly { kind: string; mark?: string }[]
 }) {
   const { theme } = useTheme()
   const [upHover, setUpHover] = createSignal(false)
   const [downHover, setDownHover] = createSignal(false)
 
+  // ── Minimap strip ─────────────────────────────────────────────────────
+  // The map is entry-granular; its height and the viewport bracket are read
+  // from the scrollbox on a short interval (the scrollbox has no scroll event),
+  // and only while a map is actually shown.
+  let mapScrollBox: ScrollBoxRenderable | undefined
+  const [mapRows, setMapRows] = createSignal(0)
+  const [mapBracket, setMapBracket] = createSignal<{ from: number; to: number } | undefined>(undefined)
+  const mapCells = createMemo(() => minimapRows(props.mapEntries ?? [], mapRows()))
+  const showMap = () => !props.showScrollbar && mapCells().length > 0
+  let measure: ReturnType<typeof setInterval> | undefined
+  createEffect(() => {
+    const entries = props.mapEntries
+    if (!entries || entries.length === 0 || props.showScrollbar) {
+      if (measure) {
+        clearInterval(measure)
+        measure = undefined
+      }
+      return
+    }
+    if (measure) return
+    measure = setInterval(() => {
+      const handle = mapScrollBox
+      const viewportHeight = Math.max(8, Math.floor(handle?.viewport?.height ?? handle?.height ?? 24))
+      setMapRows(viewportHeight)
+      if (handle) {
+        setMapBracket(
+          viewportBracket({
+            rows: viewportHeight,
+            scrollTop: handle.scrollTop ?? 0,
+            scrollHeight: handle.scrollHeight ?? 0,
+            viewportHeight: handle.viewport?.height ?? viewportHeight,
+          }),
+        )
+      }
+    }, 150)
+    ;(measure as { unref?: () => void }).unref?.()
+  })
+  onCleanup(() => {
+    if (measure) clearInterval(measure)
+  })
+
   return (
     <box position="relative" flexDirection="column" flexGrow={1}>
       <scrollbox
-        ref={(r) => props.setScrollRef(r as unknown as ScrollBoxRenderable)}
+        ref={(r) => {
+          mapScrollBox = r as unknown as ScrollBoxRenderable
+          props.setScrollRef(r as unknown as ScrollBoxRenderable)
+        }}
         viewportOptions={{
           // The right gutter is always reserved: scroll cues render in it, so
           // they never land on row text (right={4} used to glue "↑" to the
@@ -136,7 +188,7 @@ export function SpineViewport(props: {
       {/* Cues are contextual: they appear only when that direction has hidden
           content and the scrollbar is off (the thumb already maps position,
           and overlaying it would replace thumb cells). */}
-      <Show when={!props.showScrollbar && props.showScrollUpButton}>
+      <Show when={!props.showScrollbar && !showMap() && props.showScrollUpButton}>
         <box
           position="absolute"
           top={0}
@@ -152,7 +204,7 @@ export function SpineViewport(props: {
           <text fg={theme.accent}>↑</text>
         </box>
       </Show>
-      <Show when={!props.showScrollbar && props.showScrollDownButton}>
+      <Show when={!props.showScrollbar && !showMap() && props.showScrollDownButton}>
         <box
           position="absolute"
           bottom={0}
@@ -166,6 +218,26 @@ export function SpineViewport(props: {
           backgroundColor={downHover() ? theme.backgroundElement : undefined}
         >
           <text fg={theme.accent}>↓</text>
+        </box>
+      </Show>
+      {/* The map strip: one narrow column at the right edge, entry-granular.
+          Click a row to jump; the bracket shows the visible slice. */}
+      <Show when={showMap()}>
+        <box position="absolute" top={0} bottom={0} right={0} zIndex={Layer.cue} width={1} flexDirection="column">
+          <Minimap
+            cells={mapCells()}
+            bracket={mapBracket()}
+            onJump={(row) => {
+              const handle = mapScrollBox
+              if (!handle) return
+              handle.scrollTop = jumpScrollTop({
+                row,
+                rows: mapRows(),
+                scrollHeight: handle.scrollHeight ?? 0,
+                viewportHeight: handle.viewport?.height ?? mapRows(),
+              })
+            }}
+          />
         </box>
       </Show>
     </box>

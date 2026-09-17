@@ -66,6 +66,29 @@ export function CommandSpineShell(props: ShellProps) {
   // Burn history for the header sparkline: the newest eight turns' context
   // sizes, derived once per message-list change (not per delta).
   const burn = createMemo(() => burnSeries(props.messages(), 8))
+  // Entry-granular map for the minimap strip: one cell per message, marks for
+  // failures and compactions. Bounded so a long session cannot make the map
+  // itself the expensive part.
+  const minimapEntries = createMemo(() => {
+    const entries: Array<{ kind: string; mark?: string }> = []
+    for (const message of props.messages()) {
+      let kind = message.role === "user" ? "ask" : "prose"
+      let mark: string | undefined
+      for (const part of props.getParts(message.id) ?? []) {
+        if (part.type === "compaction") {
+          kind = "compaction"
+          mark ??= "┈"
+        }
+        if (part.type === "tool") {
+          kind = "tool"
+          const status = (part as { state?: { status?: string } }).state?.status
+          if (status === "error") mark = "✗"
+        }
+      }
+      entries.push(mark ? { kind, mark } : { kind })
+    }
+    return entries.slice(-400)
+  })
   const [escapeStage, setEscapeStage] = createSignal<0 | 1 | 2>(0)
   const [recoveryActionIndex, setRecoveryActionIndex] = createSignal(0)
   let escapeResetTimer: ReturnType<typeof setTimeout> | undefined
@@ -883,6 +906,7 @@ export function CommandSpineShell(props: ShellProps) {
             <SpineViewport
               visibleEntryIDs={visibleEntryIDs}
               visibleEntryByID={visibleEntryByID}
+              mapEntries={minimapEntries()}
               layout={layout()}
               gutterWidth={projection.gutterWidth()}
               proseWidth={projection.proseWidth()}

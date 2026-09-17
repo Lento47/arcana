@@ -15,6 +15,8 @@ import { Card } from "../src/ui/kit/card"
 import { Collapsible } from "../src/ui/kit/collapsible"
 import { Gauge } from "../src/ui/kit/gauge-view"
 import { Histogram } from "../src/ui/kit/histogram-view"
+import { minimapRows } from "../src/ui/kit/minimap"
+import { Minimap } from "../src/ui/kit/minimap-view"
 import { Progress } from "../src/ui/kit/progress-view"
 import { Sparkline } from "../src/ui/kit/sparkline-view"
 import { timelineCells } from "../src/ui/kit/timeline"
@@ -146,6 +148,48 @@ test("waterfall paints spans and marks under lane labels", async () => {
     expect(frame).toContain("main")
     expect(frame).toContain("─")
     expect(frame).toContain("✗")
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
+test("the minimap strip paints marks and density cells", async () => {
+  const cells = minimapRows(
+    [
+      { kind: "ask" },
+      { kind: "tool" },
+      { kind: "tool", mark: "✗" },
+      { kind: "prose" },
+      { kind: "tool" },
+      { kind: "compaction", mark: "┈" },
+    ],
+    4,
+  )
+  const app = await testRender(
+    () => (
+      <TestTuiProviders>
+        <box flexDirection="row" width="100%" height="100%">
+          <box flexGrow={1} />
+          <Minimap cells={cells} bracket={{ from: 1, to: 2 }} />
+        </box>
+      </TestTuiProviders>
+    ),
+    { width: 20, height: 8 },
+  )
+
+  try {
+    let frame = ""
+    for (let attempt = 0; attempt < 12; attempt++) {
+      await app.renderOnce()
+      await app.flush()
+      const next = app.captureCharFrame()
+      if (next.trim().length > 0 && next === frame) break
+      frame = next
+      await Bun.sleep(20)
+    }
+    expect(frame).toContain("✗")
+    expect(frame).toContain("┈")
+    expect(frame).toContain("▓")
   } finally {
     app.renderer.destroy()
   }
