@@ -75,3 +75,19 @@ test("dispose prevents a late renderer frame from publishing", () => {
 
   expect(committed).toBe(false)
 })
+
+test("layout-lane keys are deferred while the tail commits now", () => {
+  installRafStub()
+  const gate = createStreamFrameGate(0, { layoutMs: 10_000 })
+  const committed: string[] = []
+
+  gate.schedule("tail", () => committed.push("tail"))
+  gate.schedule("heavy", () => committed.push("heavy"), { lane: "layout" })
+
+  commitFrame()
+  expect(committed).toEqual(["tail"])
+
+  gate.flush()
+  expect(committed).toEqual(["tail", "heavy"])
+  gate.dispose()
+})
