@@ -145,7 +145,7 @@ export function SpineReport(props: {
                 customBorderChars={HairlineBorder}
                 paddingLeft={2}
                 paddingTop={0}
-                paddingBottom={1}
+                paddingBottom={0}
                 marginBottom={1}
                 minWidth={0}
               >

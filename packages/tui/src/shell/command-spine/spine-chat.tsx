@@ -60,7 +60,10 @@ export function SpineChatCard(props: {
   const railW = createMemo(() => spineRailWidth(props.layout))
   const accentGlyph = createMemo(() => (isUser() ? Glyph.diamond : Glyph.star))
   const glyphCell = createMemo(() => spineRailCell(accentGlyph(), railW()))
-  const markerWidth = createMemo(() => railW() + 1)
+  // Marker chrome is the rail column only: spineRailCell already appends the
+  // trailing space that separates the glyph from the prose. The extra padding
+  // cell cost one prose column (spacing audit batch 2).
+  const markerWidth = createMemo(() => railW())
 
   // Assistant prose stays open on the session surface. User prompts retain a
   // faint fill so turn boundaries remain clear without becoming chat bubbles.
@@ -87,7 +90,7 @@ export function SpineChatCard(props: {
       flexShrink={0}
       width="100%"
       minWidth={0}
-      marginTop={1}
+      marginTop={0}
       marginBottom={0}
       backgroundColor={cardBg()}
       border={["left"]}
@@ -96,12 +99,12 @@ export function SpineChatCard(props: {
       paddingLeft={SPINE_CHAT_CARD_CHROME.padL}
       paddingRight={SPINE_CHAT_CARD_CHROME.padR}
       paddingTop={isUser() ? 1 : 0}
-      paddingBottom={1}
+      paddingBottom={isUser() ? 1 : 0}
     >
       {/* Marker cell — the speaker glyph lines up with the first prose line.
           Quiet Rail: the glyph brightens to the accent on focus (same signal
           as the card hairline), so a selected block reads without a row fill. */}
-      <box width={railW()} flexShrink={0} paddingRight={1}>
+      <box width={railW()} flexShrink={0}>
         <text fg={lineColor()} wrapMode="none">
           {glyphCell()}
         </text>

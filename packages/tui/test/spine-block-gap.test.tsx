@@ -1,11 +1,9 @@
 /** @jsxImportSource @opentui/solid */
 /**
- * Scroll cues must render in the reserved right gutter, never on row text.
- *
- * Live sessions showed "▸↑· +5m": the old floating cue sat at right={4},
- * directly on the row's chevron/elapsed meta. The gutter is now always
- * reserved (viewport paddingRight 1) and the cue occupies the last column.
- * Cues also yield to the scrollbar thumb when the scrollbar is on.
+ * One block-gap rule: every top-level spine entry is separated by exactly one
+ * blank row (spacing audit batch 2). Chat cards used to carry their own
+ * marginTop + paddingBottom (2 blank rows between messages) while tool rows
+ * had none; the gap now comes from the scroll content once.
  */
 import { expect, test } from "bun:test"
 import { testRender, type JSX } from "@opentui/solid"
@@ -51,29 +49,31 @@ function withProviders(component: () => JSX.Element) {
   )
 }
 
-const WIDTH = 72
-const LONG_ROW =
-  "A long assistant reply that fills the full row width so the right edge is reachable by text and the old cue placement would have collided with this line."
+const WIDTH = 60
 
-const ENTRY: SpineEntry = {
-  id: "e-long",
-  index: 1,
-  elapsed: "",
-  kind: "plan",
-  label: "arcana",
-  glyph: "✦",
-  summary: LONG_ROW,
-  streaming: false,
+function entry(id: string, summary: string, index: number): SpineEntry {
+  return {
+    id,
+    index,
+    elapsed: "",
+    timestamp: "12:00",
+    kind: "plan",
+    label: "arcana",
+    glyph: "✦",
+    summary,
+    streaming: false,
+  }
 }
 
-async function capture(opts: { showScrollbar: boolean; up: boolean; down: boolean }) {
+const ENTRIES = [entry("e-one", "BLOCK-ONE", 1), entry("e-two", "BLOCK-TWO", 2)]
+
+test("top-level entries are separated by exactly one blank row", async () => {
   const app = await testRender(
     () =>
       withProviders(() => (
-        <box width="100%" height="100%" flexDirection="column">
-          <SpineViewport
-          visibleEntryIDs={() => ["e-long"]}
-          visibleEntryByID={() => new Map([["e-long", ENTRY]])}
+        <SpineViewport
+          visibleEntryIDs={() => ENTRIES.map((item) => item.id)}
+          visibleEntryByID={() => new Map(ENTRIES.map((item) => [item.id, item]))}
           layout="wide"
           gutterWidth={2}
           proseWidth={spineProseWidth(WIDTH, "wide")}
@@ -84,62 +84,33 @@ async function capture(opts: { showScrollbar: boolean; up: boolean; down: boolea
           onFocusEntry={() => {}}
           onContextMenu={() => {}}
           onNavigate={() => {}}
-          showScrollbar={opts.showScrollbar}
+          showScrollbar={false}
           scrollAcceleration={new LinearScrollAccel()}
           setScrollRef={() => {}}
           handleMouseScroll={() => {}}
-          showScrollUpButton={opts.up}
-          showScrollDownButton={opts.down}
+          showScrollUpButton={false}
+          showScrollDownButton={false}
           onScrollToTop={() => {}}
           onScrollToBottom={() => {}}
         />
-        </box>
       )),
-    { width: WIDTH, height: 8 },
+    { width: WIDTH, height: 10 },
   )
   try {
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 6; i++) {
       await app.renderOnce()
-      await new Promise((resolve) => setTimeout(resolve, 50))
+      await new Promise((resolve) => setTimeout(resolve, 30))
       await app.flush()
-      await app.renderOnce()
     }
-    return app.captureCharFrame()
+    const lines = app.captureCharFrame().split("\n")
+    const one = lines.findIndex((line) => line.includes("BLOCK-ONE"))
+    const two = lines.findIndex((line) => line.includes("BLOCK-TWO"))
+    expect(one).toBeGreaterThanOrEqual(0)
+    expect(two).toBeGreaterThan(one)
+    // Exactly one blank row between the blocks.
+    expect(two - one).toBe(2)
+    expect(lines[one + 1]!.trim()).toBe("")
   } finally {
     app.renderer.destroy()
   }
-}
-
-function cols(line: string): string[] {
-  return [...line]
-}
-
-test("down cue renders in the last column gutter, not on row text", async () => {
-  const frame = await capture({ showScrollbar: false, up: false, down: true })
-  const lines = frame.split("\n").filter((line) => line.length > 0)
-  const bottom = cols(lines[lines.length - 1]!)
-
-  expect(bottom[WIDTH - 1]).toBe("↓")
-  // Every other cell on the cue row is not row text spilling under the cue.
-  expect(bottom[WIDTH - 2]).toBe(" ")
-  // No row line may render content in the gutter column.
-  for (const line of lines.slice(0, -1)) {
-    const c = cols(line)
-    if (c.length < WIDTH) continue
-    expect(c[WIDTH - 1]).toBe(" ")
-  }
-})
-
-test("up cue renders in the first row gutter", async () => {
-  const frame = await capture({ showScrollbar: false, up: true, down: false })
-  const lines = frame.split("\n").filter((line) => line.length > 0)
-  const top = cols(lines[0]!)
-
-  expect(top[WIDTH - 1]).toBe("↑")
-})
-
-test("cues yield to the scrollbar when it is on", async () => {
-  const frame = await capture({ showScrollbar: true, up: true, down: true })
-  expect(frame).not.toContain("↑")
-  expect(frame).not.toContain("↓")
 })

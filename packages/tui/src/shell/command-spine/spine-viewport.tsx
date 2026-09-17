@@ -76,6 +76,7 @@ export function SpineViewport(props: {
         flexGrow={1}
         scrollAcceleration={props.scrollAcceleration}
         onMouseScroll={props.handleMouseScroll}
+        contentOptions={{ gap: 1 }}
       >
         <For each={props.visibleEntryIDs()}>
           {(id) => {

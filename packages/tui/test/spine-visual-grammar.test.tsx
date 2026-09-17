@@ -248,10 +248,13 @@ describe("Command Spine visual grammar", () => {
       expect(frame, `width ${width}`).toContain("Approval")
       expect(frame, `width ${width}`).toContain("Verification failed")
       // The inline speaker marker costs the prose column two cells, so the
-      // closing sentence can wrap inside this phrase at the narrowest width;
-      // both fragments must still be present.
-      expect(frame, `width ${width}`).toContain("critical authority")
-      expect(frame, `width ${width}`).toContain("states remained visible")
+      // closing sentence can wrap anywhere inside this phrase at the narrowest
+      // widths — and a wrapped card line starts with its left border glyph.
+      // Strip rails + normalize the wrap so the assertion stays about content
+      // visibility, not the current column budget.
+      const normalized = frame.replace(/[│┃]/g, " ").replace(/\s+/g, " ")
+      expect(normalized, `width ${width}`).toContain("critical authority")
+      expect(normalized, `width ${width}`).toContain("states remained visible")
     }
   }, 30_000)
 

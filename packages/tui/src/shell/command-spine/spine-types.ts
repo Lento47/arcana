@@ -405,13 +405,21 @@ export function spineChatCardChrome(): number {
   return SPINE_CHAT_CARD_CHROME.border + SPINE_CHAT_CARD_CHROME.padL + SPINE_CHAT_CARD_CHROME.padR
 }
 
+/** Right gutter the scrollbox always reserves: viewport padding 1 + scrollbar 1. */
+const SCROLL_GUTTER = 2
+
 /**
  * Measured content width for chat/think prose (Grok-class wrap width).
  *
- * Terminal columns minus outer pad + gutter + variant chrome + safety,
- * clamped to >= 1. A present-but-narrow terminal gets its real budget rather
- * than a fallback — but a *missing* width is the first-paint race, and it takes
- * `terminalColumns`' default rather than collapsing prose to one column.
+ * Terminal columns minus outer pad + variant chrome, clamped to >= 1. A
+ * present-but-narrow terminal gets its real budget rather than a fallback — but
+ * a *missing* width is the first-paint race, and it takes `terminalColumns`'
+ * default rather than collapsing prose to one column.
+ *
+ * Chat rows render NO entry gutter (the card owns its marker), and the card
+ * subtracts that marker itself. Charging gutter + card + safety here and then
+ * subtracting the marker again in `SpineChatCard` overran the card's inner box
+ * by 2 columns — prose wrapped wider than the surface it sat on.
  *
  * @param terminalWidth - full terminal columns
  * @param layout - current spine layout
@@ -424,14 +432,12 @@ export function spineProseWidth(
   gutterWidth?: number,
 ): number {
   const term = terminalColumns(terminalWidth)
-  // Entry: outer pad + gutter. Chat card: left border + padL + padR.
-  // No separate rail sibling on the body anymore (pad/border only).
   const gutter = gutterWidth ?? spineGutterWidth(layout)
-  const chrome =
-    spineOuterPadding(layout)
-    + gutter
-    + (variant === "chat" ? spineChatCardChrome() : variant === "think" ? spineRailWidth(layout) + 1 : 1)
-    + 2 // scrollbar / safety
+  const chrome = spineOuterPadding(layout) + (
+    variant === "chat"
+      ? SCROLL_GUTTER + spineChatCardChrome()
+      : gutter + (variant === "think" ? spineRailWidth(layout) + 1 : 1) + 2 // gutter + tail + scrollbar/safety
+  )
   // Floor stays for a present-but-tiny terminal (4 columns is still 4 columns);
   // an unmeasured one never reaches here.
   return Math.max(1, term - chrome)
