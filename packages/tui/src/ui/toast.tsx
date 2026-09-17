@@ -19,7 +19,23 @@ export type ToastOptions = {
 }
 type ToastInput = Omit<ToastOptions, "id" | "duration"> & { duration?: number }
 
+/**
+ * A notice is a toast that outlives its card: the tray keeps the last
+ * `MAX_NOTICES` — including repeats, which collapse into one entry with a
+ * count (the same failure retried every second is one notice, not sixty).
+ */
+export type Notice = ToastOptions & {
+  /** When the notice last arrived (the last repeat, for a deduped notice). */
+  at: number
+  count: number
+}
+
+type LiveToast = ToastOptions & { at: number; count: number }
+
 const MAX_VISIBLE = 3
+const MAX_NOTICES = 200
+/** Repeats inside this window collapse into the previous notice. */
+const DEDUPE_WINDOW_MS = 8_000
 
 /**
  * The toast's duration ladder, in milliseconds.
@@ -122,6 +138,11 @@ export function Toast() {
                   </Match>
                 </Switch>
               </box>
+              <Show when={item.count > 1}>
+                <text fg={theme.textMuted} flexShrink={0}>
+                  {Glyph.repeat}{item.count}
+                </text>
+              </Show>
               <box flexShrink={0}>
                 <text
                   fg={dismissHovered() ? theme.text : theme.textMuted}
@@ -142,22 +163,46 @@ export function Toast() {
 
 function init() {
   const [store, setStore] = createStore({
-    toasts: [] as ToastOptions[],
+    toasts: [] as LiveToast[],
+    notices: [] as Notice[],
   })
 
   const timers = new Map<number, NodeJS.Timeout>()
 
+  function sameNotice(a: { title?: string; message: string; variant: string }, b: { title?: string; message: string; variant: string }) {
+    return a.variant === b.variant && a.message === b.message && (a.title ?? "") === (b.title ?? "")
+  }
+
   const toast = {
     show(options: ToastInput) {
-      const id = ++_nextId
-      const item: ToastOptions = {
-        id,
-        ...options,
-        duration:
-          options.duration
-          ?? (options.variant === "error" ? DEFAULT_ERROR_DURATION_MS : DEFAULT_DURATION_MS),
+      const now = Date.now()
+      const signature = { title: options.title, message: options.message, variant: options.variant }
+      const duration =
+        options.duration ?? (options.variant === "error" ? DEFAULT_ERROR_DURATION_MS : DEFAULT_DURATION_MS)
+
+      // A repeat of the most recent notice inside the window is the same
+      // notice: bump its count, refresh the card's timer if it is still up,
+      // and never stack a second identical card.
+      const last = store.notices.at(-1)
+      if (last && sameNotice(last, signature) && now - last.at <= DEDUPE_WINDOW_MS) {
+        const count = last.count + 1
+        setStore("notices", store.notices.length - 1, { at: now, count })
+        const visible = store.toasts.findIndex((t) => t.id === last.id)
+        if (visible >= 0) {
+          const timer = timers.get(last.id)
+          if (timer) clearTimeout(timer)
+          const next = setTimeout(() => toast.dismiss(last.id), duration)
+          next.unref()
+          timers.set(last.id, next)
+          setStore("toasts", visible, { at: now, count })
+        }
+        return last.id
       }
+
+      const id = ++_nextId
+      const item: LiveToast = { id, ...signature, duration, at: now, count: 1 }
       setStore("toasts", (prev) => [...prev.slice(-MAX_VISIBLE), item])
+      setStore("notices", (prev) => [...prev.slice(-(MAX_NOTICES - 1)), item])
 
       // Auto-dismiss after duration
       const timer = setTimeout(() => toast.dismiss(id), item.duration)
@@ -171,6 +216,9 @@ function init() {
       timers.delete(id)
       setStore("toasts", (prev) => prev.filter((t) => t.id !== id))
     },
+    clearNotices() {
+      setStore("notices", [])
+    },
     error: (err: any) => {
       const message =
         err instanceof Error
@@ -180,8 +228,12 @@ function init() {
             : "An unknown error occurred — retry the action; if it persists, check the logs"
       toast.show({ variant: "error", message, duration: DEFAULT_ERROR_DURATION_MS })
     },
-    get toasts(): readonly ToastOptions[] {
+    get toasts(): readonly LiveToast[] {
       return store.toasts
+    },
+    /** The tray: newest last, repeats collapsed with a count. */
+    get notices(): readonly Notice[] {
+      return store.notices
     },
   }
   return toast

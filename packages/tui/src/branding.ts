@@ -71,6 +71,16 @@ export const Glyph = {
    */
   attention: "△",
   /**
+   * A statement about behaviour rather than a request for a decision: a lock,
+   * a wholesale replacement, a degraded capability. The counterpart to
+   * `attention`; kept apart so "needs you" can never be confused with "beware".
+   */
+  warn: "⚠",
+  /** Repeat count on a collapsed notice: "×3" is one line for three arrivals. */
+  repeat: "×",
+  /** The quietest mark: a neutral notice, an idle state, a separator in the flow. */
+  dot: "·",
+  /**
    * Disclosure pair. `chevron` above means "next"; these mean "this row opens".
    * Kept apart so a retune of the navigation chevron cannot silently move the
    * expand/collapse affordance.

@@ -20,8 +20,10 @@ function createToast() {
   return {
     show: mock(() => nextToastId++),
     dismiss: mock(() => {}),
+    clearNotices: mock(() => {}),
     error: mock(() => {}),
     toasts: [],
+    notices: [],
   }
 }
 

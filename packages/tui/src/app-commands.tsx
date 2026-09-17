@@ -32,6 +32,7 @@ import {
 import { DialogConsoleOrg } from "./component/dialog-console-org"
 import { DialogThemeList } from "./component/dialog-theme-list"
 import { DialogHelp } from "./ui/dialog-help"
+import { DialogNotices } from "./ui/dialog-notices"
 import { DialogRunProofContract, DialogRunProofActions, DialogRunProofDiffGate, DialogRunProofVerify, DialogRunProofSovereignty, DialogRunProofMissing } from "./proof-view/run-proof-dialogs"
 import { loadActiveRunProof, stageActiveRunProofRollbackRestore, approveActiveRunProofRollbackRestore } from "./proof-io"
 import { displaySessionTitle } from "./util/session"
@@ -712,6 +713,15 @@ export function buildAppCommands(deps: {
       slashName: "help",
       run: () => {
         deps.dialog.replace(() => <DialogHelp />)
+      },
+      category: "System",
+    },
+    {
+      name: "notices.show",
+      title: "Notices",
+      slashName: "notices",
+      run: () => {
+        deps.dialog.replace(() => <DialogNotices />)
       },
       category: "System",
     },

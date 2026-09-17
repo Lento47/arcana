@@ -123,6 +123,7 @@ const appBindingCommands = [
   "variant.cycle",
   "variant.list",
   "provider.connect",
+  "notices.show",
   "console.org.switch",
   "arcana.status",
   "theme.switch",
