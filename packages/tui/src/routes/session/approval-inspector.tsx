@@ -29,6 +29,10 @@ export type ApprovalSnapshotStatus = "loading" | "ready" | "missing" | "error" |
  *
  * Opened from the command spine with `v`; closed with Esc, ctrl+c, or
  * clicking outside. The approval entry stays SELECTED after close.
+ *
+ * The panel draws no private frame: the card in `ui/dialog.tsx` is the one
+ * frame, and `DialogPanelHeader` is its hairline — the same anatomy as the
+ * permission inspector and every dialog.
  */
 /**
  * The section heading for a failed snapshot, hoisted because both failure
@@ -169,12 +173,7 @@ export function ApprovalInspector(props: {
   const snapshotRows = createMemo(() => approvalSnapshotRows(snapshot(), a()))
 
   return (
-    <box
-      flexGrow={1}
-      border={["top", "bottom", "left", "right"]}
-      borderColor={theme.borderActive}
-      backgroundColor={theme.background}
-    >
+    <box flexGrow={1} minWidth={0}>
       <DialogPanelHeader
         title="APPROVAL INSPECTOR"
         titleColor={theme.warning}
@@ -186,12 +185,12 @@ export function ApprovalInspector(props: {
       <scrollbox
         flexGrow={1}
         minHeight={0}
-        paddingTop={1}
+        paddingTop={Space.padY}
         paddingBottom={Space.padX}
-        paddingLeft={2}
-        paddingRight={2}
+        paddingLeft={Space.padX}
+        paddingRight={Space.padX}
         verticalScrollbarOptions={{
-          trackOptions: { backgroundColor: theme.background, foregroundColor: theme.borderActive },
+          trackOptions: { backgroundColor: theme.backgroundPanel, foregroundColor: theme.borderActive },
         }}
       >
         <For each={rows()}>{(row) => <FieldRow label={row[0]} value={row[1]} />}</For>

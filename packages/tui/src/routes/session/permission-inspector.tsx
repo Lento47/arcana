@@ -6,6 +6,9 @@ import { useTheme } from "../../context/theme"
 import { useDialog } from "../../ui/dialog"
 import { DialogPanelHeader } from "../../ui/dialog-chrome"
 
+/** The report's label column — wide enough for the longest request field. */
+const LABEL_WIDTH = 18
+
 /**
  * Read-only inspector for a permission ACTION GATE entry.
  *
@@ -13,6 +16,11 @@ import { DialogPanelHeader } from "../../ui/dialog-chrome"
  * durable approval record. `v` opens this inspector so the operator can see
  * the exact request (tool, permission, patterns, session) before deciding in
  * the gate with ←/→ + Enter.
+ *
+ * The panel draws no private frame: the card in `ui/dialog.tsx` is the one
+ * frame, and `DialogPanelHeader` is its hairline (the same anatomy every other
+ * dialog uses). A second four-sided border inside the card was the last
+ * hand-rolled frame in the family.
  */
 export function PermissionInspector(props: { request: PermissionRequest }) {
   const { theme } = useTheme()
@@ -26,12 +34,7 @@ export function PermissionInspector(props: { request: PermissionRequest }) {
   const rows = createMemo(() => permissionInspectorRows(request()))
 
   return (
-    <box
-      flexGrow={1}
-      border={["top", "bottom", "left", "right"]}
-      borderColor={theme.borderActive}
-      backgroundColor={theme.background}
-    >
+    <box flexGrow={1} minWidth={0}>
       <DialogPanelHeader
         title="PERMISSION INSPECTOR"
         titleColor={theme.warning}
@@ -42,16 +45,16 @@ export function PermissionInspector(props: { request: PermissionRequest }) {
 
       <box
         flexDirection="column"
-        paddingTop={1}
+        paddingTop={Space.padY}
         paddingBottom={Space.padX}
-        paddingLeft={2}
-        paddingRight={2}
+        paddingLeft={Space.padX}
+        paddingRight={Space.padX}
         gap={0}
       >
         <For each={rows()}>
           {([label, value]) => (
             <box flexDirection="row" minWidth={0}>
-              <box width={18} flexShrink={0}>
+              <box width={LABEL_WIDTH} flexShrink={0}>
                 <text fg={theme.textMuted}>{label}</text>
               </box>
               <text fg={theme.text} wrapMode="word" flexGrow={1}>{value}</text>

@@ -205,7 +205,7 @@ export function UserMessage(props: {
           border={["top"]}
           title=" Compaction "
           titleAlignment="center"
-          borderColor={theme.borderActive}
+          borderColor={theme.borderSubtle}
         />
       </Show>
     </>

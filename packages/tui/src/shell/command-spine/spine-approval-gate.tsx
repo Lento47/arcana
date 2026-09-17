@@ -2,7 +2,7 @@ import { For, Show, createContext, createMemo, createSignal, useContext } from "
 import { TextAttributes, type MouseEvent, type RGBA } from "@opentui/core"
 import { selectedForeground, useTheme } from "../../context/theme"
 import type { Theme } from "../../theme"
-import { RoundBorder } from "../../ui/chrome"
+import { Frame } from "../../ui/frame"
 import { truncate } from "../../util/locale"
 import { shortHash } from "./approval-snapshot"
 import type { SpineApprovalSnapshot, SpineEntry as SpineEntryType, SpineLayout } from "./spine-types"
@@ -149,17 +149,10 @@ export function SpineApprovalGate(props: {
   )
 
   return (
-    <box
-      flexDirection="column"
-      flexShrink={0}
-      minWidth={0}
-      gap={0}
-      paddingLeft={1}
-      paddingRight={1}
-      border={true}
-      customBorderChars={RoundBorder}
-      borderColor={riskColor(risk(), theme)}
-      backgroundColor={props.focused ? (theme.backgroundElement as any) : theme.backgroundPanel}
+    <Frame
+      tone={riskColor(risk(), theme)}
+      background={props.focused ? (theme.backgroundElement as any) : theme.backgroundPanel}
+      padX={1}
     >
       <box flexDirection="row" flexShrink={0} alignItems="center" gap={1}>
         <text fg={theme.warning} attributes={TextAttributes.BOLD}>
@@ -210,7 +203,7 @@ export function SpineApprovalGate(props: {
         <text fg={theme.error}>snapshot unavailable · fail-closed · press v to inspect</text>
       </Show>
       <ActionKeys theme={theme} layout={props.layout} />
-    </box>
+    </Frame>
   )
 }
 

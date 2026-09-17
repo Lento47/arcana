@@ -3,7 +3,7 @@ import { useTheme } from "../context/theme"
 import { Spinner } from "./spinner"
 import { Scramble } from "./scramble"
 import { Glyph, BOOT_PHRASES, BOOT_READY } from "../branding"
-import { FrameBorder } from "../ui/chrome"
+import { Frame } from "../ui/frame"
 
 export function StartupLoading(props: { ready: () => boolean }) {
   const theme = useTheme().theme
@@ -60,21 +60,13 @@ export function StartupLoading(props: { ready: () => boolean }) {
   return (
     <Show when={show()}>
       <box position="absolute" zIndex={5000} left={0} right={0} bottom={1} justifyContent="center" alignItems="center">
-        <box
-          flexDirection="row"
-          alignItems="center"
-          gap={1}
-          backgroundColor={theme.backgroundPanel}
-          border={["top", "bottom", "left", "right"]}
-          customBorderChars={FrameBorder}
-          borderColor={theme.borderActive}
-          paddingLeft={1}
-          paddingRight={1}
-        >
-          <text fg={theme.primary}>{Glyph.sigil}</text>
-          <Spinner color={theme.textMuted} />
-          <Scramble text={text()} fg={theme.textMuted} />
-        </box>
+        <Frame shape="heavy" padX={1}>
+          <box flexDirection="row" alignItems="center" gap={1}>
+            <text fg={theme.primary}>{Glyph.sigil}</text>
+            <Spinner color={theme.textMuted} />
+            <Scramble text={text()} fg={theme.textMuted} />
+          </box>
+        </Frame>
       </box>
     </Show>
   )

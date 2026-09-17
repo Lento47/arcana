@@ -101,7 +101,7 @@ export function ArtifactViewer(props: { artifact: ArtifactDisplay; onClose?: () 
         paddingTop={Space.padY}
         paddingBottom={Space.padY}
         border={["bottom"]}
-        borderColor={theme.border}
+        borderColor={theme.borderSubtle}
         backgroundColor={theme.backgroundPanel}
         flexDirection="row"
         alignItems="center"
