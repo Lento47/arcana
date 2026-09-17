@@ -10,6 +10,7 @@
  *   ARCANA_TOOL_NETWORK_CONCURRENCY (default 4)
  *   ARCANA_TOOL_WRITE_CONCURRENCY (default 4)  // was 1 before path locks
  *   ARCANA_TOOL_SHELL_CONCURRENCY (default 1)
+ *   ARCANA_TOOL_TASK_CONCURRENCY (default 3)   // subagent waves: 3 run, rest queue
  */
 import { Effect, Semaphore } from "effect"
 import { setToolActivityHint } from "@arcana/core/tool/activity-hint"
@@ -31,6 +32,7 @@ const limits: Record<ToolCapability, number> = {
   write: envInt("ARCANA_TOOL_WRITE_CONCURRENCY", 4),
   verify: envInt("ARCANA_TOOL_WRITE_CONCURRENCY", 4),
   shell: envInt("ARCANA_TOOL_SHELL_CONCURRENCY", 1),
+  task: envInt("ARCANA_TOOL_TASK_CONCURRENCY", 3),
   model: 1,
   unknown: 1,
 }
@@ -41,6 +43,7 @@ const pools: Record<ToolCapability, Semaphore.Semaphore> = {
   write: Semaphore.makeUnsafe(limits.write),
   verify: Semaphore.makeUnsafe(limits.verify),
   shell: Semaphore.makeUnsafe(limits.shell),
+  task: Semaphore.makeUnsafe(limits.task),
   model: Semaphore.makeUnsafe(limits.model),
   unknown: Semaphore.makeUnsafe(limits.unknown),
 }

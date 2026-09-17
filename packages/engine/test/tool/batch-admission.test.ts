@@ -19,6 +19,9 @@ describe("tool batch classify", () => {
     expect(classifyToolName("edit")).toBe("write")
     expect(classifyToolName("bash")).toBe("shell")
     expect(classifyToolName("mystery")).toBe("unknown")
+    // Subagents are their own pool: sharing the shell's single permit
+    // serialized a whole wave to one running child.
+    expect(classifyToolName("task")).toBe("task")
   })
 
   test("extracts locked paths from write tool args", () => {
@@ -157,5 +160,32 @@ describe("tool batch admission", () => {
 
     expect(maxActive).toBeGreaterThan(1)
     expect(maxActive).toBeLessThanOrEqual(8)
+  })
+
+  test("subagent waves: three run, the rest queue behind the task pool", async () => {
+    resetToolAdmissionStatsForTest()
+    let active = 0
+    let maxActive = 0
+
+    const work = (i: number) =>
+      withToolAdmission(
+        "task",
+        Effect.gen(function* () {
+          active++
+          maxActive = Math.max(maxActive, active)
+          yield* Effect.sleep("40 millis")
+          active--
+          return i
+        }),
+      )
+
+    await Effect.runPromise(
+      Effect.all(Array.from({ length: 5 }, (_, i) => work(i)), { concurrency: "unbounded" }),
+    )
+
+    // Five delegations, three slots: the pool is the queue, and the wave is
+    // still bounded so a fan-out cannot stampede the host.
+    expect(toolAdmissionStats().limits.task).toBe(3)
+    expect(maxActive).toBe(3)
   })
 })
