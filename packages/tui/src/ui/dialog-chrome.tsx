@@ -1,5 +1,5 @@
 import { RGBA, TextAttributes } from "@opentui/core"
-import { Show, type ParentProps } from "solid-js"
+import { Show, createSignal, type ParentProps } from "solid-js"
 import { useTheme } from "../context/theme"
 import { selectedForeground } from "../theme"
 import { contrastingInk } from "../theme/contrast"
@@ -227,13 +227,16 @@ export function DialogOptionRow(props: {
   onPress: () => void
 }) {
   const { theme } = useTheme()
+  const [hovered, setHovered] = createSignal(false)
   return (
     <box
       flexDirection="row"
       gap={Space.gapWide}
       paddingLeft={Space.gap}
-      backgroundColor={props.active ? theme.backgroundElement : undefined}
+      backgroundColor={props.active || hovered() ? theme.backgroundElement : undefined}
       onMouseUp={props.onPress}
+      onMouseOver={() => setHovered(true)}
+      onMouseOut={() => setHovered(false)}
     >
       {/* The glyph and the label: the glyph is the toggle's state and the label
           is its name, so the row is reserved against both and the label clips
@@ -269,15 +272,21 @@ export function DialogButton(props: {
   onPress: () => void
 }) {
   const { theme } = useTheme()
+  const [hovered, setHovered] = createSignal(false)
   // Read the theme through closures rather than capturing at call time: a theme
   // switch must repaint without remounting the dialog.
   const background = () => {
-    if (!props.active) return undefined
-    return props.destructive ? theme.error : theme.primary
+    if (props.active) return props.destructive ? theme.error : theme.primary
+    // Hover previews the press: a quiet element wash, never the verdict fill.
+    if (hovered()) return theme.backgroundElement
+    return undefined
   }
   const foreground = () => {
-    const fill = background()
-    if (fill) return props.destructive ? contrastingInk(fill) : selectedForeground(theme)
+    if (props.active) {
+      const fill = props.destructive ? theme.error : theme.primary
+      return props.destructive ? contrastingInk(fill) : selectedForeground(theme)
+    }
+    if (hovered()) return props.destructive ? theme.error : theme.text
     // A destructive action stays visibly consequential even unfocused, so the
     // consequence is legible before the button is reached, not only after.
     return props.destructive ? theme.error : theme.textMuted
@@ -289,6 +298,8 @@ export function DialogButton(props: {
       backgroundColor={background()}
       flexShrink={0}
       onMouseUp={props.onPress}
+      onMouseOver={() => setHovered(true)}
+      onMouseOut={() => setHovered(false)}
     >
       <text fg={foreground()}>{props.label}</text>
     </box>

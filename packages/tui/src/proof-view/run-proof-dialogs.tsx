@@ -6,6 +6,7 @@
  * contract, actions, diff gate, verify, and sovereignty views.
  */
 import { Show, For } from "solid-js"
+import { TextAttributes } from "@opentui/core"
 import { Space } from "../ui/chrome"
 import { useTheme } from "../context/theme"
 import {
@@ -389,16 +390,16 @@ export function DialogRunProofContract(props: {
                 <Show when={restoreCommand()}>
                   {(command) => (
                     <box gap={0}>
-                      <text fg={theme.primary} onMouseUp={() => props.onCopyRollbackRestore?.(command())}>
+                      <text fg={theme.primary} attributes={TextAttributes.UNDERLINE} onMouseUp={() => props.onCopyRollbackRestore?.(command())}>
                         copy restore command
                       </text>
                       <Show when={rollbackRestoreCanBeStaged(props.proof)}>
-                        <text fg={theme.warning} onMouseUp={() => props.onStageRollbackRestore?.()}>
+                        <text fg={theme.warning} attributes={TextAttributes.UNDERLINE} onMouseUp={() => props.onStageRollbackRestore?.()}>
                           stage restore for approval
                         </text>
                       </Show>
                       <Show when={rollbackRestoreCanBeApproved(props.proof)}>
-                        <text fg={theme.warning} onMouseUp={() => props.onApproveRollbackRestore?.()}>
+                        <text fg={theme.warning} attributes={TextAttributes.UNDERLINE} onMouseUp={() => props.onApproveRollbackRestore?.()}>
                           approve restore
                         </text>
                       </Show>
@@ -465,16 +466,16 @@ export function DialogRunProofActions(props: {
             <Show when={restoreCommand()}>
               {(command) => (
                 <box gap={0}>
-                  <text fg={theme.primary} onMouseUp={() => props.onCopyRollbackRestore?.(command())}>
+                  <text fg={theme.primary} attributes={TextAttributes.UNDERLINE} onMouseUp={() => props.onCopyRollbackRestore?.(command())}>
                     copy restore command
                   </text>
                   <Show when={rollbackRestoreCanBeStaged(props.proof)}>
-                    <text fg={theme.warning} onMouseUp={() => props.onStageRollbackRestore?.()}>
+                    <text fg={theme.warning} attributes={TextAttributes.UNDERLINE} onMouseUp={() => props.onStageRollbackRestore?.()}>
                       stage restore for approval
                     </text>
                   </Show>
                   <Show when={rollbackRestoreCanBeApproved(props.proof)}>
-                    <text fg={theme.warning} onMouseUp={() => props.onApproveRollbackRestore?.()}>
+                    <text fg={theme.warning} attributes={TextAttributes.UNDERLINE} onMouseUp={() => props.onApproveRollbackRestore?.()}>
                       approve restore
                     </text>
                   </Show>
@@ -652,16 +653,16 @@ export function DialogRunProofDiffGate(props: {
         <Show when={restoreCommand()}>
           {(command) => (
             <box gap={0}>
-              <text fg={theme.primary} onMouseUp={() => props.onCopyRollbackRestore?.(command())}>
+              <text fg={theme.primary} attributes={TextAttributes.UNDERLINE} onMouseUp={() => props.onCopyRollbackRestore?.(command())}>
                 copy restore command
               </text>
               <Show when={rollbackRestoreCanBeStaged(props.proof)}>
-                <text fg={theme.warning} onMouseUp={() => props.onStageRollbackRestore?.()}>
+                <text fg={theme.warning} attributes={TextAttributes.UNDERLINE} onMouseUp={() => props.onStageRollbackRestore?.()}>
                   stage restore for approval
                 </text>
               </Show>
               <Show when={rollbackRestoreCanBeApproved(props.proof)}>
-                <text fg={theme.warning} onMouseUp={() => props.onApproveRollbackRestore?.()}>
+                <text fg={theme.warning} attributes={TextAttributes.UNDERLINE} onMouseUp={() => props.onApproveRollbackRestore?.()}>
                   approve restore
                 </text>
               </Show>
