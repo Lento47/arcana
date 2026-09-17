@@ -609,15 +609,26 @@ export function PermissionPrompt(props: {
 
           const header = () => (
             <box flexDirection="column" gap={0} minWidth={0}>
+              {/*
+                No mark here. `GateFrame` draws the attention triangle on the
+                gate's rail node — a gate's whole reason for being on screen is
+                that something is waiting on the operator — and this heading
+                carried a second copy of the same character one column over, so
+                every gate printed the mark twice before its name, in two inks,
+                with a space between them. The rail's is the one that belongs to
+                the spine's vocabulary; the heading is its caption.
+
+                The row below is not indented any more either. That two-column
+                inset existed to clear this mark so the icon lined up under the
+                heading text — with the mark gone it would push the icon two
+                columns right of the heading it belongs to.
+              */}
               <box flexDirection="row" gap={1} flexShrink={0} minWidth={0}>
-                <text fg={theme.warning} flexShrink={0}>
-                  {Glyph.attention}
-                </text>
                 <text fg={theme.text} wrapMode="word">
                   {contractAdmission() ? "COMPLETION CONTRACT" : "ACTION GATE"}
                 </text>
               </box>
-              <box flexDirection="row" gap={1} paddingLeft={2} flexShrink={0} minWidth={0}>
+              <box flexDirection="row" gap={1} flexShrink={0} minWidth={0}>
                 <text fg={theme.textMuted} flexShrink={0}>
                   {current.icon}
                 </text>
@@ -764,7 +775,15 @@ function GateFrame(props: {
     </Show>
   )
 }
-function RejectPrompt(props: { busy?: boolean; onConfirm: (message: string) => void; onCancel: () => void }) {
+/**
+ * The deny gate: the reason a rejection needs a reason.
+ *
+ * Exported so it can be rendered on its own. It is reached only through
+ * `PermissionPrompt`'s two-step reject, which means a render test would have to
+ * drive the gate's keymap to arrive at it — the screen an operator sees when
+ * they deny something should not be the one screen the suite cannot reach.
+ */
+export function RejectPrompt(props: { busy?: boolean; onConfirm: (message: string) => void; onCancel: () => void }) {
   let input: TextareaRenderable
   const { theme } = useTheme()
   const tuiConfig = useTuiConfig()
@@ -801,18 +820,22 @@ function RejectPrompt(props: { busy?: boolean; onConfirm: (message: string) => v
 
   return (
     <GateFrame
-      glyph="×"
+      glyph="✗"
       color={theme.spineFail}
       header={
         <box flexDirection="column" gap={0} minWidth={0}>
-          <box flexDirection="row" gap={1} minWidth={0}>
-            <text fg={theme.spineFail} flexShrink={0}>
-              {"×"}
-            </text>
-            <text fg={theme.spineFail} wrapMode="word">
-              REJECT PERMISSION
-            </text>
-          </box>
+          {/*
+            The rail node draws the deny mark; this heading used to draw its own
+            copy beside it (`× × REJECT PERMISSION`). And that copy — like the
+            rail's — was a U+00D7 multiplication sign, which is neither of the
+            app's marks: the spine denies and fails with `✗` (`spine-report.tsx`,
+            `spine-entry.tsx`, the governance rows) and dismisses with `✕`. A
+            third sign, re-typed, meant the deny gate was the one surface whose
+            mark matched nothing else. The rail now carries `✗`, in `spineFail`.
+          */}
+          <text fg={theme.spineFail} wrapMode="word">
+            REJECT PERMISSION
+          </text>
           <text fg={theme.text} wrapMode="word">
             Tell arcana what to do differently
           </text>
