@@ -16,6 +16,10 @@ import { webSearchProviderLabel } from "../../util/tool-display"
 import { getScrollAcceleration } from "../../util/scroll"
 import { logPermissionDebug } from "../../util/permission-debug"
 import { useTuiConfig } from "../../config"
+import { useKV } from "../../context/kv"
+import { Space } from "../../ui/chrome"
+import { rendererWidth, sessionContentWidth } from "../../util/geometry"
+import { isDensity, type Density } from "../../shell/command-spine/spine-types"
 import { ARCANA_BASE_MODE, useBindings, useCommandShortcut } from "../../keymap"
 import { usePathFormatter } from "../../context/path-format"
 import { SpineGutterSpacer, spineLeadMetrics } from "../../shell/command-spine/spine-lead"
@@ -776,6 +780,67 @@ function GateFrame(props: {
   )
 }
 /**
+ * Gate chrome: the numbers the gates measure their own rows with.
+ *
+ * Both gates decide whether a row fits by measuring it, never by a breakpoint.
+ * Every segment in those rows is `flexShrink={0}` — a label yoga shrinks is not
+ * read, it is decoded — so a row that does not fit overruns the column instead
+ * of degrading, and the measurement has to name exactly what the row draws.
+ */
+
+/**
+ * Columns the lead spends before a row's content begins: the gutter and the
+ * rail, two columns each in every layout (`spineGutterWidth`/`spineRailWidth`).
+ * The gate adds no padding of its own — `spineOuterPadding` is zero by design,
+ * because the session frame already insets the spine.
+ */
+const GATE_RAIL = 4
+
+/** The decision row's label, named because its row is measured by it. */
+const DECISION_LABEL = "Decision"
+/** Cells the selection mark holds — `▸ ` selected, and the same two when not. */
+const OPTION_MARKER = 2
+/** The option box's own inset, one column each side. */
+const OPTION_PAD = 1
+
+/** Key hints, named so the fit check measures the row it draws. */
+const HINT_SELECT = "←/→ select"
+const HINT_CONFIRM = "enter confirm"
+const HINT_REJECT = "esc reject"
+const REJECT_CONFIRM_KEY = "enter"
+const REJECT_CONFIRM_ACTION = "confirm"
+const REJECT_CANCEL_KEY = "esc"
+const REJECT_CANCEL_ACTION = "cancel"
+
+/** Width of a `key action` hint — the key, one space, the action. */
+function hintWidth(key: string, action: string): number {
+  return Locale.displayWidth(key) + 1 + Locale.displayWidth(action)
+}
+
+/** The rejection input's own inset: one column left, two right. */
+const REJECT_BODY_PAD = 3
+
+/**
+ * Least the rejection input keeps before its key hints move to their own row.
+ * Below this the field shows less than a phrase, and a reason runs to a few —
+ * so every clause would wrap while the field is the only thing on the row.
+ */
+const REJECT_INPUT_MIN = 24
+
+/**
+ * The gate's content column, or `undefined` before the renderer has been laid
+ * out — an unmeasured renderer is not a narrow one, and `sessionContentWidth`
+ * clamps one to a single column, which would read as "narrow" here.
+ *
+ * `expanded` is the fullscreen gate: it is portaled out of the session frame
+ * (`routes/session/index.tsx`), so the frame's own padding no longer applies.
+ */
+function gateContentWidth(termWidth: number | undefined, density: Density, expanded = false): number | undefined {
+  if (termWidth === undefined) return undefined
+  return (expanded ? termWidth : sessionContentWidth(termWidth, density)) - GATE_RAIL
+}
+
+/**
  * The deny gate: the reason a rejection needs a reason.
  *
  * Exported so it can be rendered on its own. It is reached only through
@@ -787,8 +852,31 @@ export function RejectPrompt(props: { busy?: boolean; onConfirm: (message: strin
   let input: TextareaRenderable
   const { theme } = useTheme()
   const tuiConfig = useTuiConfig()
-  const dimensions = useTerminalSize(useRenderer())
-  const narrow = createMemo(() => dimensions().width < 80)
+  const renderer = useRenderer()
+  const dimensions = useTerminalSize(renderer)
+  const kv = useKV()
+  const density = createMemo(() => {
+    const stored = kv.get("density")
+    return isDensity(stored) ? stored : "cozy"
+  })
+  /**
+   * Whether the input and its key hints stack.
+   *
+   * The input is `width="100%"`, so beside it the hints are the row's only
+   * fixed cost: they fit when what is left over can still show a reason. The
+   * gate used to stack on a bare `width < 80`, which put the hints under the
+   * field from 60 to 79 columns — two rows for one, on a card the operator is
+   * trying to get past.
+   */
+  const stacks = () => {
+    const width = gateContentWidth(rendererWidth({ width: dimensions().width }), density())
+    if (width === undefined) return false
+    const hints =
+      hintWidth(REJECT_CONFIRM_KEY, REJECT_CONFIRM_ACTION) +
+      Space.gapWide +
+      hintWidth(REJECT_CANCEL_KEY, REJECT_CANCEL_ACTION)
+    return width - REJECT_BODY_PAD - Space.gap - hints < REJECT_INPUT_MIN
+  }
   useBindings(() => ({
     mode: ARCANA_BASE_MODE,
     // Above command-spine entry toggle (priority 1) so Enter confirms rejection.
@@ -843,15 +931,15 @@ export function RejectPrompt(props: { busy?: boolean; onConfirm: (message: strin
       }
       body={
         <box
-          flexDirection={narrow() ? "column" : "row"}
+          flexDirection={stacks() ? "column" : "row"}
           flexShrink={0}
           paddingTop={1}
           paddingLeft={1}
           paddingRight={2}
           paddingBottom={1}
           backgroundColor={theme.backgroundElement}
-          justifyContent={narrow() ? "flex-start" : "space-between"}
-          alignItems={narrow() ? "flex-start" : "center"}
+          justifyContent={stacks() ? "flex-start" : "space-between"}
+          alignItems={stacks() ? "flex-start" : "center"}
           gap={1}
         >
           <textarea
@@ -869,16 +957,16 @@ export function RejectPrompt(props: { busy?: boolean; onConfirm: (message: strin
               props.onConfirm(input.plainText)
             }}
           />
-          <box flexDirection={narrow() ? "column" : "row"} gap={narrow() ? 0 : 2} flexShrink={0} minWidth={0}>
+          <box flexDirection={stacks() ? "column" : "row"} gap={stacks() ? 0 : Space.gapWide} flexShrink={0} minWidth={0}>
             <Show
               when={props.busy}
               fallback={
                 <>
                   <text fg={theme.text}>
-                    enter <span style={{ fg: theme.spineContext }}>confirm</span>
+                    {REJECT_CONFIRM_KEY} <span style={{ fg: theme.spineContext }}>{REJECT_CONFIRM_ACTION}</span>
                   </text>
                   <text fg={theme.text}>
-                    esc <span style={{ fg: theme.spineContext }}>cancel</span>
+                    {REJECT_CANCEL_KEY} <span style={{ fg: theme.spineContext }}>{REJECT_CANCEL_ACTION}</span>
                   </text>
                 </>
               }
@@ -905,13 +993,18 @@ function Prompt<const T extends Record<string, string>>(props: {
 }) {
   const { theme } = useTheme()
   const tuiConfig = useTuiConfig()
-  const dimensions = useTerminalSize(useRenderer())
+  const renderer = useRenderer()
+  const dimensions = useTerminalSize(renderer)
+  const kv = useKV()
+  const density = createMemo(() => {
+    const stored = kv.get("density")
+    return isDensity(stored) ? stored : "cozy"
+  })
   const keys = Object.keys(props.options) as Extract<keyof T, string>[]
   const [store, setStore] = createStore({
     selected: keys[0],
     expanded: false,
   })
-  const narrow = createMemo(() => dimensions().width < 80)
   const fullscreenHint = useCommandShortcut("permission.prompt.fullscreen")
 
   useBindings(() => ({
@@ -966,6 +1059,39 @@ function Prompt<const T extends Record<string, string>>(props: {
   const hint = createMemo(() => (store.expanded ? "minimize" : "fullscreen"))
   useRenderer()
 
+  /**
+   * Whether the footer stacks instead of running its rows across the column.
+   *
+   * A gate answers one question and then leaves, so the rows it spends are the
+   * most expensive whitespace in the app. The stack used to be a bare
+   * `width < 80` breakpoint: at 60–79 columns the decision row needs 58 and the
+   * hint row 52, and the gate grew five rows tall to hold two rows of content.
+   * The rows are measured here instead, against the column the gate actually
+   * has, and it stacks only when one of them genuinely does not fit.
+   *
+   * The hint row is measured whole even while a reply is in flight and it shows
+   * a spinner instead: measuring what is on screen would un-stack the gate the
+   * moment enter is pressed, which is a layout jump in the middle of a decision.
+   */
+  const stacks = () => {
+    const budget = gateContentWidth(rendererWidth({ width: dimensions().width }), density(), store.expanded)
+    if (budget === undefined) return false
+    const options =
+      keys.reduce(
+        (sum, key) => sum + 2 * OPTION_PAD + OPTION_MARKER + Locale.displayWidth(props.options[key]),
+        Space.gap * Math.max(0, keys.length - 1),
+      )
+    const decision = Locale.displayWidth(DECISION_LABEL) + Space.gap + options
+    const hints = [
+      Locale.displayWidth(HINT_SELECT),
+      Locale.displayWidth(HINT_CONFIRM),
+      ...(props.escapeKey ? [Locale.displayWidth(HINT_REJECT)] : []),
+      ...(props.fullscreen ? [hintWidth(fullscreenHint(), hint())] : []),
+    ]
+    const hintRow = hints.reduce((sum, width) => sum + width, Space.gapWide * Math.max(0, hints.length - 1))
+    return Math.max(decision, hintRow) > budget
+  }
+
   const defaultHeader = (
     <box flexDirection="column" gap={0} minWidth={0}>
       <box flexDirection="row" gap={1} minWidth={0}>
@@ -981,11 +1107,11 @@ function Prompt<const T extends Record<string, string>>(props: {
 
   const footer = (
     <box flexDirection="column" gap={1} minWidth={0}>
-      <box flexDirection={narrow() ? "column" : "row"} gap={1} flexShrink={0} minWidth={0}>
+      <box flexDirection={stacks() ? "column" : "row"} gap={1} flexShrink={0} minWidth={0}>
         <text fg={theme.spineContext} flexShrink={0}>
-          Decision
+          {DECISION_LABEL}
         </text>
-        <box flexDirection={narrow() ? "column" : "row"} gap={1} flexShrink={0} minWidth={0}>
+        <box flexDirection={stacks() ? "column" : "row"} gap={1} flexShrink={0} minWidth={0}>
           <For each={keys}>
             {(option) => {
               const selected = createMemo(() => option === store.selected)
@@ -995,8 +1121,8 @@ function Prompt<const T extends Record<string, string>>(props: {
               const color = createMemo(() => (reject() ? theme.spineFail : theme.spineFix))
               return (
                 <box
-                  paddingLeft={1}
-                  paddingRight={1}
+                  paddingLeft={OPTION_PAD}
+                  paddingRight={OPTION_PAD}
                   backgroundColor={selected() ? color() : theme.backgroundMenu}
                   onMouseOver={() => setStore("selected", option)}
                   onMouseUp={() => {
@@ -1014,15 +1140,15 @@ function Prompt<const T extends Record<string, string>>(props: {
           </For>
         </box>
       </box>
-      <box flexDirection={narrow() ? "column" : "row"} gap={narrow() ? 0 : 2} flexShrink={0} minWidth={0}>
+      <box flexDirection={stacks() ? "column" : "row"} gap={stacks() ? 0 : Space.gapWide} flexShrink={0} minWidth={0}>
         <Show
           when={props.busy}
           fallback={
             <>
-              <text fg={theme.spineContext}>←/→ select</text>
-              <text fg={theme.spineContext}>enter confirm</text>
+              <text fg={theme.spineContext}>{HINT_SELECT}</text>
+              <text fg={theme.spineContext}>{HINT_CONFIRM}</text>
               <Show when={props.escapeKey}>
-                <text fg={theme.spineContext}>esc reject</text>
+                <text fg={theme.spineContext}>{HINT_REJECT}</text>
               </Show>
               <Show when={props.fullscreen}>
                 <text fg={theme.spineContext}>
