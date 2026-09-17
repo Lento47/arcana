@@ -1,10 +1,12 @@
-import { createMemo, For, onMount, Show, type Accessor } from "solid-js"
+import { createMemo, For, onMount, Show, useContext, type Accessor } from "solid-js"
 import { Space } from "../../ui/chrome"
 import { RGBA, TextAttributes } from "@opentui/core"
 import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import type { ApprovalSnapshotDetail } from "../../shell/command-spine/approval-http-bridge"
+import { priorDecision, precedentSummary } from "../../shell/command-spine/approval-snapshot"
 import { Glyph, StatusGlyph } from "../../branding"
 import { useTheme } from "../../context/theme"
+import { SyncContext } from "../../context/sync"
 import { useDialog } from "../../ui/dialog"
 import { DialogPanelHeader } from "../../ui/dialog-chrome"
 export type ApprovalSnapshotStatus = "loading" | "ready" | "missing" | "error" | undefined
@@ -171,6 +173,14 @@ export function ApprovalInspector(props: {
 
   const rows = createMemo(() => approvalInspectorRows(a()))
   const snapshotRows = createMemo(() => approvalSnapshotRows(snapshot(), a()))
+  // The durable approvals map is optional here (isolated renders mount without
+  // a SyncProvider), so a missing store means no precedent row, not a crash.
+  const sync = useContext(SyncContext)
+  const precedent = createMemo(() => {
+    const records = sync?.data.approvals
+    if (!records) return undefined
+    return priorDecision(Object.values(records), a().requestHash, a().approvalId)
+  })
 
   return (
     <box flexGrow={1} minWidth={0}>
@@ -194,6 +204,10 @@ export function ApprovalInspector(props: {
         }}
       >
         <For each={rows()}>{(row) => <FieldRow label={row[0]} value={row[1]} />}</For>
+
+        <Show when={precedent()}>
+          {(record) => <FieldRow label="Precedent" value={precedentSummary(record())} />}
+        </Show>
 
         <Show when={status() === "ready"}>
           <SnapshotBanner

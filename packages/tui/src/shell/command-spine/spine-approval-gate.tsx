@@ -2,10 +2,11 @@ import { For, Show, createContext, createMemo, createSignal, useContext } from "
 import { Space } from "../../ui/chrome"
 import { TextAttributes, type MouseEvent, type RGBA } from "@opentui/core"
 import { selectedForeground, useTheme } from "../../context/theme"
+import { SyncContext } from "../../context/sync"
 import type { Theme } from "../../theme"
 import { Frame } from "../../ui/frame"
 import { truncate } from "../../util/locale"
-import { shortHash } from "./approval-snapshot"
+import { priorDecision, recordWallClock, precedentSummary, shortHash } from "./approval-snapshot"
 import type { SpineApprovalSnapshot, SpineEntry as SpineEntryType, SpineLayout } from "./spine-types"
 import {
   approvalFactGroups,
@@ -136,6 +137,19 @@ export function SpineApprovalGate(props: {
   const facts = () => approvalGateFacts(snapshot(), props.layout)
   const groups = () => approvalFactGroups(snapshot(), props.layout)
   const risk = () => facts().risk
+  // The sync store is optional here: the gate renders in isolated tests and
+  // plugin surfaces that mount before a SyncProvider (the same tolerance
+  // `useMotionEnabled` gives `KVContext`). No store means no precedent, not a
+  // crash.
+  const sync = useContext(SyncContext)
+  const precedent = createMemo(() => {
+    const records = sync?.data.approvals
+    const hash = snapshot()?.requestHash
+    if (!records || !hash) return undefined
+    // Entry ids are `approval:<approvalId>:<version>` (approval-spine-adapter).
+    const currentApprovalId = props.entry.id.split(":")[1]
+    return priorDecision(Object.values(records), hash, currentApprovalId)
+  })
   const chipBudget = createMemo(() => {
     const raw = props.contentWidth
     if (typeof raw === "number" && Number.isFinite(raw)) return Math.max(1, Math.floor(raw) - 4)
@@ -200,6 +214,19 @@ export function SpineApprovalGate(props: {
         )}
       </For>
       <GateRow label="request" value={shortHash(snapshot()?.requestHash, 12)} theme={theme} />
+      {/*
+        The precedent: this exact request was decided before. It is the one
+        line in the gate that is not about *this* decision — it is about the
+        last time the operator stood here. Exact hash means exact request, so a
+        match is evidence, never a "similar call" guess.
+      */}
+      <Show when={precedent()}>
+        {(record) => (
+          <text fg={theme.textMuted} wrapMode="word">
+            precedent · {precedentSummary(record())}
+          </text>
+        )}
+      </Show>
       <Show when={!snapshot()?.available}>
         <text fg={theme.error}>snapshot unavailable · fail-closed · press v to inspect</text>
       </Show>

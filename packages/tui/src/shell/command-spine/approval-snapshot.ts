@@ -15,6 +15,7 @@ import type { GovernanceEventRecord } from "../types"
 import type { SpineApprovalSnapshot } from "./spine-types"
 
 import { asRecordOrEmpty, asStringTrimmed } from "../../util/record"
+import { duration } from "../../util/locale"
 
 function numberValue(value: unknown): number | undefined {
   const n = typeof value === "number" ? value : Number(value)
@@ -30,6 +31,52 @@ function shortTime(iso: string | undefined): string | undefined {
   } catch {
     return iso
   }
+}
+
+/** Wall-clock of a record's last transition — the time we order decisions by. */
+export function recordWallClock(record: ApprovalRecord): number {
+  const updated = Date.parse(record.updatedAt)
+  if (Number.isFinite(updated)) return updated
+  const created = Date.parse(record.createdAt)
+  return Number.isFinite(created) ? created : 0
+}
+
+/**
+ * The most recent prior decision for the exact same request — the gate's
+ * precedent.
+ *
+ * Same `requestHash` means the same canonical request, not a similar one: the
+ * hash is computed over the intent, arguments and capability, so a match is
+ * *this* call, decided before. The live approval is excluded by id, and
+ * PENDING/CLAIMED records are excluded because an undecided prior request is
+ * not a precedent — it is an open question that may still resolve.
+ */
+export function priorDecision(
+  records: readonly ApprovalRecord[],
+  requestHash: string,
+  currentApprovalId?: string,
+): ApprovalRecord | undefined {
+  let best: ApprovalRecord | undefined
+  for (const record of records) {
+    if (record.requestHash !== requestHash) continue
+    if (record.approvalId === currentApprovalId) continue
+    if (record.state === "PENDING" || record.state === "CLAIMED") continue
+    if (!best || recordWallClock(record) > recordWallClock(best)) best = record
+  }
+  return best
+}
+
+/**
+ * The precedent in the operator's reading order: what was decided, how long
+ * ago, and at what risk. State first — it is the answer — then the recency
+ * that makes it relevant, then the risk class when the engine recorded one.
+ */
+export function precedentSummary(record: ApprovalRecord, now: number = Date.now()): string {
+  const ms = now - recordWallClock(record)
+  const ago = ms > 0 ? duration(ms) : ""
+  const when = ago ? `${ago} ago` : "just now"
+  const risk = record.riskClass ? ` · ${record.riskClass}` : ""
+  return `${record.state.toLowerCase()} ${when}${risk}`
 }
 
 /** First event of a given type whose payload.requestHash matches. */

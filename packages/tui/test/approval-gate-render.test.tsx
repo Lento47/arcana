@@ -68,9 +68,10 @@ const EVENTS: GovernanceEventRecord[] = [
   }),
 ]
 
-function withProviders(component: () => JSX.Element) {
+function withProviders(component: () => JSX.Element, onEmit?: (emit: (event: unknown) => void) => void) {
   const calls = createFetch()
   const events = createEventSource()
+  onEmit?.((event) => events.emit(event as never))
   return (
     <TestTuiContexts>
       <ExitProvider exit={() => {}}>
@@ -129,6 +130,65 @@ test("gate renders tool/action/reason/request from the exact request", async () 
   expect(frame).toContain("r6")
   expect(frame).not.toContain("snapshot unavailable")
   expect(frame).not.toContain("unavailable · fail-closed")
+  // No durable record for this request yet: no precedent, not a guess.
+  expect(frame).not.toContain("precedent")
+})
+
+test("gate shows the precedent for the exact request decided before", async () => {
+  const snapshot = resolveApprovalSnapshot(RECORD, EVENTS)
+  const entry = approvalToSpineEntry(RECORD, snapshot)
+  let emit: ((event: unknown) => void) | undefined
+  const app = await testRender(
+    () =>
+      withProviders(
+        () => (
+          <box width="100%" height="100%" flexDirection="column">
+            <SpineApprovalGate entry={entry} snapshot={snapshot} layout="wide" focused={false} contentWidth={96} />
+          </box>
+        ),
+        (push) => {
+          emit = push
+        },
+      ),
+    { width: 96, height: 18 },
+  )
+  try {
+    for (let i = 0; i < 4; i++) {
+      await app.renderOnce()
+      await Bun.sleep(40)
+      await app.flush()
+    }
+    const twoDaysAgo = new Date(Date.now() - 2 * 86_400_000 - 3_600_000).toISOString()
+    emit!({
+      directory: "/tmp/gate-render",
+      project: "proj_gate_render",
+      payload: {
+        id: "evt_approval_prior",
+        type: "approval.updated",
+        properties: {
+          sessionID: RECORD.sessionId,
+          approval: {
+            ...RECORD,
+            approvalId: "appr_gate_render_prior",
+            state: "DENIED",
+            riskClass: "HIGH",
+            updatedAt: twoDaysAgo,
+            createdAt: twoDaysAgo,
+          },
+        },
+      },
+    })
+    for (let i = 0; i < 4; i++) {
+      await app.renderOnce()
+      await Bun.sleep(40)
+      await app.flush()
+    }
+    const frame = app.captureCharFrame()
+    expect(frame).toContain("precedent · denied")
+    expect(frame).toContain("HIGH")
+  } finally {
+    app.renderer.destroy()
+  }
 })
 
 test("gate keeps record facts even without governance correlation", async () => {

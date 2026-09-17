@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
-import { resolveApprovalSnapshot, shortHash } from "../src/shell/command-spine/approval-snapshot"
+import { priorDecision, precedentSummary, resolveApprovalSnapshot, shortHash } from "../src/shell/command-spine/approval-snapshot"
 
 const approval: ApprovalRecord = {
   approvalId: "appr_1",
@@ -123,5 +123,44 @@ describe("approval snapshot resolution (PR6)", () => {
     expect(snapshot.requestHash).toBe(approval.requestHash)
     expect(snapshot.contractRevision).toBe(3)
     expect(snapshot.expires).toBeTruthy()
+  })
+})
+
+describe("gate precedent (prior decision for the exact request)", () => {
+  const decided = (over: Partial<ApprovalRecord>): ApprovalRecord => ({
+    ...approval,
+    approvalId: `appr_${over.state ?? "x"}_${over.updatedAt ?? "0"}`,
+    state: "DENIED",
+    updatedAt: "2026-08-02T00:00:00.000Z",
+    createdAt: "2026-08-02T00:00:00.000Z",
+    ...over,
+  })
+
+  test("returns the most recent decided record for the same request hash", () => {
+    const older = decided({ approvalId: "appr_old", state: "DENIED", updatedAt: "2026-08-01T00:00:00.000Z" })
+    const newer = decided({ approvalId: "appr_new", state: "APPROVED", updatedAt: "2026-08-03T00:00:00.000Z" })
+    const otherHash = decided({ approvalId: "appr_other", requestHash: "ffff", state: "DENIED" })
+
+    expect(priorDecision([older, newer, otherHash], approval.requestHash)?.approvalId).toBe("appr_new")
+  })
+
+  test("excludes the live approval and undecided records", () => {
+    const self = decided({ approvalId: approval.approvalId, state: "DENIED" })
+    const pending = decided({ approvalId: "appr_pending", state: "PENDING" })
+    const claimed = decided({ approvalId: "appr_claimed", state: "CLAIMED" })
+
+    expect(priorDecision([self, pending, claimed], approval.requestHash, approval.approvalId)).toBeUndefined()
+  })
+
+  test("no match is no precedent — never a guessed similar call", () => {
+    expect(priorDecision([decided({ approvalId: "appr_other", requestHash: "ffff" })], approval.requestHash)).toBeUndefined()
+    expect(priorDecision([], approval.requestHash)).toBeUndefined()
+  })
+
+  test("reads as one line: state, recency, risk", () => {
+    const denied = decided({ state: "DENIED", riskClass: "HIGH", updatedAt: "2026-08-02T00:00:00.000Z" })
+    expect(precedentSummary(denied, Date.parse("2026-08-04T00:00:00.000Z"))).toBe("denied 2d ago · HIGH")
+    const expired = decided({ state: "EXPIRED", riskClass: undefined, updatedAt: "2026-08-04T00:00:00.000Z" })
+    expect(precedentSummary(expired, Date.parse("2026-08-04T00:00:00.000Z"))).toBe("expired just now")
   })
 })
