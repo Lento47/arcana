@@ -191,7 +191,12 @@ export function SpineDiff(props: {
           )}
         </For>
         <Show when={changed().truncated}>
-          <text fg={theme.spineDiffMuted}>d · open full diff for remaining changes</text>
+          {/* Reserved and unwrappable: this is the key hint plus its sentence,
+              and wrapped it could put the bare `d` on a line of its own, where
+              it reads as a stray character rather than an affordance. */}
+          <text fg={theme.spineDiffMuted} wrapMode="none" flexShrink={0}>
+            d · open full diff for remaining changes
+          </text>
         </Show>
       </Show>
     </box>

@@ -238,11 +238,16 @@ export function SpineNode(props: {
           <text fg={summaryColor()} wrapMode="none"> {disclosure()}</text>
         </box>
       </Show>
+      {/* Both readouts are reserved. They are `wrapMode="none"` so they cannot
+          grow a second line, but an unreserved clipped cell is just as bad in
+          the other direction: the summary beside them is elastic, so Yoga took
+          the deficit out of the duration and the row showed `· +1` — the unit
+          `compactSpineElapsed` exists to preserve, cut off. */}
       <Show when={elapsedText()}>
-        <text fg={metaColor()} wrapMode="none"> · {elapsedText()}</text>
+        <text fg={metaColor()} wrapMode="none" flexShrink={0}> · {elapsedText()}</text>
       </Show>
       <Show when={showTimestamp()}>
-        <text fg={metaColor()} wrapMode="none"> · {timestampText()}</text>
+        <text fg={metaColor()} wrapMode="none" flexShrink={0}> · {timestampText()}</text>
       </Show>
     </box>
   )
@@ -280,7 +285,11 @@ export function SpineNode(props: {
           }
         >
           <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1}>
-            <text fg={isChat() ? theme.spineOk : summaryColor()} wrapMode="word">
+            {/* A user prompt is never painted in the success tone. This node
+                collapses the label and the prose into one line, so `ask` takes
+                the same tone its prose does in the wide layout (`summaryColor`)
+                instead of the chat-family green. */}
+            <text fg={isChat() && kind() !== "ask" ? theme.spineOk : summaryColor()} wrapMode="word">
               {isChat() ? `${label()}  ` : ""}
               {summary()}
             </text>
@@ -335,10 +344,10 @@ export function SpineNode(props: {
                   </box>
                 </Show>
                 <Show when={elapsedText()}>
-                  <text fg={metaColor()} wrapMode="none">{` · ${elapsedText()}`}</text>
+                  <text fg={metaColor()} wrapMode="none" flexShrink={0}>{` · ${elapsedText()}`}</text>
                 </Show>
                 <Show when={showTimestamp()}>
-                  <text fg={metaColor()} wrapMode="none"> · {timestampText()}</text>
+                  <text fg={metaColor()} wrapMode="none" flexShrink={0}> · {timestampText()}</text>
                 </Show>
                 {actorBox()}
                 <box flexGrow={1} minWidth={0} />
@@ -346,7 +355,19 @@ export function SpineNode(props: {
             }
           >
             <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} alignItems="flex-start" gap={1}>
-              <Show when={isChat() && kind() === "ask"} fallback={<box flexShrink={0}><text fg={labelColor()}>{labelText()}</text></box>}>
+              {/* One cell, one shape: the speaker label is fixed vocabulary in
+                  both branches, so it is reserved and unwrappable in both. The
+                  fallback branch (governance `ok` rows, approve/question) is
+                  taken by the longest labels in the family — "approval
+                  required" — which is exactly where a word wrap cost a line. */}
+              <Show
+                when={isChat() && kind() === "ask"}
+                fallback={
+                  <box flexShrink={0}>
+                    <text fg={labelColor()} wrapMode="none">{labelText()}</text>
+                  </box>
+                }
+              >
                 <box flexShrink={0}><text fg={labelColor()} wrapMode="none">{labelText()}</text></box>
               </Show>
               {actorBox()}

@@ -2,7 +2,7 @@ import { MouseButton, type MouseEvent, type RGBA } from "@opentui/core"
 import { createMemo, createSignal } from "solid-js"
 import { tint, useTheme } from "../../context/theme"
 import { COPY, Glyph } from "../../branding"
-import { compactSpineElapsed, formatElapsedMs, type SpineLayout } from "./spine-types"
+import { compactSpineElapsed, formatElapsedMs, spineElapsedMax, type SpineLayout } from "./spine-types"
 import type { ActivityEntry } from "./spine-entry-view"
 import { displayWidth, truncate } from "../../util/locale"
 import { createFlare } from "../../util/motion"
@@ -16,7 +16,10 @@ function elapsedLabel(props: { view: ActivityEntry; layout: SpineLayout; phase: 
   const raw = props.view.streaming && typeof start === "number" && Number.isFinite(start)
     ? formatElapsedMs(Math.max(0, Date.now() - start))
     : props.view.elapsed
-  return compactSpineElapsed(raw, props.layout === "narrow" ? 5 : props.layout === "minimal" ? 0 : 7)
+  // Same budget the node header truncates to: the two rows show the same
+  // duration for the same work, so a retuned budget must move both or the reel
+  // clips where the node header does not.
+  return compactSpineElapsed(raw, spineElapsedMax(props.layout))
 }
 
 /**

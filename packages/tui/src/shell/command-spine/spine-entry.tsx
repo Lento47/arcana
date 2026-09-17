@@ -718,6 +718,7 @@ export function SpineEntry(props: {
                       <For each={v().actions}>
                         {(action) => (
                           <box
+                            flexShrink={0}
                             paddingLeft={1}
                             paddingRight={1}
                             backgroundColor={theme.backgroundElement}
@@ -727,7 +728,11 @@ export function SpineEntry(props: {
                               props.onAction?.(entry(), action.id)
                             }}
                           >
-                            <text fg={theme.accent}>{action.label}</text>
+                            {/* The pill is one cell tall or it is nothing: with the
+                                default word wrap a label wider than the remaining
+                                row wrapped inside its own fill, so the chip grew a
+                                line and the chip row stopped aligning with the rail. */}
+                            <text fg={theme.accent} wrapMode="none">{action.label}</text>
                           </box>
                         )}
                       </For>
@@ -1089,6 +1094,11 @@ export function SpineEntry(props: {
               })
               const visibleSteps = createMemo(() => childSteps().slice(0, MAX_CARD_STEPS))
               const hiddenStepCount = createMemo(() => Math.max(0, childSteps().length - MAX_CARD_STEPS))
+              // The card is a full block: border (2) + horizontal padding (2), on
+              // top of the rail column. Prose wrapped to the outer content width
+              // would overflow the card, so the body gets the card's real budget.
+              const cardContentWidth = () =>
+                Math.max(16, Math.floor((props.contentWidth ?? 80) - spineRailWidth(props.layout) - 4))
               // One-line outcome preview for the collapsed returned card: the
               // report is scannable from the row, and expanding still renders the
               // full markdown body (progressive disclosure). Heading/list markers
@@ -1107,7 +1117,10 @@ export function SpineEntry(props: {
                   .replace(/^\d+\.\s+/, "")
                   .trim()
                 if (!clean) return ""
-                return truncate(clean, Math.max(16, Math.floor((props.contentWidth ?? 80) - 4)))
+                // The card's own budget, not the outer content width: this line
+                // is `wrapMode="none"`, so a budget two columns too wide was
+                // clipped mid-word and ate the ellipsis `truncate` had just added.
+                return truncate(clean, cardContentWidth())
               })
               // Status strip: handover state + progress, composed in the card
               // title row (the dive affordance renders right-aligned). The header
@@ -1118,11 +1131,6 @@ export function SpineEntry(props: {
                 if (completed > 0) return `${completed} ${completed === 1 ? "step" : "steps"}`
                 return chrome().childHint
               }
-              // The card is a full block: border (2) + horizontal padding (2), on
-              // top of the rail column. Prose wrapped to the outer content width
-              // would overflow the card, so the body gets the card's real budget.
-              const cardContentWidth = () =>
-                Math.max(16, Math.floor((props.contentWidth ?? 80) - spineRailWidth(props.layout) - 4))
               // Hydrate the child session's messages/parts once the session is
               // resolvable, so the step list renders without navigating away.
               // Mirrors the legacy subagent route's onMount sync.
@@ -1166,13 +1174,18 @@ export function SpineEntry(props: {
                         paddingRight={1}
                         paddingBottom={1}
                       >
-                        {/* Title strip: state on the left, dive affordance right. */}
+                        {/* Title strip: state on the left, dive affordance right.
+                            The state word and the step count are the two facts
+                            this strip exists to carry, so both are reserved and
+                            the spacer between them is the only elastic cell —
+                            otherwise a narrow card clipped them to `dele…` and
+                            `· 3 s` while the badge on the right stayed whole. */}
                         <box flexDirection="row" flexShrink={0} alignItems="center" gap={1}>
-                          <text fg={v().streaming ? theme.accent : theme.spineOk} wrapMode="none">
+                          <text fg={v().streaming ? theme.accent : theme.spineOk} wrapMode="none" flexShrink={0}>
                             {chrome().cue}
                           </text>
                           <Show when={stepSummary()}>
-                            <text fg={theme.spineContext} wrapMode="none">
+                            <text fg={theme.spineContext} wrapMode="none" flexShrink={0}>
                               · {stepSummary()}
                             </text>
                           </Show>
@@ -1326,6 +1339,7 @@ export function SpineEntry(props: {
                       <For each={v().actions}>
                         {(action, actionIndex) => (
                           <box
+                            flexShrink={0}
                             paddingLeft={1}
                             paddingRight={1}
                             backgroundColor={props.focused && props.selectedAction === actionIndex() ? theme.accent : theme.backgroundElement}
@@ -1335,7 +1349,7 @@ export function SpineEntry(props: {
                               props.onAction?.(entry(), action.id)
                             }}
                           >
-                            <text fg={props.focused && props.selectedAction === actionIndex() ? selectedForeground(theme, theme.accent) : theme.accent}>{action.label}</text>
+                            <text fg={props.focused && props.selectedAction === actionIndex() ? selectedForeground(theme, theme.accent) : theme.accent} wrapMode="none">{action.label}</text>
                           </box>
                         )}
                       </For>

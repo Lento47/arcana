@@ -110,7 +110,9 @@ export function buildGovernanceGroup(children: SpineEntry[]): SpineEntry {
     summaryParts.push(`${executed} executed`)
     summaryParts.push(`${denied} denied`)
   }
-  if (approvals > 0) summaryParts.push(`${approvals} pending approval`)
+  // Pluralized like the governed-count above it: `2 pending approval` reads as
+  // a missing word, and this row's whole job is to be scanned, not parsed.
+  if (approvals > 0) summaryParts.push(`${approvals} pending ${approvals === 1 ? "approval" : "approvals"}`)
   if (failures > 0) summaryParts.push(`${failures} failed`)
   if (other > 0) summaryParts.push(`${other} records`)
 

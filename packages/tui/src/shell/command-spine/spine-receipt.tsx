@@ -45,19 +45,23 @@ function renderRunReceipt(r: SpineReceiptType, layout: SpineLayout, t: Theme) {
     const f = r.stats.failed ?? 0
     const d = r.stats.duration ?? ""
     const tone = f > 0 ? t.spineFail : t.spineOk
+    // The mark follows the outcome, not the row type: a hardcoded `✓` beside
+    // `3 passed · 1 failed` contradicted its own fail tone and the `✗` the same
+    // row's header chip was painting. Same pair the step list uses.
+    const mark = f > 0 ? "✗" : "✓"
     if (layout === "minimal") {
-      return <text fg={tone}>✓ {p}/{f}</text>
+      return <text fg={tone}>{mark} {p}/{f}</text>
     }
     if (layout === "narrow") {
       return (
         <text fg={tone}>
-          ✓ {p} · {f}{d ? ` · ${d}` : ""}
+          {mark} {p} · {f}{d ? ` · ${d}` : ""}
         </text>
       )
     }
     return (
       <text fg={tone}>
-        ✓ {p} passed · {f} failed{d ? ` · ${d}` : ""}
+        {mark} {p} passed · {f} failed{d ? ` · ${d}` : ""}
       </text>
     )
   }
@@ -87,7 +91,10 @@ function renderPatchReceipt(r: SpineReceiptType, layout: SpineLayout, t: Theme) 
         <For each={r.files}>
           {(file) => (
             <box flexDirection="row" paddingLeft={2}>
-              <text fg={t.spineDiffMuted} maxWidth={36}>{file.path}</text>
+              {/* `wrapMode="none"`: the path is capped at 36 columns, and with the
+                  default word wrap a longer one grew the row to two lines and
+                  left the counts aligned to the first line only. */}
+              <text fg={t.spineDiffMuted} maxWidth={36} wrapMode="none">{file.path}</text>
               <ShowCounts added={file.added} removed={file.removed} theme={t} />
             </box>
           )}
@@ -125,12 +132,19 @@ export function countCellWidth(n: number): number {
 
 function ShowCounts(props: { added: number; removed: number; theme: Theme }) {
   if (props.added === 0 && props.removed === 0) {
-    return <text fg={props.theme.spineDiffMuted}>·</text>
+    return <text fg={props.theme.spineDiffMuted} flexShrink={0}>·</text>
   }
+  // The counts are reserved and the path beside them is the elastic cell: the
+  // path is capped already, so a row too tight for both must clip the path (it
+  // has an ellipsis budget) rather than the numbers, which have none.
   return (
     <>
-      {props.added >= 0 && <text fg={props.theme.spineDiffAdd} minWidth={countCellWidth(props.added)}>+{props.added}</text>}
-      {props.removed >= 0 && <text fg={props.theme.spineDiffRemove} minWidth={countCellWidth(props.removed)}>-{props.removed}</text>}
+      {props.added >= 0 && (
+        <text fg={props.theme.spineDiffAdd} minWidth={countCellWidth(props.added)} flexShrink={0}>+{props.added}</text>
+      )}
+      {props.removed >= 0 && (
+        <text fg={props.theme.spineDiffRemove} minWidth={countCellWidth(props.removed)} flexShrink={0}>-{props.removed}</text>
+      )}
     </>
   )
 }
