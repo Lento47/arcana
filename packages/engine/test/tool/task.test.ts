@@ -9,6 +9,7 @@ import { Config } from "@/config/config"
 import { CrossSpawnSpawner } from "@arcana/core/cross-spawn-spawner"
 import { Ripgrep } from "@arcana/core/ripgrep"
 import { Session } from "@/session/session"
+import { MessageV2 } from "../../src/session/message-v2"
 import type { SessionPrompt } from "../../src/session/prompt"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
 import { SessionRunState } from "@/session/run-state"
@@ -249,6 +250,124 @@ describe("tool.task", () => {
       expect(seen?.variant).toBe("xhigh")
     }),
     // ~0.6s in isolation; timed out at 5s under full-suite load on 2026-08-03.
+    { timeout: 10_000 },
+  )
+
+  it.instance("execute never resumes the caller — a foreign task_id creates a fresh child", () =>
+    Effect.gen(function* () {
+      const sessions = yield* Session.Service
+      const { chat, assistant } = yield* seed()
+      const tool = yield* TaskTool
+      const def = yield* tool.init()
+      let seen: SessionPrompt.PromptInput | undefined
+      const promptOps = stubOps({ text: "fresh", onPrompt: (input) => (seen = input) })
+
+      const result = yield* def.execute(
+        {
+          description: "review isolation",
+          prompt: "confirm the subagent starts fresh",
+          subagent_type: "general",
+          // A stale or hostile id: the caller's own session. Resume must
+          // reject it and spin up a fresh child, never run main.
+          task_id: chat.id,
+        },
+        {
+          sessionID: chat.id,
+          messageID: assistant.id,
+          agent: "build",
+          abort: new AbortController().signal,
+          extra: { promptOps },
+          messages: [],
+          metadata: () => Effect.void,
+          ask: () => Effect.void,
+        },
+      )
+
+      const kids = yield* sessions.children(chat.id)
+      expect(kids).toHaveLength(1)
+      expect(kids[0]?.id).not.toBe(chat.id)
+      expect(result.metadata.sessionId).toBe(kids[0]?.id)
+      expect(seen?.sessionID).toBe(kids[0]?.id)
+      expect(seen?.sessionID).not.toBe(chat.id)
+    }),
+    { timeout: 10_000 },
+  )
+
+  it.instance("a fresh child session starts empty — the parent's compaction is never inherited", () =>
+    Effect.gen(function* () {
+      const sessions = yield* Session.Service
+      const { chat } = yield* seed()
+
+      // Seed the parent with a completed compaction exactly as auto-compaction
+      // leaves it: a retained tail message, the compaction user message that
+      // anchors it, and the summary assistant the compaction produced.
+      const tail = yield* sessions.updateMessage({
+        id: MessageID.ascending(),
+        role: "user",
+        sessionID: chat.id,
+        agent: "build",
+        model: ref,
+        time: { created: Date.now() },
+      })
+      yield* sessions.updatePart({
+        id: PartID.ascending(),
+        messageID: tail.id,
+        sessionID: chat.id,
+        type: "text",
+        text: "keep this turn",
+      })
+      const compactionUser = yield* sessions.updateMessage({
+        id: MessageID.ascending(),
+        role: "user",
+        sessionID: chat.id,
+        agent: "build",
+        model: ref,
+        time: { created: Date.now() },
+      })
+      yield* sessions.updatePart({
+        id: PartID.ascending(),
+        messageID: compactionUser.id,
+        sessionID: chat.id,
+        type: "compaction",
+        auto: true,
+        tail_start_id: tail.id,
+      } as SessionV1.Part)
+      yield* sessions.updateMessage({
+        id: MessageID.ascending(),
+        role: "assistant",
+        parentID: compactionUser.id,
+        sessionID: chat.id,
+        mode: "build",
+        agent: "build",
+        summary: true,
+        finish: "stop",
+        cost: 0,
+        path: { cwd: "/tmp", root: "/tmp" },
+        tokens: { input: 150_000, output: 1_500, reasoning: 0, cache: { read: 0, write: 0 } },
+        modelID: ref.modelID,
+        providerID: ref.providerID,
+        time: { created: Date.now(), completed: Date.now() },
+      } as SessionV1.Assistant)
+
+      // The fixture must actually carry something to leak.
+      const parentView = MessageV2.filterCompacted(yield* MessageV2.stream(chat.id))
+      expect(parentView.some((msg) => msg.parts.some((part) => part.type === "compaction"))).toBe(true)
+      expect(parentView.some((msg) => msg.info.role === "assistant" && msg.info.summary === true)).toBe(true)
+
+      const child = yield* sessions.create({ parentID: chat.id, title: "Fresh subagent" })
+
+      // The record copies nothing compactable.
+      expect(child.summary).toBeUndefined()
+      expect(child.revert).toBeUndefined()
+      expect(child.cost).toBe(0)
+      expect(child.tokens?.input ?? 0).toBe(0)
+      expect(child.tokens?.output ?? 0).toBe(0)
+
+      // And the child's own stream is empty: no parent messages, no summary,
+      // nothing for filterCompacted to honor.
+      expect(yield* sessions.messages({ sessionID: child.id })).toHaveLength(0)
+      expect(MessageV2.filterCompacted(yield* MessageV2.stream(child.id))).toHaveLength(0)
+    }),
     { timeout: 10_000 },
   )
 
