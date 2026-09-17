@@ -93,7 +93,18 @@ export function DialogRetryAction(props: DialogRetryActionProps) {
       </Show>
       <box zIndex={1} paddingLeft={Space.padX} paddingRight={Space.padX} paddingBottom={Space.padY} gap={Space.gap}>
         <box flexDirection="row" justifyContent="space-between">
-          <text attributes={TextAttributes.BOLD} fg={theme.text} bg={textBg()} wrapMode="word">
+          {/* The title yields, the dismissal does not — the shape of every other
+              dialog's title row (`ui/dialog-chrome.tsx`): a title that wraps to a
+              second row makes the card jump between one and two rows tall, while
+              a title that clips keeps the row it was given. */}
+          <text
+            attributes={TextAttributes.BOLD}
+            fg={theme.text}
+            bg={textBg()}
+            flexShrink={1}
+            overflow="hidden"
+            wrapMode="none"
+          >
             {props.title}
           </text>
           <DialogCloseHint onClose={() => dialog.clear()} label={COPY.dialog.dismiss} background={textBg()} />
@@ -117,7 +128,14 @@ export function DialogRetryAction(props: DialogRetryActionProps) {
           <box paddingBottom={1} />
         )}
         <box flexDirection="row" justifyContent="space-between">
+          {/* Two buttons, both fixed vocabulary, both the whole of what they say
+              — `Don't show again` and the action verb. Left flexible, Yoga
+              shares the deficit between them and decodes both (`Don't show
+              agai`/`n`, `Retr`/`y`); reserved, the worst case is the row
+              overhanging its own edge rather than a button that no longer reads
+              as the thing you are about to press. */}
           <box
+            flexShrink={0}
             paddingLeft={Space.padX}
             paddingRight={Space.padX}
             backgroundColor={selected() === "dismiss" ? theme.primary : inactiveBg()}
@@ -128,11 +146,13 @@ export function DialogRetryAction(props: DialogRetryActionProps) {
               fg={selected() === "dismiss" ? fg : theme.textMuted}
               bg={selected() === "dismiss" ? undefined : textBg()}
               attributes={selected() === "dismiss" ? TextAttributes.BOLD : undefined}
+              wrapMode="none"
             >
               {COPY.dialog.dontShowAgain}
             </text>
           </box>
           <box
+            flexShrink={0}
             paddingLeft={Space.padX}
             paddingRight={Space.padX}
             backgroundColor={selected() === "action" ? theme.primary : inactiveBg()}
@@ -143,6 +163,7 @@ export function DialogRetryAction(props: DialogRetryActionProps) {
               fg={selected() === "action" ? fg : theme.text}
               bg={selected() === "action" ? undefined : textBg()}
               attributes={selected() === "action" ? TextAttributes.BOLD : undefined}
+              wrapMode="none"
             >
               {props.label}
             </text>

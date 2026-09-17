@@ -73,11 +73,22 @@ export function dialogCloseLabel(label?: string): string {
  * `background` is for a dialog that paints a surface behind its own chrome (the
  * retry card's panel overlay): the hint has to sit on that surface like the
  * rest of the row rather than punch a hole in it.
+ *
+ * `flexShrink={0}` keeps it from being shrunk and `wrapMode="none"` keeps it
+ * from being wrapped — the same invariant as the title row, for the same
+ * reason: a two-row hint is a taller card, and `[esc]` on a row of its own is
+ * no longer the dismissal it was spelling.
  */
 export function DialogCloseHint(props: { onClose: () => void; label?: string; background?: RGBA }) {
   const { theme } = useTheme()
   return (
-    <text fg={theme.textMuted} bg={props.background} flexShrink={0} onMouseUp={props.onClose}>
+    <text
+      fg={theme.textMuted}
+      bg={props.background}
+      flexShrink={0}
+      wrapMode="none"
+      onMouseUp={props.onClose}
+    >
       {dialogCloseLabel(props.label)}
     </text>
   )

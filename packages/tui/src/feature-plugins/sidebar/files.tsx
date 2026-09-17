@@ -27,10 +27,17 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
         onMouseOut={() => setHovered(false)}
         backgroundColor={hovered() && list().length > 2 ? theme().backgroundElement : undefined}
       >
+        {/* The carets are the affordance and the label is the heading: both are
+            fixed, so neither is the segment the row gives up. The label is only
+            18 columns against the column's 38, and this is the one row here
+            that is a hover target — a heading that decoded would be a control
+            that no longer says what it opens. */}
         <Show when={list().length > 2}>
-          <text fg={theme().text}>{open() ? "▼" : "▶"}</text>
+          <text fg={theme().text} wrapMode="none" flexShrink={0}>
+            {open() ? "▼" : "▶"}
+          </text>
         </Show>
-        <text fg={theme().text}>
+        <text fg={theme().text} wrapMode="none" flexShrink={0}>
           <span style={{ fg: theme().accent }}>◆ </span>
           <b>MODIFIED FILES</b>
         </text>

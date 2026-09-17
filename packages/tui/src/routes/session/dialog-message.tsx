@@ -282,12 +282,32 @@ export function DialogMessage(props: {
           </text>
         </box>
         <box flexDirection="row" flexWrap="wrap" gap={1} paddingTop={1}>
-          <text fg={theme.primary}>[enter]</text>
-          <text fg={theme.textMuted}>Seal</text>
-          <text fg={theme.textMuted}>·</text>
-          <text fg={theme.primary}>[↓↑]</text>
-          <text fg={theme.textMuted}>Navigate</text>
-          <text fg={theme.textMuted}>·</text>
+          {/* A hint is the pair `[key] Verb` and only reads as one if the pair
+              survives together — wrapping is how this row gives way, so the
+              unit that moves is the pair, never the key alone on the row above
+              its own verb. */}
+          <box flexShrink={0} flexDirection="row" gap={1}>
+            <text fg={theme.primary} wrapMode="none">
+              [enter]
+            </text>
+            <text fg={theme.textMuted} wrapMode="none">
+              Seal
+            </text>
+          </box>
+          <text fg={theme.textMuted} flexShrink={0} wrapMode="none">
+            ·
+          </text>
+          <box flexShrink={0} flexDirection="row" gap={1}>
+            <text fg={theme.primary} wrapMode="none">
+              [↓↑]
+            </text>
+            <text fg={theme.textMuted} wrapMode="none">
+              Navigate
+            </text>
+          </box>
+          <text fg={theme.textMuted} flexShrink={0} wrapMode="none">
+            ·
+          </text>
           {/* Same `[esc] <verb>` as the header and every other card — typed
               here it was a second spelling of the same dismissal. */}
           <DialogCloseHint onClose={clear} />

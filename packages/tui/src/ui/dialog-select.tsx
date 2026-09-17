@@ -544,13 +544,24 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
           setFocusedAction(index)
         }}
       >
+        {/* A footer action is the pair `<key> <verb>`, and each half is fixed
+            vocabulary: the key names the control and the verb says what it does.
+            The groups around these actions already shrink, so without this the
+            deficit came out of the two texts and a footer full of actions read
+            as `ent`/`Sele` — a key you cannot identify and a verb you cannot
+            act on. */}
         <text
           fg={disabled() ? theme.textMuted : active() ? fg : theme.text}
           attributes={active() ? TextAttributes.BOLD : undefined}
+          wrapMode="none"
+          flexShrink={0}
         >
           {item.title}
         </text>
-        <text fg={disabled() ? theme.textMuted : active() ? fg : theme.textMuted}> {item.label}</text>
+        <text fg={disabled() ? theme.textMuted : active() ? fg : theme.textMuted} wrapMode="none" flexShrink={0}>
+          {" "}
+          {item.label}
+        </text>
       </box>
     )
   }

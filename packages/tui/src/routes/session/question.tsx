@@ -420,8 +420,17 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
         <SpineRail layout={layout()} glyph="?" color={theme.spineInspect} kind="inspect" />
         <box flexDirection="column" flexGrow={1} minWidth={0}>
           <box flexDirection="row" justifyContent="space-between" minWidth={0}>
-            <text fg={theme.spineInspect}>QUESTIONS</text>
-            <text fg={complete() ? theme.success : theme.textMuted}>
+            {/* Both halves of this row are fixed vocabulary — the card's name and
+                its progress readout — and neither is prose that may reflow. Left
+                flexible, Yoga takes the deficit out of both at once and decodes
+                them (`QUESTIO`/`NS`, `0/3 answe`/`red`). Reserved, the row
+                overhangs its edge instead, and the tail the card clips is the
+                readout's — the name stays whole, and the count is the half that
+                can afford to lose its `· submitting…` suffix. */}
+            <text fg={theme.spineInspect} wrapMode="none" flexShrink={0}>
+              QUESTIONS
+            </text>
+            <text fg={complete() ? theme.success : theme.textMuted} wrapMode="none" flexShrink={0}>
               {questions().length - unanswered().length}/{questions().length} answered{busy() ? " · submitting…" : ""}
             </text>
           </box>

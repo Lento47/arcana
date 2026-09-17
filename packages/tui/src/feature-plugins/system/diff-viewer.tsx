@@ -47,6 +47,9 @@ const WORKING_TREE_DIFF_CONTEXT_LINES = 12
 const KV_SHOW_FILE_TREE = "diff_viewer_show_file_tree"
 const KV_SINGLE_PATCH = "diff_viewer_single_patch"
 const KV_VIEW = "diff_viewer_view"
+/** Gap between footer hints, and the room the strip leaves at the terminal edge. */
+const FOOTER_HINT_GAP = 2
+const FOOTER_HINT_RESERVE = 2
 // VCS diff is a local read, but git can block on a stale worktree or filesystem.
 // Keep this bound local to the viewer; the shared SDK GET transport also carries
 // SSE and health requests that must remain long-lived.
@@ -242,6 +245,55 @@ function DiffViewer(props: { api: TuiPluginApi }) {
   const markReviewedShortcut = useCommandShortcut("diff.mark_reviewed")
   const helpShortcut = useCommandShortcut("diff.help")
   const closeShortcut = useCommandShortcut("diff.close")
+
+  /**
+   * The footer strip's hints, as data.
+   *
+   * The strip is a flex row of nine pairs, about 124 columns in all, and Yoga
+   * answers a row that is too narrow by shrinking whatever it likes: the hints
+   * decoded mid-phrase (`next` / `file`) and grew the strip to a second row,
+   * which came out of the patch pane above it. A hint is fixed vocabulary — a
+   * key and the verb it runs — so the row is measured here instead and only the
+   * hints that fit are rendered. The `all` hint is always among them: it is the
+   * way to the ones that were dropped.
+   */
+  const hints = createMemo(() => {
+    const list: { key: string; verb: string }[] = []
+    const add = (key: string | undefined, verb: string) => {
+      if (key) list.push({ key, verb })
+    }
+    if (showFileTree()) add(switchFocusShortcut(), focus() === "files" ? "focus patches" : "focus file tree")
+    add(nextFileShortcut(), "next file")
+    add(nextHunkShortcut(), "next hunk")
+    add(previousHunkShortcut(), "previous hunk")
+    add(previousFileShortcut(), "previous file")
+    add(switchSourceShortcut(), "switch source")
+    add(markReviewedShortcut(), "mark reviewed")
+    add(closeShortcut(), "close")
+    add(helpShortcut(), "all")
+    return list
+  })
+
+  const hintWidth = (hint: { key: string; verb: string }) => Locale.displayWidth(hint.key) + 1 + Locale.displayWidth(hint.verb)
+
+  const shownHints = createMemo(() => {
+    const list = hints()
+    const last = list.at(-1)
+    if (!last) return []
+    // The panel's own left padding, plus the overlay's edge.
+    const room = Math.max(0, dimensions().width - FOOTER_HINT_RESERVE - hintWidth(last))
+    const shown: typeof list = []
+    let used = 0
+    for (const hint of list.slice(0, -1)) {
+      const next = used === 0 ? hintWidth(hint) : used + FOOTER_HINT_GAP + hintWidth(hint)
+      if (next > room) break
+      shown.push(hint)
+      used = next
+    }
+    shown.push(last)
+    return shown
+  })
+
   let scroll: ScrollBoxRenderable | undefined
   const patchNodeByFileIndex = new Map<number, BoxRenderable>()
   const diffNodeByFileIndex = new Map<number, DiffRenderable>()
@@ -894,10 +946,17 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     <box position="absolute" zIndex={2500} left={0} top={0} width={dimensions().width} height={dimensions().height}>
       <PanelGroup axis="y" width="100%" height="100%">
         <Panel border="none" flexShrink={0} padding={0} paddingLeft={1}>
-          <text fg={theme().text}>Diff </text>
-          <text fg={theme().textMuted}>{mode() === "last-turn" ? "last turn" : "working tree"}</text>
+          <text fg={theme().text} wrapMode="none" flexShrink={0}>
+            Diff{" "}
+          </text>
+          {/* `Diff ` and the mode beside it read as one phrase — the space in the
+              first text is deliberate — and the spacer between them and the
+              count is the row's elastic part. */}
+          <text fg={theme().textMuted} wrapMode="none" flexShrink={0}>
+            {mode() === "last-turn" ? "last turn" : "working tree"}
+          </text>
           <box flexGrow={1} />
-          <text fg={theme().textMuted}>
+          <text fg={theme().textMuted} wrapMode="none" flexShrink={0}>
             {files().length} {files().length === 1 ? "file" : "files"}
           </text>
         </Panel>
@@ -978,10 +1037,22 @@ function DiffViewer(props: { api: TuiPluginApi }) {
                                 {fileHeaderLabel(entry.file.file)}
                               </text>
                               <box flexGrow={1} />
-                              <text fg={reviewed() ? theme().textMuted : theme().diffAdded}>
+                              {/* The two counts are the row's numbers, and a
+                                  count that loses a digit is a different count:
+                                  they are the row's reserved cells, with the
+                                  path elided against them and the slack between. */}
+                              <text
+                                fg={reviewed() ? theme().textMuted : theme().diffAdded}
+                                wrapMode="none"
+                                flexShrink={0}
+                              >
                                 +{entry.file.additions}
                               </text>
-                              <text fg={reviewed() ? theme().textMuted : theme().diffRemoved}>
+                              <text
+                                fg={reviewed() ? theme().textMuted : theme().diffRemoved}
+                                wrapMode="none"
+                                flexShrink={0}
+                              >
                                 -{entry.file.deletions}
                               </text>
                             </box>
@@ -1039,70 +1110,17 @@ function DiffViewer(props: { api: TuiPluginApi }) {
           </Switch>
         </box>
 
-        <Panel flexShrink={0} gap={2} paddingLeft={1} border="none">
-          <Show when={showFileTree() && switchFocusShortcut()}>
-            {(shortcut) => (
-              <text fg={theme().text}>
-                {shortcut()} <span style={{ fg: theme().textMuted }}>{focus() === "files" ? "focus patches" : "focus file tree"}</span>
+        <Panel flexShrink={0} gap={FOOTER_HINT_GAP} paddingLeft={1} border="none">
+          {/* Whole hints only: a hint that fits is rendered, one that does not is
+              absent, and neither is ever a flex deficit shared with its
+              neighbour. */}
+          <For each={shownHints()}>
+            {(hint) => (
+              <text fg={theme().text} wrapMode="none" flexShrink={0}>
+                {hint.key} <span style={{ fg: theme().textMuted }}>{hint.verb}</span>
               </text>
             )}
-          </Show>
-          <Show when={nextFileShortcut()}>
-            {(shortcut) => (
-              <text fg={theme().text}>
-                {shortcut()} <span style={{ fg: theme().textMuted }}>next file</span>
-              </text>
-            )}
-          </Show>
-          <Show when={nextHunkShortcut()}>
-            {(shortcut) => (
-              <text fg={theme().text}>
-                {shortcut()} <span style={{ fg: theme().textMuted }}>next hunk</span>
-              </text>
-            )}
-          </Show>
-          <Show when={previousHunkShortcut()}>
-            {(shortcut) => (
-              <text fg={theme().text}>
-                {shortcut()} <span style={{ fg: theme().textMuted }}>previous hunk</span>
-              </text>
-            )}
-          </Show>
-          <Show when={previousFileShortcut()}>
-            {(shortcut) => (
-              <text fg={theme().text}>
-                {shortcut()} <span style={{ fg: theme().textMuted }}>previous file</span>
-              </text>
-            )}
-          </Show>
-          <Show when={switchSourceShortcut()}>
-            {(shortcut) => (
-              <text fg={theme().text}>
-                {shortcut()} <span style={{ fg: theme().textMuted }}>switch source</span>
-              </text>
-            )}
-          </Show>
-          <Show when={markReviewedShortcut()}>
-            {(shortcut) => (
-              <text fg={theme().text}>
-                {shortcut()} <span style={{ fg: theme().textMuted }}>mark reviewed</span>
-              </text>
-            )}
-          </Show>
-          <Show when={closeShortcut()}>
-            {(shortcut) => (
-              <text fg={theme().text}>
-                {shortcut()} <span style={{ fg: theme().textMuted }}>close</span>
-              </text>
-            )}
-          </Show>
-          <Show when={helpShortcut()}>
-            {(shortcut) => (
-              <text fg={theme().text}>
-                {shortcut()} <span style={{ fg: theme().textMuted }}>all</span>
-              </text>
-            )}
-          </Show>
+          </For>
         </Panel>
       </PanelGroup>
     </box>
@@ -1177,10 +1195,18 @@ function DiffViewerHelpDialog() {
   return (
     <box paddingLeft={2} paddingRight={2} paddingBottom={1} gap={1}>
       <box flexDirection="row" justifyContent="space-between">
-        <text attributes={TextAttributes.BOLD} fg={theme.text}>
+        {/* The panel's title and its way out are both fixed vocabulary — the
+            title names the panel, `esc` is one key — so neither is the segment
+            that gives way when the panel is narrow. The table below reserves 27
+            columns for its key and action columns before its description starts
+            at all, so the header is never the tightest row here; reserving both
+            keeps it legible even when it is. */}
+        <text attributes={TextAttributes.BOLD} fg={theme.text} wrapMode="none" flexShrink={0}>
           Diff Shortcuts
         </text>
-        <text fg={theme.textMuted}>esc</text>
+        <text fg={theme.textMuted} wrapMode="none" flexShrink={0}>
+          esc
+        </text>
       </box>
       <box flexDirection="row">
         <text fg={theme.textMuted} width={5} wrapMode="none">

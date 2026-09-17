@@ -32,7 +32,11 @@ export function ArcanaSurface(props: { title: string; path?: string; meta?: stri
     <box paddingLeft={1} paddingRight={1} gap={1} paddingBottom={1}>
       <box gap={0}>
         <box flexDirection="row" justifyContent="space-between">
-          <text fg={theme.text}>
+          {/* The title yields to the dismissal, as in every dialog title row —
+              and it clips rather than wraps: a title long enough to wrap would
+              make the surface grow a row taller than the layout it was measured
+              for, and `ARCANA / <name>` keeps its meaning from the front. */}
+          <text fg={theme.text} flexShrink={1} overflow="hidden" wrapMode="none">
             <b>ARCANA / {props.title}</b>
           </text>
           <DialogCloseHint onClose={() => dialog.clear()} />
