@@ -68,6 +68,17 @@ describe("spine-segments.buildStatusSegments (S3)", () => {
     expect(buildStatusSegments({ ctxPercent: 10, ctxOverBudget: true, ctxAuto: false })[0]?.tone).toBe("info")
   })
 
+  test("ctx latency-budget hot escalates tone even below the percent threshold", () => {
+    // 11% of the window but past the 96k performance budget → warning, so a
+    // low-percent compact has a visible cause.
+    expect(buildStatusSegments({ ctxPercent: 11, ctxPerformanceHot: true })[0]?.tone).toBe("warning")
+    expect(buildStatusSegments({ ctxPercent: 11, ctxPerformanceHot: false })[0]?.tone).toBe("info")
+    // auto disabled: the engine will not act, so do not imply it
+    expect(buildStatusSegments({ ctxPercent: 11, ctxPerformanceHot: true, ctxAuto: false })[0]?.tone).toBe("info")
+    // the emergency band still wins over the budget signal
+    expect(buildStatusSegments({ ctxPercent: COMPACT_NOW_PERCENT, ctxPerformanceHot: true })[0]?.tone).toBe("error")
+  })
+
   test("ctx omitted when percent missing or non-finite", () => {
     expect(buildStatusSegments({ ctxPercent: null })).toEqual([])
     expect(buildStatusSegments({ ctxPercent: Number.NaN })).toEqual([])

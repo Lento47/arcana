@@ -58,12 +58,16 @@ const ASSISTANT = {
   tokens: { input: 40_000, output: 5_000 },
 } as unknown as AssistantMessage
 
-function sessionState(overrides: { status?: unknown; compacting?: boolean; tokens?: unknown } = {}) {
+function sessionState(
+  overrides: { status?: unknown; compacting?: boolean; tokens?: unknown; contextLimit?: number } = {},
+) {
   return {
     provider: [
       {
         id: "prov",
-        models: { "model-a": { name: LONG_MODEL, limit: { context: 200_000, output: 32_000 } } },
+        models: {
+          "model-a": { name: LONG_MODEL, limit: { context: overrides.contextLimit ?? 200_000, output: 32_000 } },
+        },
       },
     ] as unknown as ReadonlyArray<Provider>,
     config: {},
@@ -189,6 +193,53 @@ test("context pressure is announced in both shells", async () => {
     } finally {
       app.renderer.destroy()
     }
+  }
+})
+
+test("the latency budget is named when it, not the window percent, is binding", async () => {
+  // 112.1K tokens of a 1M window is 11% — the safety chip must stay silent —
+  // but it is past the engine's 96k performance budget, so the bar must show
+  // both the budget and the reason a compact is imminent.
+  const state = sessionState({ tokens: { input: 112_100, output: 0 }, contextLimit: 1_000_000 })
+  const app = await mountStatusbar(state, 100)
+  try {
+    const frame = app.captureCharFrame()
+    expect(frame).toContain("CTX")
+    expect(frame).toContain("112.1K")
+    expect(frame).toContain("96.0K")
+    expect(frame).toContain("over budget")
+    expect(frame).not.toContain("COMPACT NOW")
+    expect(frame).not.toContain("COMPACT SOON")
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
+test("a session below the latency budget does not name it", async () => {
+  const state = sessionState({ tokens: { input: 45_000, output: 0 }, contextLimit: 1_000_000 })
+  const app = await mountStatusbar(state, 100)
+  try {
+    const frame = app.captureCharFrame()
+    expect(frame).toContain("45.0K")
+    expect(frame).not.toContain("96.0K")
+    expect(frame).not.toContain("over budget")
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
+test("the spine shell shows the budget explanation before compaction starts", async () => {
+  // Without this the spine bar stayed hidden until COMPACTING appeared, so the
+  // compact looked unmotivated — the exact report this surfaces.
+  const state = sessionState({ tokens: { input: 112_100, output: 0 }, contextLimit: 1_000_000 })
+  const app = await mountStatusbar(state, 100, "command-spine")
+  try {
+    const frame = app.captureCharFrame()
+    expect(frame).toContain("112.1K")
+    expect(frame).toContain("96.0K")
+    expect(frame).toContain("over budget")
+  } finally {
+    app.renderer.destroy()
   }
 })
 

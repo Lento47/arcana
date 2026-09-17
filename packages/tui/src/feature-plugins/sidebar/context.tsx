@@ -19,7 +19,14 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
       (item): item is AssistantMessage => item.role === "assistant" && hasContextUsage(item.tokens),
     )
     if (!last) {
-      return { tokens: 0, percent: null, overBudget: false, pressure: undefined }
+      return {
+        tokens: 0,
+        percent: null,
+        overBudget: false,
+        pressure: undefined,
+        performanceBudget: 0,
+        performanceHot: false,
+      }
     }
     const model = props.api.state?.provider?.find((item) => item.id === last.providerID)?.models[last.modelID]
     return contextUsageFor({
@@ -43,6 +50,11 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
       </text>
       <Show when={state().pressure}>
         {(label) => <text fg={label() === "compact now" ? theme().error : theme().warning}>{label()}</text>}
+      </Show>
+      <Show when={state().performanceHot}>
+        <text fg={theme().warning}>
+          over budget · {Locale.number(state().performanceBudget)}
+        </text>
       </Show>
       <text fg={theme().textMuted}>
         {Glyph.diamond} {Locale.currency(cost())} {Lexicon.Token.cost}

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import {
   COMPACT_NOW_PERCENT,
   COMPACT_SOON_PERCENT,
+  PERFORMANCE_MAX_INPUT_TOKENS,
   compactNowPercent,
   compactSoonPercent,
   compactionAutoEnabled,
@@ -10,6 +11,7 @@ import {
   contextUsageFor,
   effectiveContext,
   hasContextUsage,
+  performanceBudgetTokens,
   usableContextWindow,
 } from "../../src/util/context-pressure"
 
@@ -37,11 +39,19 @@ describe("contextPressure", () => {
 })
 
 describe("contextTokenCount (engine session/overflow parity)", () => {
-  test("prefers provider-filled total over the sum", () => {
-    // sum would be 8000+2000+500+1000+0 = 11500; total wins.
+  test("uses the provider-filled total when it covers the breakdown", () => {
+    // sum = 8000+2000+500+1000 = 11500; total with overhead wins.
     expect(
-      contextTokenCount({ total: 9500, input: 8000, output: 2000, reasoning: 500, cache: { read: 1000, write: 0 } }),
-    ).toBe(9500)
+      contextTokenCount({ total: 12000, input: 8000, output: 2000, reasoning: 500, cache: { read: 1000, write: 0 } }),
+    ).toBe(12000)
+  })
+
+  test("never under-reads a stale or zero provider total", () => {
+    // 0 / below-sum totals must fall back to the component sum.
+    expect(
+      contextTokenCount({ total: 0, input: 8000, output: 2000, reasoning: 500, cache: { read: 1000, write: 0 } }),
+    ).toBe(11500)
+    expect(contextTokenCount({ total: 9000, input: 8000, output: 2000, cache: { read: 1000, write: 0 } })).toBe(11000)
   })
 
   test("falls back to the sum when total missing or non-finite", () => {
@@ -152,6 +162,26 @@ describe("contextPressure options", () => {
   })
 })
 
+describe("performanceBudgetTokens (engine overflow parity)", () => {
+  test("defaults to the engine 96k latency budget", () => {
+    expect(PERFORMANCE_MAX_INPUT_TOKENS).toBe(96_000)
+    expect(performanceBudgetTokens()).toBe(96_000)
+    expect(performanceBudgetTokens({})).toBe(96_000)
+  })
+
+  test("positive finite overrides win; bad config falls back to the default", () => {
+    expect(performanceBudgetTokens({ performance_max_input_tokens: 200_000 })).toBe(200_000)
+    expect(performanceBudgetTokens({ performance_max_input_tokens: 0 })).toBe(96_000)
+    expect(performanceBudgetTokens({ performance_max_input_tokens: -1 })).toBe(96_000)
+    expect(performanceBudgetTokens({ performance_max_input_tokens: Number.NaN })).toBe(96_000)
+  })
+
+  test("zero when the performance pass or auto-compact is disabled", () => {
+    expect(performanceBudgetTokens({ performance: false })).toBe(0)
+    expect(performanceBudgetTokens({ auto: false })).toBe(0)
+  })
+})
+
 describe("contextUsageFor (shared surface snapshot)", () => {
   const limit = { context: 100_000, output: 32_000 }
 
@@ -197,5 +227,35 @@ describe("contextUsageFor (shared surface snapshot)", () => {
       compaction: { default_context_tokens: 100_000 },
     })
     expect(assumed.percent).toBe(50)
+  })
+
+  test("reports the latency budget and hot state independently of the window percent", () => {
+    // The exact confusion this field exists to kill: 11% of a 1M window but
+    // past the 96k latency budget, so the engine compacts on "performance".
+    const bigWindow = { context: 1_000_000, output: 32_000 }
+    const hot = contextUsageFor({ tokens: { input: 112_100 }, limit: bigWindow })
+    expect(hot.percent).toBe(11)
+    expect(hot.pressure).toBeUndefined()
+    expect(hot.performanceBudget).toBe(96_000)
+    expect(hot.performanceHot).toBe(true)
+
+    const cool = contextUsageFor({ tokens: { input: 45_000 }, limit: bigWindow })
+    expect(cool.performanceHot).toBe(false)
+
+    const disabled = contextUsageFor({
+      tokens: { input: 112_100 },
+      limit: bigWindow,
+      compaction: { performance: false },
+    })
+    expect(disabled.performanceBudget).toBe(0)
+    expect(disabled.performanceHot).toBe(false)
+
+    const raised = contextUsageFor({
+      tokens: { input: 112_100 },
+      limit: bigWindow,
+      compaction: { performance_max_input_tokens: 200_000 },
+    })
+    expect(raised.performanceBudget).toBe(200_000)
+    expect(raised.performanceHot).toBe(false)
   })
 })

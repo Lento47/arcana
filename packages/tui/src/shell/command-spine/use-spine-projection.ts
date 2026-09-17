@@ -149,6 +149,7 @@ export function useSpineProjection(props: ShellProps, input: {
       model: modelName(),
       ctxPercent: ctxUsage()?.percent ?? null,
       ctxOverBudget: ctxUsage()?.overBudget,
+      ctxPerformanceHot: ctxUsage()?.performanceHot,
       ctxSoonPercent: compactSoonPercent(sync.data.config.compaction),
       ctxNowPercent: compactNowPercent(sync.data.config.compaction),
       ctxAuto: compactionAutoEnabled(sync.data.config.compaction),

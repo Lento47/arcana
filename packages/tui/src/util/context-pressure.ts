@@ -7,6 +7,8 @@
  * engine's actual decisions instead of the built-in defaults.
  */
 
+import { Token } from "@arcana/core/util/token"
+
 /** Match engine auto-compact default (`threshold_percent`). */
 export const COMPACT_SOON_PERCENT = 85
 
@@ -21,36 +23,34 @@ export const COMPACT_NOW_PERCENT = 95
 const COMPACTION_BUFFER_TOKENS = 20_000
 const OUTPUT_TOKEN_MAX = 32_000
 
+/**
+ * Engine `overflow.DEFAULT_PERFORMANCE_MAX_INPUT_TOKENS`: a latency budget,
+ * independent of the context window. The engine compacts as soon as usage
+ * reaches it (reason `"performance"`), which is why a session can compact at a
+ * low percent of a large window — the TUI must be able to say so.
+ */
+export const PERFORMANCE_MAX_INPUT_TOKENS = 96_000
+
 /** Config subset that affects engine context pressure (`ConfigV1.Info["compaction"]`). */
 export type CompactionLite = {
   auto?: boolean
   reserved?: number
   threshold_percent?: number
   default_context_tokens?: number
+  performance?: boolean
+  performance_max_input_tokens?: number
 }
 
-/** Token usage shape shared by SDK AssistantMessage.tokens (total is optional). */
-export type ContextTokenUsage = {
-  total?: number
-  input?: number
-  output?: number
-  reasoning?: number
-  cache?: { read?: number; write?: number }
-}
+/** Canonical token usage shape shared by SDK AssistantMessage.tokens (total is optional). */
+export type ContextTokenUsage = Token.ContextTokens
 
 /**
- * Canonical context size — mirrors engine `session/overflow.tokenCount`:
- * prefer the provider-filled `total`, else sum input+output+reasoning+cache.
+ * Canonical context size — delegates to the shared core rule (provider total
+ * when it covers the non-overlapping buckets, else their sum) so the TUI can
+ * never disagree with engine compaction pressure.
  */
 export function contextTokenCount(tokens: ContextTokenUsage): number {
-  if (tokens.total != null && Number.isFinite(tokens.total)) return tokens.total
-  return (
-    (tokens.input ?? 0) +
-    (tokens.output ?? 0) +
-    (tokens.reasoning ?? 0) +
-    (tokens.cache?.read ?? 0) +
-    (tokens.cache?.write ?? 0)
-  )
+  return Token.contextCount(tokens)
 }
 
 /**
@@ -86,6 +86,20 @@ export function compactSoonPercent(cfg?: CompactionLite): number {
 /** Emergency label band; never below the proactive threshold. */
 export function compactNowPercent(cfg?: CompactionLite): number {
   return Math.max(compactSoonPercent(cfg), COMPACT_NOW_PERCENT)
+}
+
+/**
+ * Engine `overflow.performanceMaxInputTokens`: the latency budget in tokens.
+ * Returns 0 when auto-compaction or the performance pass is disabled, so
+ * callers can treat 0 as "no performance constraint". Bad config falls back to
+ * the engine default (positive, finite numbers win).
+ */
+export function performanceBudgetTokens(cfg?: CompactionLite): number {
+  if (cfg?.auto === false || cfg?.performance === false) return 0
+  const raw = cfg?.performance_max_input_tokens
+  if (raw === undefined || raw === null) return PERFORMANCE_MAX_INPUT_TOKENS
+  if (typeof raw !== "number" || !Number.isFinite(raw) || raw <= 0) return PERFORMANCE_MAX_INPUT_TOKENS
+  return Math.floor(raw)
 }
 
 /**
@@ -153,13 +167,23 @@ export type ContextUsageSnapshot = {
   /** Engine hard-ceiling breach (`session/overflow.usable`) — compacts even below threshold. */
   overBudget: boolean
   pressure: ContextPressureLabel | undefined
+  /**
+   * Engine latency budget in tokens (0 when the performance pass or auto is
+   * disabled). Independent of the context window: the engine compacts at this
+   * count even when `percent` is low, so surfaces that explain compaction must
+   * show it.
+   */
+  performanceBudget: number
+  /** Usage has reached the performance budget — the engine's next compact reason. */
+  performanceHot: boolean
 }
 
 /**
  * One-stop context usage snapshot so every TUI surface (statusbar, sidebar,
  * spine header, subagent footer, metrics bar) reports the same numbers and the
  * same config-aware thresholds. Percent is of the full effective window;
- * pressure uses the unrounded ratio so it tracks the engine's integer compare.
+ * pressure uses the unrounded ratio so it tracks the engine's integer compare;
+ * the performance budget mirrors the engine's second, latency-driven trigger.
  */
 export function contextUsageFor(input: {
   tokens: ContextTokenUsage | undefined
@@ -171,6 +195,7 @@ export function contextUsageFor(input: {
   const percent = context > 0 ? Math.max(0, Math.min(100, Math.round((tokens / context) * 100))) : null
   const usable = usableContextWindow(input.limit, input.compaction)
   const ratio = context > 0 ? (tokens / context) * 100 : null
+  const performanceBudget = performanceBudgetTokens(input.compaction)
   return {
     tokens,
     percent,
@@ -180,5 +205,7 @@ export function contextUsageFor(input: {
       soon: compactSoonPercent(input.compaction),
       now: compactNowPercent(input.compaction),
     }),
+    performanceBudget,
+    performanceHot: performanceBudget > 0 && tokens >= performanceBudget,
   }
 }

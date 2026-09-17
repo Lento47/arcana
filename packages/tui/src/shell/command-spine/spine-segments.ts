@@ -19,6 +19,12 @@ export type SpineSegmentSource = {
    * eats the window. Escalates tone to at least warning.
    */
   ctxOverBudget?: boolean
+  /**
+   * Engine latency budget reached (`compaction.performance_max_input_tokens`,
+   * default 96k) — auto-compact fires regardless of window percent. Escalates
+   * tone to at least warning so a low-percent compaction is never unmotivated.
+   */
+  ctxPerformanceHot?: boolean
   /** Config-aware band overrides (`compaction.threshold_percent`); defaults otherwise. */
   ctxSoonPercent?: number
   ctxNowPercent?: number
@@ -37,8 +43,9 @@ export type SpineSegmentSource = {
  * Tones align with the app-wide context-pressure thresholds
  * (util/context-pressure, engine `threshold_percent` defaults):
  *   ctx >= 95 → error ("compact now"), >= 85 → warning ("compact soon"), else info.
- * A usable-budget breach (ctxOverBudget) escalates to warning at any percent —
- * the engine compacts on that ceiling regardless of raw percent.
+ * A usable-budget breach (ctxOverBudget) or a reached performance budget
+ * (ctxPerformanceHot) escalates to warning at any percent — the engine compacts
+ * on those ceilings regardless of raw percent.
  * "idle" is turn-state noise — omitted; busy/retry/error surface the turn.
  */
 export function buildStatusSegments(src: SpineSegmentSource): StatusSegment[] {
@@ -55,7 +62,8 @@ export function buildStatusSegments(src: SpineSegmentSource): StatusSegment[] {
     const tone: StatusTone =
       src.ctxPercent >= now
         ? "error"
-        : src.ctxPercent >= soon || (src.ctxAuto !== false && src.ctxOverBudget === true)
+        : src.ctxPercent >= soon ||
+            (src.ctxAuto !== false && (src.ctxOverBudget === true || src.ctxPerformanceHot === true))
           ? "warning"
           : "info"
     segments.push({ key: "ctx", label: "ctx", value: `${src.ctxPercent}%`, tone })

@@ -128,11 +128,20 @@ function compactModelName(value: string): string {
   return Locale.truncate(value, 50)
 }
 
-function tokenStateLabel(percent: number | null, compacting: boolean, soon: number, now: number): string {
+function tokenStateLabel(
+  percent: number | null,
+  compacting: boolean,
+  soon: number,
+  now: number,
+  performanceHot: boolean,
+): string {
   if (compacting) return "compacting"
   if (percent === null) return "unbounded"
   if (percent >= now) return "critical"
   if (percent >= soon) return "high"
+  // The engine's latency budget compacts regardless of window percent; without
+  // this the bar read "healthy" seconds before an unexplained compact.
+  if (performanceHot) return "over budget"
   return "healthy"
 }
 
@@ -269,7 +278,17 @@ function View(props: { api: TuiPluginApi }) {
   // mid-token, and the bar grew to four rows — pushing the prompt down and
   // shoving the top border away from the text it frames.
   return (
-    <Show when={sessionID() && (shell() === "command-spine" ? (compacting() || contextPressure()) : (busy() || compacting() || model() || usage()))}>
+    <Show
+      when={
+        sessionID() &&
+        (shell() === "command-spine"
+          ? // The spine hides this bar unless it has something to warn about:
+            // compaction running, a pressure band, or the latency budget that
+            // will trigger compaction regardless of the window percent.
+            compacting() || contextPressure() || usage()?.performanceHot
+          : busy() || compacting() || model() || usage())
+      }
+    >
       <box
         width="100%"
         flexDirection="row"
@@ -357,6 +376,15 @@ function View(props: { api: TuiPluginApi }) {
             <text flexShrink={0} wrapMode="none" fg={theme().textMuted}>
               <span style={{ fg: theme().primary }}>CTX</span>{" "}
               <span style={{ fg: theme().primary }}>{Locale.number(value().tokens)}</span>
+              {/* The latency budget only appears once it is the binding
+                  constraint, so `over budget` below always has a number to
+                  point at (engine `performance_max_input_tokens`). */}
+              <Show when={value().performanceHot}>
+                <span style={{ fg: theme().warning }}>
+                  {" / "}
+                  {Locale.number(value().performanceBudget)}
+                </span>
+              </Show>
               {/* The separator space travels with the label it precedes, so
                   dropping the label below the breakpoint leaves one space
                   before the meter rather than two. */}
@@ -372,13 +400,18 @@ function View(props: { api: TuiPluginApi }) {
                 <span style={{ fg: theme().secondary }}>{" "}{value().percent + "%"}</span>
               </Show>
               <Show when={!compact()}>
-                <span style={{ fg: compacting() ? theme().warning : theme().textMuted }}>
+                <span
+                  style={{
+                    fg: compacting() || value().performanceHot ? theme().warning : theme().textMuted,
+                  }}
+                >
                   {" "}
                   {tokenStateLabel(
                     value().percent,
                     compacting(),
                     compactSoonPercent(compaction()),
                     compactNowPercent(compaction()),
+                    value().performanceHot,
                   )}
                 </span>
               </Show>

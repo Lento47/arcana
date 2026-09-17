@@ -4,9 +4,17 @@ Long sessions grow until they hit the model context window. Arcana keeps them us
 
 ## When compact runs
 
+Two **independent** triggers fire proactive compaction:
+
+1. **Safety** — token usage ≥ **85%** of the model context window (default `threshold_percent`), or past the usable-budget hard ceiling (`isOverflow`). This is a context-capacity limit.
+2. **Performance** — token usage ≥ `performance_max_input_tokens` (**default 96 000 tokens**, `compaction.performance !== false`). This is a **latency budget, independent of the context window**: a 1M-token window still compacts at 96k because smaller prompts answer faster. The engine reports the reason as `"performance"`.
+
+That is why a session can show `CTX … 11%` and still compact — the second trigger, not the percent band, is the binding constraint.
+
 | Pass | When | Notes |
 |------|------|--------|
 | **Proactive (P0)** | Token usage ≥ **85%** of model context (or past the usable budget hard ceiling) | Default threshold |
+| **Performance** | Token usage ≥ `performance_max_input_tokens` (default **96 000**) | Latency budget; independent of context percent |
 | **Inline / mid-loop** | Same user turn, multi-step tool loop | Gated by intra policy |
 | **Inter preflight** | Start of a new user turn, before first sample | Between turns |
 | **Inter post-turn** | After the agent loop exits | Prepares next message |
@@ -37,6 +45,8 @@ In project or user config (`arcana.json` / engine config):
   "compaction": {
     "auto": true,
     "threshold_percent": 85,
+    "performance": true,
+    "performance_max_input_tokens": 96000,
     "reserved": 20000,
     "tail_turns": 2,
     "preserve_recent_tokens": 8000,
@@ -52,6 +62,8 @@ In project or user config (`arcana.json` / engine config):
 |-----|---------|-------------|
 | `auto` | `true` | Master switch for automatic compact |
 | `threshold_percent` | `85` | Proactive trigger as % of context (1–100) |
+| `performance` | `true` | Latency-oriented compaction before the safety limit |
+| `performance_max_input_tokens` | `96000` | Token count that triggers the latency compact; independent of the window |
 | `reserved` | ~output budget / 20k | Hard ceiling reserve so output still fits |
 | `tail_turns` | `2` | Recent user turns kept verbatim |
 | `preserve_recent_tokens` | ~2k–8k | Cap on verbatim tail size |
@@ -66,8 +78,12 @@ In project or user config (`arcana.json` / engine config):
 |------|---------|
 | Disable all auto compact | `"auto": false` |
 | Disable mid-loop only | `"intra": false` |
+| Disable the latency budget (only the 85% / usable ceiling remains) | `"performance": false` |
+| Raise the latency budget | `"performance_max_input_tokens": 200000` |
 | Compact later | `"threshold_percent": 95` or `100` |
 | Compact earlier | `"threshold_percent": 75` |
+
+The TUI reports which trigger is binding: the status bar shows the latency budget once it is the constraint (`CTX 112.1K / 96K … over budget`) and the spine header turns the ctx segment to warning, so a low-percent compact is never unmotivated.
 
 ## Failure handling
 
