@@ -295,11 +295,14 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
             </text>
           </Show>
         </box>
+        {/* Two key hints, each a whole readout. Elastic, they were the pair a
+            narrow dialog split: `enter open` / `link` beside `c copy` / `link`,
+            which reads as four separate keys. A key hint is never prose. */}
         <box flexDirection="row" gap={2}>
-          <text fg={theme.text}>
+          <text fg={theme.text} wrapMode="none" flexShrink={0}>
             enter <span style={{ fg: theme.textMuted }}>open link</span>
           </text>
-          <text fg={theme.text}>
+          <text fg={theme.text} wrapMode="none" flexShrink={0}>
             c <span style={{ fg: theme.textMuted }}>copy link</span>
           </text>
         </box>

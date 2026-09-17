@@ -115,7 +115,13 @@ export function SigilSpinner(props: {
 
   return (
     <box flexDirection="row" gap={1}>
-      <text fg={props.color}>{glyph()}</text>
+      {/* The sigil is one cell and stays one cell: with both children elastic, a
+          row too narrow for the label takes the deficit out of the mark first,
+          and the sign of the app is what disappears. The label beside it is the
+          row's elastic part. */}
+      <text fg={props.color} wrapMode="none" flexShrink={0}>
+        {glyph()}
+      </text>
       <Show when={props.children}>
         <text fg={props.color}>{props.children}</text>
       </Show>

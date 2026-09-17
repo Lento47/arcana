@@ -101,8 +101,18 @@ export function DialogConsoleOrg() {
         category: accountLabel(item),
         categoryView: (
           <box flexDirection="row" gap={2}>
-            <text fg={theme.accent}>{Locale.truncate(item.accountEmail, 40)}</text>
-            <text fg={theme.textMuted}>{Locale.truncate(accountHost(item.accountUrl), 40)}</text>
+            {/* Both halves are bounded readouts, not prose: each is already
+                truncated to its own 40 columns, and neither may be the segment
+                that gives way. Left elastic, a too-narrow dialog wrapped the
+                email and the host onto separate lines and the category above
+                the row grew to three. Reserving them means the worst case is a
+                clip at the dialog's edge, with every readout still whole. */}
+            <text fg={theme.accent} wrapMode="none" flexShrink={0}>
+              {Locale.truncate(item.accountEmail, 40)}
+            </text>
+            <text fg={theme.textMuted} wrapMode="none" flexShrink={0}>
+              {Locale.truncate(accountHost(item.accountUrl), 40)}
+            </text>
           </box>
         ),
         description: switching() === item.orgID ? "Switching…" : undefined,

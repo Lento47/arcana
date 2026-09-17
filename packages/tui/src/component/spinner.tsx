@@ -38,7 +38,14 @@ export function Spinner(props: { children?: JSX.Element; color?: RGBA }) {
       when={useTextFallback()}
       fallback={
         <box flexDirection="row" gap={1}>
-          <spinner frames={frames()} interval={80} color={color()} />
+          {/* The glyph is reserved and never wraps: it is the whole point of the
+              row, and a flex row that shrinks both children takes the deficit
+              out of the mark as readily as out of the label. The intrinsic
+              spinner element takes no layout props, so its reservation is the
+              box around it. */}
+          <box flexShrink={0}>
+            <spinner frames={frames()} interval={80} color={color()} />
+          </box>
           <Show when={props.children}>
             <text fg={color()}>{props.children}</text>
           </Show>
@@ -133,7 +140,11 @@ export function TextSpinner(props: { frames: string[]; color?: RGBA; children?: 
   const glyph = () => (props.frames.length === 0 ? "⋯" : props.frames[i()])
   return (
     <box flexDirection="row" gap={1}>
-      <text fg={props.color}>{glyph()}</text>
+      {/* Reserved and unwrappable, as in the native-glyph path above: the mark
+          is one cell and must stay one cell, whatever the label beside it does. */}
+      <text fg={props.color} wrapMode="none" flexShrink={0}>
+        {glyph()}
+      </text>
       <Show when={props.children}>
         <text fg={props.color}>{props.children}</text>
       </Show>

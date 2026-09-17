@@ -93,11 +93,26 @@ export function Separator(props: { axis?: Axis; color?: ColorInput; start?: Sepa
       }
     >
       <box height={1} flexShrink={0} flexDirection="row">
-        <Show when={props.start}>{(edge) => <text fg={color()}>{horizontalEdge(edge(), "start")}</text>}</Show>
-        <text fg={color()} flexGrow={1}>
+        {/* The rule's two ends are single cells that say how the rule connects,
+            so they are reserved; the dither between them is the row's elastic
+            part, and a clipped pattern still reads as a rule. */}
+        <Show when={props.start}>
+          {(edge) => (
+            <text fg={color()} wrapMode="none" flexShrink={0}>
+              {horizontalEdge(edge(), "start")}
+            </text>
+          )}
+        </Show>
+        <text fg={color()} flexGrow={1} wrapMode="none">
           {arcanaDitherPattern(`diff-${props.start ?? ""}-${props.end ?? ""}`, 96)}
         </text>
-        <Show when={props.end}>{(edge) => <text fg={color()}>{horizontalEdge(edge(), "end")}</text>}</Show>
+        <Show when={props.end}>
+          {(edge) => (
+            <text fg={color()} wrapMode="none" flexShrink={0}>
+              {horizontalEdge(edge(), "end")}
+            </text>
+          )}
+        </Show>
       </box>
     </Show>
   )

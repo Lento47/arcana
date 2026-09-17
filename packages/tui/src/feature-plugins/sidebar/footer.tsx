@@ -4,8 +4,13 @@ import { createMemo, createSignal, Show } from "solid-js"
 import { abbreviateHome } from "../../runtime"
 import { useTuiPaths } from "../../context/runtime"
 import { APP_NAME, Glyph } from "../../branding"
+import { Locale } from "../../util/locale"
 
 const id = "internal:sidebar-footer"
+
+/** The sidebar column's own content budget, as the modified-files list beside
+ *  the path assumes. */
+const LINE_BUDGET = 36
 
 function View(props: { api: TuiPluginApi; sessionID: string }) {
   const paths = useTuiPaths()
@@ -31,6 +36,29 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
     }
   })
 
+  /**
+   * The one line of the footer that can be any length at all: an absolute path
+   * out of a deep checkout runs past the column, and a path has no spaces for
+   * word wrap to break at, so it broke mid-token and grew the footer to three
+   * lines. It now loses its head, not its tail — `…/packages/tui` still says
+   * where you are, where a clipped `/home/operator/wor` says only where you
+   * came from — and the name is measured first so it is never the part that
+   * goes. The budget is the column's own, the same 36 the modified-files list
+   * beside it budgets against.
+   */
+  const place = createMemo(() => {
+    const { parent, name } = path()
+    const tail = Locale.displayWidth(name) > LINE_BUDGET ? Locale.truncateLeft(name, LINE_BUDGET) : name
+    const room = LINE_BUDGET - Locale.displayWidth(tail) - 1
+    const head =
+      room < 1
+        ? ""
+        : Locale.displayWidth(parent) + 1 <= room
+          ? `${parent}/`
+          : `${Locale.truncateLeft(parent, room - 1)}/`
+    return { head, tail }
+  })
+
   return (
     <box gap={1}>
       <Show when={show()}>
@@ -51,11 +79,15 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
               <text fg={theme().text}>
                 <b>Getting Started</b>
               </text>
+              {/* The dismiss is a control at the card's edge: reserved, and
+                  never the thing that wraps. The heading beside it is elastic. */}
               <text
                 fg={dismissHovered() ? theme().text : theme().textMuted}
                 onMouseDown={() => props.api.kv.set("dismissed_getting_started", true)}
                 onMouseOver={() => setDismissHovered(true)}
                 onMouseOut={() => setDismissHovered(false)}
+                wrapMode="none"
+                flexShrink={0}
               >
                 ✕
               </text>
@@ -66,14 +98,18 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
             </text>
             <box flexDirection="row" gap={1} justifyContent="space-between">
               <text fg={theme().text}>Connect Provider</text>
-              <text fg={theme().textMuted}>/connect</text>
+              {/* The command is a readout: whole, at its own width, at the
+                  card's right edge. It is not a word to wrap. */}
+              <text fg={theme().textMuted} wrapMode="none" flexShrink={0}>
+                /connect
+              </text>
             </box>
           </box>
         </box>
       </Show>
-      <text>
-        <span style={{ fg: theme().textMuted }}>{path().parent}/</span>
-        <span style={{ fg: theme().text }}>{path().name}</span>
+      <text wrapMode="none">
+        <span style={{ fg: theme().textMuted }}>{place().head}</span>
+        <span style={{ fg: theme().text }}>{place().tail}</span>
       </text>
       <text fg={theme().textMuted}>
         <span style={{ fg: theme().primary }}>{Glyph.sigil}</span>{" "}

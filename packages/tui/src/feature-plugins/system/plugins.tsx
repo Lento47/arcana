@@ -54,12 +54,23 @@ function Install(props: { api: TuiPluginApi }) {
       busyText="Installing plugin…"
       description={() => (
         <box flexDirection="row" gap={1}>
-          <text fg={props.api.theme.current.textMuted}>scope:</text>
-          <text fg={busy() ? props.api.theme.current.textMuted : props.api.theme.current.text}>
+          {/* Every segment of this line is fixed vocabulary — a label, one of
+              two words, a hint — so none of them is elastic and none of them
+              can be the thing that gives way. Elastic segments are for prose. */}
+          <text fg={props.api.theme.current.textMuted} wrapMode="none" flexShrink={0}>
+            scope:
+          </text>
+          <text
+            fg={busy() ? props.api.theme.current.textMuted : props.api.theme.current.text}
+            wrapMode="none"
+            flexShrink={0}
+          >
             {global() ? "global" : "local"}
           </text>
           <Show when={!busy()}>
-            <text fg={props.api.theme.current.textMuted}>(tab toggle)</text>
+            <text fg={props.api.theme.current.textMuted} wrapMode="none" flexShrink={0}>
+              (tab toggle)
+            </text>
           </Show>
         </box>
       )}
