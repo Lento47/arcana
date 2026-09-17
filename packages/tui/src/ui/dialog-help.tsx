@@ -36,10 +36,27 @@ export function DialogHelp() {
       <text fg={theme.textMuted}>Type a message and press Enter to begin. Arcana will analyze your codebase and respond.</text>
 
       <text attributes={TextAttributes.BOLD} fg={theme.accent}>Keyboard Shortcuts</text>
-      <box flexDirection="row" gap={1}><text fg={theme.primary}>{commandsCmd()}</text><text fg={theme.textMuted}>Command palette — search all actions</text></box>
-      <box flexDirection="row" gap={1}><text fg={theme.primary}>{sessionNew()}</text><text fg={theme.textMuted}>New session</text></box>
-      <box flexDirection="row" gap={1}><text fg={theme.primary}>{sessionList()}</text><text fg={theme.textMuted}>Session list</text></box>
-      <box flexDirection="row" gap={1}><text fg={theme.primary}>{sessionInterrupt()}</text><text fg={theme.textMuted}>Interrupt the current turn</text></box>
+      {/* A shortcut and what it does: the key is fixed vocabulary and the
+          description is prose, so the description is the segment that wraps and
+          the key is reserved. Unreserved, the first row's key — the longest, at
+          `ctrl+p` next to 37 cells of description — decoded to `ctr`/`l+p` in the
+          medium card's 34-cell column, which is a shortcut nobody can press. */}
+      <box flexDirection="row" gap={1}>
+        <text fg={theme.primary} flexShrink={0} wrapMode="none">{commandsCmd()}</text>
+        <text fg={theme.textMuted}>Command palette — search all actions</text>
+      </box>
+      <box flexDirection="row" gap={1}>
+        <text fg={theme.primary} flexShrink={0} wrapMode="none">{sessionNew()}</text>
+        <text fg={theme.textMuted}>New session</text>
+      </box>
+      <box flexDirection="row" gap={1}>
+        <text fg={theme.primary} flexShrink={0} wrapMode="none">{sessionList()}</text>
+        <text fg={theme.textMuted}>Session list</text>
+      </box>
+      <box flexDirection="row" gap={1}>
+        <text fg={theme.primary} flexShrink={0} wrapMode="none">{sessionInterrupt()}</text>
+        <text fg={theme.textMuted}>Interrupt the current turn</text>
+      </box>
 
       <text attributes={TextAttributes.BOLD} fg={theme.accent}>Tips</text>
       <text fg={theme.textMuted}>• Start a message with ! to run shell commands directly (e.g., !ls -la)</text>

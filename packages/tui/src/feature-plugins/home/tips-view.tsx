@@ -150,7 +150,10 @@ export function Tips(props: { api: TuiPluginApi; connected?: boolean }) {
 
   return (
     <box flexDirection="row" maxWidth="100%">
-      <text flexShrink={0} style={{ fg: theme.primary }}>
+      {/* Reserved *and* unwrappable: the label is the tip's identity and the
+          tip itself is the elastic half, so `wrapMode="none"` is what keeps a
+          narrow home row from turning this into two lines of heading. */}
+      <text flexShrink={0} wrapMode="none" style={{ fg: theme.primary }}>
         {Glyph.star} arcane tip{" "}
       </text>
       <text flexShrink={1} wrapMode="word">

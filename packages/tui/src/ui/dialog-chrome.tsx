@@ -235,10 +235,15 @@ export function DialogOptionRow(props: {
       backgroundColor={props.active ? theme.backgroundElement : undefined}
       onMouseUp={props.onPress}
     >
-      <text fg={props.active ? theme.primary : theme.textMuted}>
+      {/* The glyph and the label: the glyph is the toggle's state and the label
+          is its name, so the row is reserved against both and the label clips
+          rather than the tick vanishing out of its cell. */}
+      <text fg={props.active ? theme.primary : theme.textMuted} wrapMode="none" flexShrink={0}>
         {props.checked ? Glyph.checked : Glyph.unchecked}
       </text>
-      <text fg={props.active ? theme.primary : theme.text}>{props.label}</text>
+      <text fg={props.active ? theme.primary : theme.text} wrapMode="none" flexShrink={1} overflow="hidden">
+        {props.label}
+      </text>
     </box>
   )
 }

@@ -206,11 +206,21 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
             <text fg={theme.text} attributes={TextAttributes.BOLD}>
               Workspace consent
             </text>
-            <box flexDirection="row" gap={2}>
+            {/* Three affordances, 61 cells between them, in a card whose
+                content column is 42 at its own minimum width. They do not fit on
+                one row and cannot be made to: left elastic, each phrase shrinks
+                and wraps inside itself (`[g] Grant` / `workspace`), so the row
+                grows a line anyway *and* the affordances stop reading as
+                `[key] verb`. Wrapping the row instead makes each phrase a unit —
+                two fit per line, the third takes the next — and every hint stays
+                whole. */}
+            <box flexDirection="row" gap={2} flexWrap="wrap">
               <text
                 fg={disclosure() && !busy() ? theme.primary : theme.textMuted}
                 attributes={TextAttributes.UNDERLINE}
                 onMouseUp={() => requestGrant("workspace")}
+                flexShrink={0}
+                wrapMode="none"
               >
                 [g] Grant workspace
               </text>
@@ -218,6 +228,8 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
                 fg={!busy() ? theme.warning : theme.textMuted}
                 attributes={TextAttributes.UNDERLINE}
                 onMouseUp={() => requestRevoke("workspace")}
+                flexShrink={0}
+                wrapMode="none"
               >
                 [r] Revoke workspace
               </text>
@@ -225,6 +237,8 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
                 fg={disclosure() && !busy() ? theme.primary : theme.textMuted}
                 attributes={TextAttributes.UNDERLINE}
                 onMouseUp={requestInherit}
+                flexShrink={0}
+                wrapMode="none"
               >
                 [i] Inherit device
               </text>
@@ -236,11 +250,15 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
             <text fg={theme.textMuted} wrapMode="word">
               Device consent applies only to workspaces configured to inherit it.
             </text>
-            <box flexDirection="row" gap={2}>
+            {/* The same shape as the workspace row above, and the same rule:
+                hints are units that wrap between each other, never inside. */}
+            <box flexDirection="row" gap={2} flexWrap="wrap">
               <text
                 fg={disclosure() && !busy() ? theme.primary : theme.textMuted}
                 attributes={TextAttributes.UNDERLINE}
                 onMouseUp={() => requestGrant("device")}
+                flexShrink={0}
+                wrapMode="none"
               >
                 [d] Grant device
               </text>
@@ -248,6 +266,8 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
                 fg={!busy() ? theme.warning : theme.textMuted}
                 attributes={TextAttributes.UNDERLINE}
                 onMouseUp={() => requestRevoke("device")}
+                flexShrink={0}
+                wrapMode="none"
               >
                 [x] Revoke device
               </text>
@@ -263,11 +283,13 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
             <text fg={theme.text} wrapMode="word">
               {consentConfirmMessage(choice())}
             </text>
-            <box flexDirection="row" gap={2}>
+            <box flexDirection="row" gap={2} flexWrap="wrap">
               <text
                 fg={!busy() ? theme.primary : theme.textMuted}
                 attributes={TextAttributes.UNDERLINE}
                 onMouseUp={confirmPending}
+                flexShrink={0}
+                wrapMode="none"
               >
                 [enter] Confirm
               </text>
@@ -278,6 +300,8 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
                 fg={theme.textMuted}
                 attributes={TextAttributes.UNDERLINE}
                 onMouseUp={() => !busy() && setPending(undefined)}
+                flexShrink={0}
+                wrapMode="none"
               >
                 Cancel
               </text>

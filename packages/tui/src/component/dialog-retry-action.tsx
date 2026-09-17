@@ -1,6 +1,7 @@
 import { RGBA, TextAttributes } from "@opentui/core"
 import open from "open"
 import { createMemo, createSignal, Show } from "solid-js"
+import { useRenderer } from "@opentui/solid"
 import { selectedForeground, useTheme } from "../context/theme"
 import { useDialog, type DialogContext } from "../ui/dialog"
 import { OVERLAY_ALPHA, withAlpha } from "../theme/emphasis"
@@ -11,10 +12,20 @@ import { useBindings } from "../keymap"
 import { DialogCloseHint } from "../ui/dialog-chrome"
 import { Space } from "../ui/chrome"
 import { COPY } from "../branding"
+import { Locale } from "../util/locale"
+import { useTerminalSize } from "../util/terminal-size"
+import { dialogMaxWidth, dialogWidth } from "../util/geometry"
 
 const GO_URL = "https://arcana.otnelhq.com/go"
 /** Bleed for the decorative pulse behind the card, in rows. */
 const PAD_TOP_OUTER = 1
+/**
+ * The card's own chrome, taken off the dialog's width to get the row's: the
+ * card's border, and the two columns of padding this component puts inside it.
+ */
+const CARD_CHROME = 2 + Space.padX * 2
+/** A button is its label plus the padding either side of it. */
+const buttonWidth = (label: string) => Space.padX * 2 + Locale.displayWidth(label)
 
 export type DialogRetryActionProps = {
   title: string
@@ -44,6 +55,7 @@ export function DialogRetryAction(props: DialogRetryActionProps) {
   const dialog = useDialog()
   const { theme } = useTheme()
   const kv = useKV()
+  const term = useTerminalSize(useRenderer())
   const fg = selectedForeground(theme)
   const showGoTreatment = () => props.link === GO_URL
   const textBg = () => (showGoTreatment() ? panelOverlay(theme.backgroundPanel) : undefined)
@@ -51,6 +63,24 @@ export function DialogRetryAction(props: DialogRetryActionProps) {
   const motionEnabled = () => showGoTreatment() && kv.get("animations_enabled", true)
   const inactiveBg = createMemo(() => textBg() ?? (theme.background.a < 1 ? theme.backgroundPanel : theme.background))
   const [selected, setSelected] = createSignal<"dismiss" | "action">("action")
+
+  /**
+   * Whether the two buttons fit on one row, measured from the dialog's own
+   * geometry rather than from the terminal: the card is the medium default
+   * unless a caller resized it, and the row's room is that width less the
+   * card's chrome. Unmeasured (`width === 0`, before the first layout) is not
+   * narrow — a card that starts stacked and then reflows is a visible jump.
+   *
+   * Stacked is the honest answer below the pair's width. Inline, one of the two
+   * has to give, and the one that goes is the action: the row would rather drop
+   * `Retry` to its own row than spell it wrongly.
+   */
+  const stacks = createMemo(() => {
+    const width = term().width
+    if (width === 0) return false
+    const card = Math.max(1, Math.min(dialogWidth(width, "medium"), dialogMaxWidth(width)))
+    return card - CARD_CHROME < buttonWidth(COPY.dialog.dontShowAgain) + buttonWidth(props.label)
+  })
 
   useBindings(() => ({
     bindings: [
@@ -127,13 +157,17 @@ export function DialogRetryAction(props: DialogRetryActionProps) {
         ) : (
           <box paddingBottom={1} />
         )}
-        <box flexDirection="row" justifyContent="space-between">
+        <box
+          flexDirection={stacks() ? "column" : "row"}
+          justifyContent={stacks() ? "flex-end" : "space-between"}
+          alignItems={stacks() ? "flex-end" : undefined}
+          gap={stacks() ? 1 : 0}
+        >
           {/* Two buttons, both fixed vocabulary, both the whole of what they say
-              — `Don't show again` and the action verb. Left flexible, Yoga
-              shares the deficit between them and decodes both (`Don't show
-              agai`/`n`, `Retr`/`y`); reserved, the worst case is the row
-              overhanging its own edge rather than a button that no longer reads
-              as the thing you are about to press. */}
+              — `Don't Show Again` and the action verb. Neither is elastic: a row
+              too narrow for both puts the action on its own row instead, so the
+              worst case is a taller card rather than a button that no longer
+              reads as the thing you are about to press. */}
           <box
             flexShrink={0}
             paddingLeft={Space.padX}

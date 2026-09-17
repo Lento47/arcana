@@ -549,12 +549,16 @@ function WhichKeyPanel(props: {
         <Show when={footerVisible()}>
           <box height={FOOTER_MARGIN} flexShrink={0} />
           <box width="100%" flexDirection="row" justifyContent="space-between" flexShrink={0}>
-            <box>
+            {/* The two hints are what the mode keys do, and each is `verb key`
+                in one text node so it reads as one phrase. Reserved as a pair:
+                the keys here can be long (`ctrl+shift+k`), and the row is the
+                only place both modes are named. */}
+            <box flexShrink={0}>
               <text fg={look().text} wrapMode="none">
                 Toggle <span style={{ fg: look().subtle }}>{trigger() || command.toggle}</span>
               </text>
             </box>
-            <box>
+            <box flexShrink={0}>
               <text fg={look().text} wrapMode="none">
                 {nextMode() === "dock" ? "Dock" : "Overlay"}{" "}
                 <span style={{ fg: look().subtle }}>{modeTrigger() || command.toggleLayout}</span>

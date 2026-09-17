@@ -22,9 +22,11 @@ function View(props: { api: TuiPluginApi }) {
         backgroundColor={hovered() && list().length > 2 ? theme().backgroundElement : undefined}
       >
         <Show when={list().length > 2}>
-          <text fg={theme().text}>{open() ? "▼" : "▶"}</text>
+          <text fg={theme().text} wrapMode="none" flexShrink={0}>
+            {open() ? "▼" : "▶"}
+          </text>
         </Show>
-        <text fg={theme().text}>
+        <text fg={theme().text} wrapMode="none" flexShrink={0}>
           <span style={{ fg: theme().accent }}>◆ </span>
           <b>LSP</b>
         </text>
