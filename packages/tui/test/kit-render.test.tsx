@@ -11,6 +11,7 @@ import { testRender } from "@opentui/solid"
 import { RGBA } from "@opentui/core"
 import { TestTuiProviders } from "./fixture/tui-providers"
 import { BrailleChart } from "../src/ui/kit/braille-chart"
+import { Breadcrumbs } from "../src/ui/kit/breadcrumbs"
 import { Card } from "../src/ui/kit/card"
 import { Collapsible } from "../src/ui/kit/collapsible"
 import { Gauge } from "../src/ui/kit/gauge-view"
@@ -20,6 +21,8 @@ import { Minimap } from "../src/ui/kit/minimap-view"
 import { Progress } from "../src/ui/kit/progress-view"
 import { Sparkline } from "../src/ui/kit/sparkline-view"
 import { timelineCells } from "../src/ui/kit/timeline"
+import { flattenTree } from "../src/ui/kit/tree"
+import { Tree } from "../src/ui/kit/tree-view"
 import { Waterfall } from "../src/ui/kit/waterfall-view"
 
 test("kit components render their values, not placeholders", async () => {
@@ -190,6 +193,49 @@ test("the minimap strip paints marks and density cells", async () => {
     expect(frame).toContain("✗")
     expect(frame).toContain("┈")
     expect(frame).toContain("▓")
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
+test("tree and breadcrumbs render rails, marks and crumbs", async () => {
+  const rows = flattenTree(
+    [
+      {
+        id: "root",
+        label: "main session",
+        children: [{ id: "kid", label: "audit anti-slop", mark: "△" }],
+      },
+    ],
+    new Set(["root"]),
+  )
+  const app = await testRender(
+    () => (
+      <TestTuiProviders>
+        <box flexDirection="column" width="100%" height="100%">
+          <Breadcrumbs items={["main session", "audit anti-slop"]} />
+          <Tree rows={rows} />
+        </box>
+      </TestTuiProviders>
+    ),
+    { width: 60, height: 12 },
+  )
+
+  try {
+    let frame = ""
+    for (let attempt = 0; attempt < 12; attempt++) {
+      await app.renderOnce()
+      await app.flush()
+      const next = app.captureCharFrame()
+      if (next.trim().length > 0 && next === frame) break
+      frame = next
+      await Bun.sleep(20)
+    }
+    expect(frame).toContain("main session")
+    expect(frame).toContain("›")
+    expect(frame).toContain("└─")
+    expect(frame).toContain("audit anti-slop")
+    expect(frame).toContain("△")
   } finally {
     app.renderer.destroy()
   }

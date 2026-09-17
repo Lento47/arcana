@@ -7,6 +7,7 @@ import { chunks, clamp01, extent, normalize } from "../src/ui/kit/scale"
 import { SparkMean, sparkline, SPARK_GLYPHS } from "../src/ui/kit/sparkline"
 import { burnSeries } from "../src/ui/kit/telemetry"
 import { timelineCells, timelineLanes } from "../src/ui/kit/timeline"
+import { ancestry, flattenTree } from "../src/ui/kit/tree"
 
 describe("kit scale", () => {
   test("clamp01 bounds and forgives non-finite input", () => {
@@ -285,5 +286,42 @@ describe("kit minimap", () => {
     expect(jumpScrollTop({ row: 0, rows: 10, scrollHeight: 1000, viewportHeight: 200 })).toBe(0)
     expect(jumpScrollTop({ row: 5, rows: 1, scrollHeight: 1000, viewportHeight: 200 })).toBe(0)
     expect(jumpScrollTop({ row: 1, rows: 2, scrollHeight: 100, viewportHeight: 200 })).toBe(0)
+  })
+})
+
+describe("kit tree", () => {
+  test("rails mark last children and collapse hides subtrees", () => {
+    const nodes = [
+      {
+        id: "a",
+        label: "a",
+        children: [
+          { id: "b", label: "b" },
+          { id: "c", label: "c", children: [{ id: "d", label: "d" }] },
+        ],
+      },
+    ]
+    const rows = flattenTree(nodes, new Set(["a", "c"]))
+    expect(rows.map((row) => [row.id, row.rail, row.depth])).toEqual([
+      ["a", "└─ ", 0],
+      ["b", "   ├─ ", 1],
+      ["c", "   └─ ", 1],
+      ["d", "      └─ ", 2],
+    ])
+    const collapsed = flattenTree(nodes, new Set(["a"]))
+    expect(collapsed.map((row) => row.id)).toEqual(["a", "b", "c"])
+    const c = collapsed.find((row) => row.id === "c")!
+    expect(c.hasChildren).toBe(true)
+    expect(c.expanded).toBe(false)
+  })
+
+  test("ancestry walks to the root and stops on cycles", () => {
+    expect(
+      ancestry([{ id: "a" }, { id: "b", parentID: "a" }, { id: "c", parentID: "b" }], "c").map((node) => node.id),
+    ).toEqual(["a", "b", "c"])
+    expect(ancestry([{ id: "x", parentID: "y" }, { id: "y", parentID: "x" }], "x").map((node) => node.id)).toEqual([
+      "y",
+      "x",
+    ])
   })
 })

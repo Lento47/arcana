@@ -35,6 +35,7 @@ import { DialogHelp } from "./ui/dialog-help"
 import { DialogNotices } from "./ui/dialog-notices"
 import { DialogPulse } from "./ui/dialog-pulse"
 import { DialogTimeline } from "./ui/dialog-timeline"
+import { DialogXray } from "./ui/dialog-xray"
 import { DialogRunProofContract, DialogRunProofActions, DialogRunProofDiffGate, DialogRunProofVerify, DialogRunProofSovereignty, DialogRunProofMissing } from "./proof-view/run-proof-dialogs"
 import { loadActiveRunProof, stageActiveRunProofRollbackRestore, approveActiveRunProofRollbackRestore } from "./proof-io"
 import { displaySessionTitle } from "./util/session"
@@ -742,6 +743,15 @@ export function buildAppCommands(deps: {
       slashName: "timeline",
       run: () => {
         deps.dialog.replace(() => <DialogTimeline />)
+      },
+      category: "System",
+    },
+    {
+      name: "xray.show",
+      title: "X-ray",
+      slashName: "xray",
+      run: () => {
+        deps.dialog.replace(() => <DialogXray />)
       },
       category: "System",
     },
