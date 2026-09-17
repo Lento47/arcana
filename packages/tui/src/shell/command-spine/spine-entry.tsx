@@ -31,6 +31,7 @@ import { taskRowChrome, toolChipModel } from "./spine-chrome"
 import { toolChipSummaryBudget } from "./spine-tool-chip"
 import { canToggleSpineEntry } from "./spine-navigation"
 import { HairlineBorder } from "../../ui/border"
+import { RoundBorder } from "../../ui/chrome"
 import type { StreamFrameGate } from "../../util/stream-frame"
 import {
   toSpineEntryView,
@@ -1108,22 +1109,20 @@ export function SpineEntry(props: {
                 if (!clean) return ""
                 return truncate(clean, Math.max(16, Math.floor((props.contentWidth ?? 80) - 4)))
               })
-              // Status line: handover state + progress + the dive affordance. The
-              // header chip already owns the live dot and elapsed time, so neither
-              // is repeated here; the hint bar owns the full key legend, so the
-              // inline affordance stays terse.
+              // Status strip: handover state + progress, composed in the card
+              // title row (the dive affordance renders right-aligned). The header
+              // chip already owns the live dot and elapsed time, so neither is
+              // repeated here.
               const stepSummary = () => {
                 const completed = childSteps().length
                 if (completed > 0) return `${completed} ${completed === 1 ? "step" : "steps"}`
                 return chrome().childHint
               }
-              const statusLine = () => {
-                const segments = [chrome().cue]
-                const steps = stepSummary()
-                if (steps) segments.push(steps)
-                if (childSessionID()) segments.push("↵ open")
-                return segments.join(" · ")
-              }
+              // The card is a full block: border (2) + horizontal padding (2), on
+              // top of the rail column. Prose wrapped to the outer content width
+              // would overflow the card, so the body gets the card's real budget.
+              const cardContentWidth = () =>
+                Math.max(16, Math.floor((props.contentWidth ?? 80) - spineRailWidth(props.layout) - 4))
               // Hydrate the child session's messages/parts once the session is
               // resolvable, so the step list renders without navigating away.
               // Mirrors the legacy subagent route's onMount sync.
@@ -1146,32 +1145,59 @@ export function SpineEntry(props: {
                     onDisclosureMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
                   />
 
-                  {/* Live delegation keeps a restrained context surface. Once
-                      returned, the same content collapses to a normal branch
-                      receipt instead of leaving a permanent boxed card. */}
+                  {/* Subagent card: a whole block, not a transcript line. Full
+                      round border + panel fill; the title strip carries state,
+                      progress and the dive affordance, the body carries the live
+                      relay or the returned receipt. The rail column stays blank
+                      so the card aligns with the header chip without drawing a
+                      continuation rule through it. */}
                   <box flexDirection="row" flexShrink={0} alignItems="flex-start">
-                    <SpineRail layout={props.layout} active={props.focused} />
-                    <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={1} paddingRight={1}>
+                    <SpineRail layout={props.layout} glyph=" " active={false} />
+                    <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={1}>
                       <box
                         flexDirection="column"
                         flexShrink={0}
                         width="100%"
-                        border={v().streaming ? ["left"] : []}
-                        borderColor={v().streaming ? theme.accent : theme.spineOk}
-                        customBorderChars={HairlineBorder}
-                        backgroundColor={v().streaming ? theme.backgroundPanel : undefined}
+                        border={true}
+                        customBorderChars={RoundBorder}
+                        borderColor={(v().streaming ? theme.accent : (theme.borderSubtle ?? theme.spineOk)) as any}
+                        backgroundColor={theme.backgroundPanel}
                         paddingLeft={1}
-                        paddingRight={v().streaming ? 1 : 0}
+                        paddingRight={1}
+                        paddingBottom={1}
                       >
-                        <text fg={v().streaming ? theme.accent : theme.spineOk} wrapMode="none">
-                          {statusLine()}
-                        </text>
+                        {/* Title strip: state on the left, dive affordance right. */}
+                        <box flexDirection="row" flexShrink={0} alignItems="center" gap={1}>
+                          <text fg={v().streaming ? theme.accent : theme.spineOk} wrapMode="none">
+                            {chrome().cue}
+                          </text>
+                          <Show when={stepSummary()}>
+                            <text fg={theme.spineContext} wrapMode="none">
+                              · {stepSummary()}
+                            </text>
+                          </Show>
+                          <box flexGrow={1} minWidth={1} />
+                          <Show when={childSessionID()}>
+                            <box
+                              flexShrink={0}
+                              paddingLeft={1}
+                              paddingRight={1}
+                              backgroundColor={theme.backgroundElement}
+                            >
+                              <text fg={theme.spineBrand} wrapMode="none">
+                                ↵ open
+                              </text>
+                            </box>
+                          </Show>
+                        </box>
                         {/* Collapsed outcome preview — one line of the returned report
                             so the card is scannable without expanding it. */}
                         <Show when={!v().streaming && !bodyExpanded() && !!reportPreview()}>
-                          <text fg={theme.spineContext} wrapMode="none">
-                            {reportPreview()}
-                          </text>
+                          <box paddingTop={1}>
+                            <text fg={theme.spineContext} wrapMode="none">
+                              {reportPreview()}
+                            </text>
+                          </box>
                         </Show>
                         {/* Completed step list — what the subagent actually did,
                             capped so a busy subagent cannot flood the spine. */}
@@ -1191,30 +1217,32 @@ export function SpineEntry(props: {
                             </Show>
                           </box>
                         </Show>
-                        {/* Working panel while delegated — its own context, not shared.
-                            The engine relays live preliminary text (streaming subagent
-                            progress); the newest line is the brightest so the stream
-                            point is obvious, and an older-line ellipsis marks the cut. */}
+                        {/* Working body while delegated — the engine relays live
+                            preliminary text; the newest line is the brightest so
+                            the stream point is obvious, and an older-line ellipsis
+                            marks the cut. */}
                         <Show when={v().streaming}>
-                          <Show
-                            when={liveLines().lines.length > 0}
-                            fallback={
-                              <text fg={theme.spineContext} wrapMode="word">
-                                Working in the {v().label || "subagent"} context…
-                              </text>
-                            }
-                          >
-                            <For each={liveLines().lines}>
-                              {(line, i) => (
-                                <text
-                                  fg={i() === liveLines().lines.length - 1 ? theme.text : theme.spineContext}
-                                  wrapMode="word"
-                                >
-                                  {i() === 0 && liveLines().clipped ? `… ${line}` : line}
+                          <box flexDirection="column" paddingTop={1}>
+                            <Show
+                              when={liveLines().lines.length > 0}
+                              fallback={
+                                <text fg={theme.spineContext} wrapMode="word">
+                                  Working in the {v().label || "subagent"} context…
                                 </text>
-                              )}
-                            </For>
-                          </Show>
+                              }
+                            >
+                              <For each={liveLines().lines}>
+                                {(line, i) => (
+                                  <text
+                                    fg={i() === liveLines().lines.length - 1 ? theme.text : theme.spineContext}
+                                    wrapMode="word"
+                                  >
+                                    {i() === 0 && liveLines().clipped ? `… ${line}` : line}
+                                  </text>
+                                )}
+                              </For>
+                            </Show>
+                          </box>
                         </Show>
                         {/* Returned report/body when expanded. */}
                         <Show when={!v().streaming && bodyExpanded() && !!cardBody()?.trim()}>
@@ -1228,7 +1256,7 @@ export function SpineEntry(props: {
                               streaming={false}
                               focused={props.focused}
                               reminders={entryReminders()}
-                              contentWidth={props.contentWidth}
+                              contentWidth={cardContentWidth()}
                               streamFrame={props.streamFrame}
                             />
                           </box>

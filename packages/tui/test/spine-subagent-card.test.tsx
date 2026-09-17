@@ -150,8 +150,11 @@ test("running card: terse status, bounded live ticker, elapsed only in the heade
   ])
   const frame = harness.app.captureCharFrame()
 
-  // Status: handover cue + dive affordance, no duplicated bullet/elapsed.
-  expect(frame).toContain("delegated · ↵ open")
+  // Whole block card: full round border, title strip, dive badge.
+  expect(frame).toContain("╭")
+  expect(frame).toContain("╯")
+  expect(frame).toContain("delegated")
+  expect(frame).toContain("↵ open")
   expect(frame).not.toContain("↵ enter its context")
 
   // Elapsed lives in the header only — exactly one occurrence on the row.
