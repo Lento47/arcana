@@ -34,20 +34,39 @@ export function isThinkingMode(value: unknown): value is ThinkingMode {
   return typeof value === "string" && (MODES as readonly string[]).includes(value)
 }
 
+/**
+ * Resolve the effective thinking mode from stored + legacy values.
+ *
+ * - Explicit legacy `thinking_visibility === false` still hides.
+ * - One-time migration (`migrated === false`): the old build seeded "hide"
+ *   into KV via `kv.signal`, so an untouched install reads "hide" too. The
+ *   product default is now inline thinking, so that value flips to "show"
+ *   once; afterwards a stored "hide" is a real operator choice and sticks.
+ * - "minimal" was a legacy store value and stays collapsed.
+ */
+export function resolveThinkingMode(input: {
+  stored: unknown
+  legacy: unknown
+  migrated: boolean
+}): ThinkingMode {
+  if (input.legacy === false) return "hide"
+  if (input.stored === "minimal") return "hide"
+  const storedMode = isThinkingMode(input.stored) ? input.stored : "show"
+  if (!input.migrated && (input.stored === undefined || storedMode === "hide")) return "show"
+  return storedMode
+}
+
 // Cycle order matches the slash command: show → hide → show.
 export function nextThinkingMode(current: ThinkingMode): ThinkingMode {
   const idx = MODES.indexOf(current)
   return MODES[(idx + 1) % MODES.length] ?? "show"
 }
 
+const INLINE_MIGRATION_KEY = "thinking_inline_default_v1"
+
 export function useThinkingMode() {
   const kv = useKV()
-  // Capture pre-state before `kv.signal` seeds a default, so we can detect
-  // first-time users with a legacy `thinking_visibility` boolean and migrate.
-  // The KVProvider only renders children once kv.ready, so reads here are safe.
-  const hadStored = kv.get("thinking_mode") !== undefined
-  const legacy = kv.get("thinking_visibility")
-  const [stored, setStored] = kv.signal<ThinkingMode>("thinking_mode", "hide")
+  const [stored, setStored] = kv.signal<ThinkingMode>("thinking_mode", "show")
 
   // The kv signal exposes its setter typed as `Setter<T>` which carries Solid's
   // overload set; passing an updater fn through a property access loses the
@@ -59,20 +78,19 @@ export function useThinkingMode() {
     else setStored(() => next)
   }
 
-  // Preserve previous experience for users who had explicitly toggled the
-  // legacy `thinking_visibility` boolean. First-time users (no legacy key)
-  // get the new "hide" default (collapsed thinking).
-  if (!hadStored) {
-    if (legacy === true) set("show")
-    else if (legacy === false) set("hide")
+  const migrated = kv.get(INLINE_MIGRATION_KEY) === true
+  const legacy = kv.get("thinking_visibility")
+
+  // One-time flip of the old seeded "hide" default — see resolveThinkingMode.
+  if (!migrated) {
+    kv.set(INLINE_MIGRATION_KEY, true)
+    const resolved = resolveThinkingMode({ stored: stored(), legacy, migrated: false })
+    if (resolved !== stored()) set(resolved)
   }
 
-  if ((stored() as string) === "minimal") set("hide")
-
-  const mode = createMemo<ThinkingMode>(() => {
-    const value = stored()
-    return isThinkingMode(value) ? value : "hide"
-  })
+  const mode = createMemo<ThinkingMode>(() =>
+    resolveThinkingMode({ stored: stored(), legacy, migrated: true }),
+  )
 
   return {
     mode,

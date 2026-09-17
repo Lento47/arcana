@@ -600,10 +600,12 @@ export function SpineEntry(props: {
       return
     }
     if (event.button !== undefined && event.button !== MouseButton.LEFT) return
-    // A collapsed row is one generous click target. Once expanded, body
-    // clicks remain available for selection and only the header/disclosure
-    // collapses it again.
-    if (entryToggleable() && !expanded()) handleToggle(event)
+    // A collapsed row is one generous click target. Expanded THINK rows are
+    // the same: the reasoning block is inline, so clicking it hides it again
+    // (drag-selection is preserved by the hasMeaningfulSelection guard above).
+    // Other expanded rows keep body clicks for text selection and collapse via
+    // the header/disclosure.
+    if (entryToggleable() && (!expanded() || isThinkRow())) handleToggle(event)
   }
 
   // Disclosure is a header action. Body clicks only focus/select text.

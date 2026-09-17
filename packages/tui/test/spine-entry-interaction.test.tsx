@@ -214,6 +214,43 @@ test("left-click anywhere on a collapsed thinking row expands it", async () => {
   }
 })
 
+test("left-click on an expanded thinking block hides it", async () => {
+  let toggleCount = 0
+  const app = await testRender(
+    () =>
+      withProviders(() => {
+        const [expanded, setExpanded] = createSignal(true)
+        return (
+          <box flexDirection="column" width="100%" height="100%">
+            <SpineEntry
+              entry={thinkEntry}
+              layout="wide"
+              thinkContentWidth={70}
+              expanded={expanded()}
+              onToggle={() => {
+                toggleCount++
+                setExpanded((value) => !value)
+              }}
+            />
+          </box>
+        )
+      }),
+    { width: 80, height: 12, useMouse: true, enableMouseMovement: true },
+  )
+
+  try {
+    const initial = await captureUntil(app, "full reasoning body")
+    expect(initial).toContain("full reasoning body")
+    const body = findText(initial, "full reasoning body")
+    await app.mockMouse.click(body.x, body.y, MouseButton.LEFT)
+
+    expect(toggleCount).toBe(1)
+    expect(await capture(app)).not.toContain("full reasoning body")
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
 test("plain row click fires onFocus exactly once (M4: no double on mousedown+up)", async () => {
   let focusCount = 0
 
