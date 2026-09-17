@@ -7,10 +7,10 @@
 
 ## Card states (spine-entry.tsx subagent panel)
 
-- The "Working in the … context" line is a FALLBACK shown only while `streaming` with empty live output (`preliminaryToolOutput` requires `status==="running"` + string output). Cancelled/pending tasks render no working panel — keep state wording distinct or cards read as duplicated messages.
+- Collapsed subagent rows are a compact strip, not a box: state cue (`delegated`/`returned`) · steps · sibling position (`2/5` when the wave has siblings) · a right-aligned `↵ open` badge that is itself the click target (it navigates to the child; the header above does too). Live relay lines and the returned one-line preview render under the strip; **no placeholder body** — a quiet running card is the strip alone. Five framed one-liners were five empty boxes.
 - Task parts cancelled by turn cleanup (sibling failed → wave cancelled) still render as agent entries; derive liveness/badge from `part.state.status`, never from child heartbeat alone.
-- The delegation renders as a WHOLE BLOCK CARD (full `RoundBorder` + `backgroundPanel` fill), not a rail line: a title strip (`delegated`/`returned` · steps · right-aligned `↵ open` badge) with the body underneath. The rail column stays blank so the card aligns under the header chip; elapsed lives in the header chip only. The live ticker shows the newest `LIVE_OUTPUT_LINES` (2) lines — newest brightest, `…` on the clipped first — the returned step list caps at `MAX_CARD_STEPS` (6) with a `… N more steps` tail, and prose inside the card wraps to `contentWidth - railWidth - 4`, never the outer width.
-- Collapsed returned cards show a one-line report preview (markers stripped); expanding replaces it with the full markdown body — one-line scan, no duplicate preview.
+- The full `RoundBorder` + `backgroundPanel` card is EXPANDED-only, where the step list and the report need the frame. The rail column stays blank so the card aligns under the header chip; elapsed lives in the header chip only. The live ticker shows the newest `LIVE_OUTPUT_LINES` (2) lines — newest brightest, `…` on the clipped first — the returned step list caps at `MAX_CARD_STEPS` (6) with a `… N more steps` tail, and prose inside the card wraps to `contentWidth - railWidth - 4`, never the outer width.
+- Collapsed returned rows show a one-line report preview (markers stripped) on the strip; expanding replaces it with the full markdown body — one-line scan, no duplicate preview.
 - `^b background` (session.background) is surfaced only by the focused-card hint, and only while the entry is `streaming` and not already `background` (from `state.metadata.background`) — the hint must not offer a no-op.
 
 ## Gates

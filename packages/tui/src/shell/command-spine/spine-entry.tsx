@@ -1095,6 +1095,20 @@ export function SpineEntry(props: {
                 }
                 return steps
               })
+              // Position among the wave's siblings: a subagent row should answer
+              // "which one of the five is this" without entering it. Empty when
+              // the child is an only child — there is nothing to place it among.
+              const siblingPosition = createMemo(() => {
+                const parentID = props.sessionID
+                const childID = childSessionID()
+                if (!parentID || !childID) return ""
+                const siblings = (sync.data.session ?? [])
+                  .filter((s) => s.parentID === parentID)
+                  .toSorted((a, b) => (a.time?.created ?? 0) - (b.time?.created ?? 0))
+                const index = siblings.findIndex((s) => s.id === childID)
+                if (index < 0 || siblings.length < 2) return ""
+                return `${index + 1}/${siblings.length}`
+              })
               const visibleSteps = createMemo(() => childSteps().slice(0, MAX_CARD_STEPS))
               const hiddenStepCount = createMemo(() => Math.max(0, childSteps().length - MAX_CARD_STEPS))
               // The card is a full block: border (2) + horizontal padding (2), on
@@ -1134,6 +1148,8 @@ export function SpineEntry(props: {
                 if (completed > 0) return `${completed} ${completed === 1 ? "step" : "steps"}`
                 return chrome().childHint
               }
+              const [diveHovered, setDiveHovered] = createSignal(false)
+
               // Hydrate the child session's messages/parts once the session is
               // resolvable, so the step list renders without navigating away.
               // Mirrors the legacy subagent route's onMount sync.
@@ -1156,6 +1172,73 @@ export function SpineEntry(props: {
                     onDisclosureMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
                   />
 
+                  {/* Compact collapsed row: the card's chrome, reduced to one
+                      line. A delegation in flight is a *state*, not a document:
+                      the strip carries state, progress and the dive affordance,
+                      and only real content (live relay lines, a returned
+                      preview) renders under it. The frame is reserved for the
+                      expanded view, where the step list and the report need it —
+                      five framed one-liners read as five empty boxes. */}
+                  <Show when={!bodyExpanded()}>
+                    <box flexDirection="row" flexShrink={0} alignItems="flex-start">
+                      <SpineRail layout={props.layout} glyph=" " active={false} />
+                      <box flexDirection="column" flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={Space.unit}>
+                        <box flexDirection="row" minWidth={0}>
+                          <text fg={v().streaming ? theme.accent : theme.spineOk} wrapMode="none" flexShrink={0}>
+                            {chrome().cue}
+                          </text>
+                          <Show when={stepSummary()}>
+                            <text fg={theme.spineContext} wrapMode="none" flexShrink={0}>
+                              · {stepSummary()}
+                            </text>
+                          </Show>
+                          <Show when={siblingPosition()}>
+                            <text fg={theme.spineContext} wrapMode="none" flexShrink={0}>
+                              {" · "}
+                              {siblingPosition()}
+                            </text>
+                          </Show>
+                          <box flexGrow={1} minWidth={1} />
+                          <Show when={childSessionID()}>
+                            <box
+                              flexShrink={0}
+                              paddingLeft={Space.unit}
+                              paddingRight={Space.unit}
+                              backgroundColor={diveHovered() ? theme.backgroundElement : undefined}
+                              onMouseUp={handleSubagentHeaderMouseUp}
+                              onMouseOver={() => setDiveHovered(true)}
+                              onMouseOut={() => setDiveHovered(false)}
+                            >
+                              <text fg={theme.spineBrand} wrapMode="none">
+                                ↵ open
+                              </text>
+                            </box>
+                          </Show>
+                        </box>
+                        <Show when={v().streaming && liveLines().lines.length > 0}>
+                          <For each={liveLines().lines}>
+                            {(line, i) => (
+                              <text
+                                fg={i() === liveLines().lines.length - 1 ? theme.text : theme.spineContext}
+                                wrapMode="word"
+                              >
+                                {i() === 0 && liveLines().clipped ? `… ${line}` : line}
+                              </text>
+                            )}
+                          </For>
+                        </Show>
+                        <Show when={!v().streaming && !!reportPreview()}>
+                          <text fg={theme.spineContext} wrapMode="none">
+                            {reportPreview()}
+                          </text>
+                        </Show>
+                      </box>
+                    </box>
+                  </Show>
+
+                  {/* Expanded: the framed card. Steps, report and the live relay
+                      live here; this is the only place the border earns its rows. */}
+                  <Show when={bodyExpanded()}>
                   {/* Subagent card: a whole block, not a transcript line. Full
                       round border + panel fill; the title strip carries state,
                       progress and the dive affordance, the body carries the live
@@ -1192,13 +1275,22 @@ export function SpineEntry(props: {
                               · {stepSummary()}
                             </text>
                           </Show>
+                          <Show when={siblingPosition()}>
+                            <text fg={theme.spineContext} wrapMode="none" flexShrink={0}>
+                              {" · "}
+                              {siblingPosition()}
+                            </text>
+                          </Show>
                           <box flexGrow={1} minWidth={1} />
                           <Show when={childSessionID()}>
                             <box
                               flexShrink={0}
                               paddingLeft={Space.unit}
                               paddingRight={Space.unit}
-                              backgroundColor={theme.backgroundElement}
+                              backgroundColor={diveHovered() ? theme.backgroundElement : undefined}
+                              onMouseUp={handleSubagentHeaderMouseUp}
+                              onMouseOver={() => setDiveHovered(true)}
+                              onMouseOut={() => setDiveHovered(false)}
                             >
                               <text fg={theme.spineBrand} wrapMode="none">
                                 ↵ open
@@ -1206,18 +1298,10 @@ export function SpineEntry(props: {
                             </box>
                           </Show>
                         </box>
-                        {/* Collapsed outcome preview — one line of the returned report
-                            so the card is scannable without expanding it. */}
-                        <Show when={!v().streaming && !bodyExpanded() && !!reportPreview()}>
-                          <box paddingTop={Space.padY}>
-                            <text fg={theme.spineContext} wrapMode="none">
-                              {reportPreview()}
-                            </text>
-                          </box>
-                        </Show>
                         {/* Completed step list — what the subagent actually did,
-                            capped so a busy subagent cannot flood the spine. */}
-                        <Show when={!v().streaming && bodyExpanded() && childSteps().length > 0}>
+                            capped so a busy subagent cannot flood the spine. The
+                            collapsed preview lives on the compact strip instead. */}
+                        <Show when={!v().streaming && childSteps().length > 0}>
                           <box flexDirection="column" paddingTop={Space.padY}>
                             <For each={visibleSteps()}>
                               {(step) => (
@@ -1236,28 +1320,21 @@ export function SpineEntry(props: {
                         {/* Working body while delegated — the engine relays live
                             preliminary text; the newest line is the brightest so
                             the stream point is obvious, and an older-line ellipsis
-                            marks the cut. */}
-                        <Show when={v().streaming}>
+                            marks the cut. No output yet means no body: a framed
+                            "Working in the X context…" placeholder is how five
+                            cards turned into five empty boxes. */}
+                        <Show when={v().streaming && liveLines().lines.length > 0}>
                           <box flexDirection="column" paddingTop={Space.padY}>
-                            <Show
-                              when={liveLines().lines.length > 0}
-                              fallback={
-                                <text fg={theme.spineContext} wrapMode="word">
-                                  Working in the {v().label || "subagent"} context…
+                            <For each={liveLines().lines}>
+                              {(line, i) => (
+                                <text
+                                  fg={i() === liveLines().lines.length - 1 ? theme.text : theme.spineContext}
+                                  wrapMode="word"
+                                >
+                                  {i() === 0 && liveLines().clipped ? `… ${line}` : line}
                                 </text>
-                              }
-                            >
-                              <For each={liveLines().lines}>
-                                {(line, i) => (
-                                  <text
-                                    fg={i() === liveLines().lines.length - 1 ? theme.text : theme.spineContext}
-                                    wrapMode="word"
-                                  >
-                                    {i() === 0 && liveLines().clipped ? `… ${line}` : line}
-                                  </text>
-                                )}
-                              </For>
-                            </Show>
+                              )}
+                            </For>
                           </box>
                         </Show>
                         {/* Returned report/body when expanded. */}
@@ -1280,6 +1357,7 @@ export function SpineEntry(props: {
                       </box>
                     </box>
                   </box>
+                  </Show>
 
                   <Show when={hasChildren() && expanded()}>
                     <ChildrenGroup

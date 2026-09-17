@@ -140,7 +140,7 @@ afterEach(() => {
   harness = undefined
 })
 
-test("running card: terse status, bounded live ticker, elapsed only in the header", async () => {
+test("running card: one compact strip, bounded live ticker, elapsed only in the header", async () => {
   harness = await renderCards([
     agent({
       id: "live",
@@ -150,12 +150,11 @@ test("running card: terse status, bounded live ticker, elapsed only in the heade
   ])
   const frame = harness.app.captureCharFrame()
 
-  // Whole block card: full round border, title strip, dive badge.
-  expect(frame).toContain("╭")
-  expect(frame).toContain("╯")
+  // Collapsed: no frame. The strip carries state and the dive affordance; the
+  // stream is content under it. Five framed one-liners are five empty boxes.
+  expect(frame).not.toContain("╭")
   expect(frame).toContain("delegated")
   expect(frame).toContain("↵ open")
-  expect(frame).not.toContain("↵ enter its context")
 
   // Elapsed lives in the header only — exactly one occurrence on the row.
   expect(frame.match(/\+12\.4s/g)?.length).toBe(1)
@@ -166,13 +165,20 @@ test("running card: terse status, bounded live ticker, elapsed only in the heade
   expect(frame).not.toContain("oldest line")
 })
 
-test("quiet running card falls back to a terse working line", async () => {
-  harness = await renderCards([agent({ id: "quiet", label: "explore", summary: "Map the mapper" })])
+test("quiet running card is a single strip — no placeholder, no empty box", async () => {
+  harness = await renderCards([
+    agent({
+      id: "quiet",
+      label: "explore",
+      summary: "Map the mapper",
+      source: { messageID: "quiet", partID: "quiet-part", kind: "agent", sessionID: CHILD },
+    }),
+  ])
   const frame = harness.app.captureCharFrame()
   expect(frame).toContain("delegated")
-  expect(frame).toContain("Working in the explore context…")
-  expect(frame).not.toContain("no streamed output")
-  expect(frame).not.toContain("watch it think")
+  expect(frame).toContain("↵ open")
+  expect(frame).not.toContain("Working in the")
+  expect(frame).not.toContain("╭")
 })
 
 test("collapsed returned card previews the report; expanding drops the preview", async () => {
@@ -186,6 +192,8 @@ test("collapsed returned card previews the report; expanding drops the preview",
   let frame = harness.app.captureCharFrame()
   expect(frame).toContain("returned")
   expect(frame).toContain("Verdict")
+  // Collapsed returned rows are compact too: the preview line replaces the box.
+  expect(frame).not.toContain("╭")
 
   harness.app.renderer.destroy()
   harness = await renderCards([entry], { expanded: ["returned"] })
