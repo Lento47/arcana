@@ -1,4 +1,5 @@
 import { createMemo, createSignal, Show } from "solid-js"
+import { Space } from "../ui/chrome"
 import { DialogSelect, type DialogSelectRef } from "../ui/dialog-select"
 import { type DialogContext } from "../ui/dialog"
 import {
@@ -88,7 +89,7 @@ export function CommandPaletteDialog() {
       title={`ARCANA ${arcanaDitherPattern("commands", 12)} Commands`}
       options={list()}
       emptyView={
-        <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+        <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
           <Show
             when={ref()?.filter}
             fallback={<text fg={theme.textMuted}>No commands available. Press esc to close.</text>}

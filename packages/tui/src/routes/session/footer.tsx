@@ -1,4 +1,5 @@
 import { createMemo, Match, onCleanup, onMount, Show, Switch } from "solid-js"
+import { Space } from "../../ui/chrome"
 import { Glyph } from "../../branding"
 import { useTheme } from "../../context/theme"
 import { useSync } from "../../context/sync"
@@ -60,7 +61,7 @@ export function Footer() {
   return (
     <box flexDirection="row" justifyContent="space-between" gap={1} flexShrink={0}>
       <text fg={theme.textMuted}>{directory()}</text>
-      <box gap={2} flexDirection="row" flexShrink={0}>
+      <box gap={Space.gapWide} flexDirection="row" flexShrink={0}>
         <Switch>
           <Match when={store.welcome}>
             <text fg={theme.text}>

@@ -1,4 +1,5 @@
 import { useDialog } from "../ui/dialog"
+import { Space } from "../ui/chrome"
 import { DialogSelect } from "../ui/dialog-select"
 import { useRoute } from "../context/route"
 import { displaySessionTitle } from "../util/session"
@@ -284,14 +285,14 @@ export function DialogSessionList() {
             <Show
               when={searchError()}
               fallback={
-                <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+                <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
                   <text fg={theme.textMuted}>
                     {search() ? COPY.noSessionsMatch : COPY.chronicleEmpty}
                   </text>
                 </box>
               }
             >
-              <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+              <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
                 <text fg={theme.error}>
                   Search failed — {errorMessage(searchError())}. Try another query.
                 </text>
@@ -299,7 +300,7 @@ export function DialogSessionList() {
             </Show>
           }
         >
-          <box paddingLeft={4} paddingRight={4} paddingTop={1} flexDirection="row" gap={1}>
+          <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1} flexDirection="row" gap={1}>
             <Spinner />
             <text fg={theme.textMuted}>Searching…</text>
           </box>

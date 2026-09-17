@@ -1,4 +1,5 @@
 import type { Workspace } from "@arcana/sdk/v2"
+import { Space } from "../ui/chrome"
 import { useDialog } from "../ui/dialog"
 import { DialogSelect, type DialogSelectOption } from "../ui/dialog-select"
 import { useProject } from "../context/project"
@@ -107,7 +108,7 @@ export function DialogWorkspaceList() {
       title={`${Glyph.sigil} Workspaces`}
       options={options()}
       emptyView={
-        <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+        <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
           <text fg={theme.textMuted}>No workspaces yet — move a session to create one.</text>
         </box>
       }

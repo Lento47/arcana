@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, Show } from "solid-js"
+import { Space } from "../ui/chrome"
 import { map, pipe, sortBy } from "remeda"
 import { useLocal } from "../context/local"
 import { useKV } from "../context/kv"
@@ -131,13 +132,13 @@ export function DialogTools(props: { sessionID: string }) {
         <Show
           when={loaded()}
           fallback={
-            <box paddingLeft={4} paddingRight={4} paddingTop={1} flexDirection="row" gap={1}>
+            <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1} flexDirection="row" gap={1}>
               <Spinner />
               <text fg={theme.textMuted}>Loading tools…</text>
             </box>
           }
         >
-          <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+          <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
             <text fg={loadError() ? theme.error : theme.textMuted}>
               {loadError()
                 ? `Failed to load tools — ${loadError()}. Reopen this dialog to retry.`

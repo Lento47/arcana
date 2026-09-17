@@ -499,7 +499,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
                       return (
                         <box
                           flexDirection="column"
-                          marginLeft={2}
+                          marginLeft={Space.gapWide}
                           paddingLeft={1}
                           backgroundColor={active(optionNumber()) ? theme.accent : undefined}
                           onMouseOver={() => setHover({ q: index(), o: optionNumber() })}
@@ -524,7 +524,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
                   </For>
                   <Show when={question.custom !== false}>
                     <box
-                      marginLeft={2}
+                      marginLeft={Space.gapWide}
                       paddingLeft={1}
                       backgroundColor={focused() && optionIndex() === options().length ? theme.accent : undefined}
                       onMouseOver={() => setHover({ q: index(), o: options().length })}

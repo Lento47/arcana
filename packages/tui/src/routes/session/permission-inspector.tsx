@@ -1,4 +1,5 @@
 import { createMemo, For, onMount } from "solid-js"
+import { Space } from "../../ui/chrome"
 import type { PermissionRequest } from "@arcana/sdk/v2"
 import { Glyph } from "../../branding"
 import { useTheme } from "../../context/theme"
@@ -42,7 +43,7 @@ export function PermissionInspector(props: { request: PermissionRequest }) {
       <box
         flexDirection="column"
         paddingTop={1}
-        paddingBottom={2}
+        paddingBottom={Space.padX}
         paddingLeft={2}
         paddingRight={2}
         gap={0}

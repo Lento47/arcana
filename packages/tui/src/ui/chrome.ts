@@ -45,22 +45,6 @@ export const RoundBorder = {
   cross: "┼",
 }
 
-/** Double frame — accent / high-emphasis surfaces. */
-export const DoubleBorder = {
-  ...EmptyBorder,
-  topLeft: "╔",
-  topRight: "╗",
-  bottomLeft: "╚",
-  bottomRight: "╝",
-  horizontal: "═",
-  vertical: "║",
-  topT: "╦",
-  bottomT: "╩",
-  leftT: "╠",
-  rightT: "╣",
-  cross: "╬",
-}
-
 /** Thin dashed — message separators, subtle dividers. */
 export const DashBorder = {
   ...EmptyBorder,
@@ -83,6 +67,10 @@ export const Space = {
   padY: 1,
   gap: 1,
   gapWide: 2,
+  /** 3-cell inset (24pt): nested rows, list indents, hint lines. */
+  inset: 3,
+  /** 4-cell inset (32pt): nested blocks inside an inset row. */
+  insetWide: 4,
   /** Per-side horizontal padding of the session frame for a density. */
   frame(density?: "compact" | "cozy" | "spacious"): number {
     if (density === "compact") return 1

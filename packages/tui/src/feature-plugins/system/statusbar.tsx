@@ -3,7 +3,7 @@ import type { TuiPlugin, TuiPluginApi } from "@arcana/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { Locale } from "../../util/locale"
 import { rendererWidth } from "../../util/geometry"
-import { Size } from "../../ui/chrome"
+import { Size, Space } from "../../ui/chrome"
 import {
   compactNowPercent,
   compactSoonPercent,
@@ -275,7 +275,7 @@ function View(props: { api: TuiPluginApi }) {
         flexDirection="row"
         flexShrink={0}
         alignItems="center"
-        gap={2}
+        gap={Space.gapWide}
         minWidth={0}
         overflow="hidden"
         paddingLeft={chipAtEdge() ? 0 : 2}
@@ -290,7 +290,7 @@ function View(props: { api: TuiPluginApi }) {
           </box>
         </Show>
         <Show when={compacting()}>
-          <box flexShrink={0} backgroundColor={theme().warning} paddingLeft={chipAtEdge() ? 3 : 1} paddingRight={1}>
+          <box flexShrink={0} backgroundColor={theme().warning} paddingLeft={chipAtEdge() ? Space.inset : 1} paddingRight={1}>
             <text wrapMode="none" fg={selectedForeground(theme(), theme().warning)}>
               <span style={{ fg: selectedForeground(theme(), theme().warning), bold: true }}>
                 ⟳ COMPACTING
@@ -300,7 +300,7 @@ function View(props: { api: TuiPluginApi }) {
         </Show>
         <Show when={contextPressure()}>
           {(pressure) => (
-            <box flexShrink={0} backgroundColor={pressure().color} paddingLeft={chipAtEdge() ? 3 : 1} paddingRight={1}>
+            <box flexShrink={0} backgroundColor={pressure().color} paddingLeft={chipAtEdge() ? Space.inset : 1} paddingRight={1}>
               <text wrapMode="none" fg={selectedForeground(theme(), pressure().color)}>
                 <span style={{ fg: selectedForeground(theme(), pressure().color), bold: true }}>
                   {pressure().label}

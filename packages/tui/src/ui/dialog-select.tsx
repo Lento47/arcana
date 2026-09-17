@@ -7,6 +7,7 @@ import {
   type KeyEvent,
   type Renderable,
 } from "@opentui/core"
+import { Space } from "./chrome"
 import type { Binding } from "@opentui/keymap"
 import { useTheme, selectedForeground } from "../context/theme"
 import { COPY, Glyph } from "../branding"
@@ -583,8 +584,8 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
         title where every other dialog has one.
       */}
       <box
-        paddingLeft={3}
-        paddingRight={3}
+        paddingLeft={Space.inset}
+        paddingRight={Space.inset}
         paddingBottom={1}
         backgroundColor={theme.backgroundPanel}
         border={["bottom"]}
@@ -608,7 +609,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
 
       {/* Filter */}
       <Show when={props.renderFilter !== false}>
-        <box paddingLeft={3} paddingRight={3} paddingTop={1} paddingBottom={1}>
+        <box paddingLeft={Space.inset} paddingRight={Space.inset} paddingTop={1} paddingBottom={1}>
           <input
             width="100%"
             minWidth={0}
@@ -642,7 +643,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
           when={grouped().length > 0}
           fallback={
             props.emptyView ?? (
-              <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+              <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
                 <text fg={theme.textMuted}>{COPY.noEchoesFound}</text>
               </box>
             )
@@ -680,7 +681,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
               {([category, options], index) => (
                 <>
                   <Show when={category}>
-                    <box paddingTop={index() > 0 ? 1 : 0} paddingLeft={3}>
+                    <box paddingTop={index() > 0 ? 1 : 0} paddingLeft={Space.inset}>
                       <Show
                         when={options[0]?.categoryView}
                         fallback={
@@ -730,8 +731,8 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
                         >
                           <box
                             flexDirection="row"
-                            paddingLeft={current() || option.gutter ? 1 : 3}
-                            paddingRight={3}
+                            paddingLeft={current() || option.gutter ? 1 : Space.inset}
+                            paddingRight={Space.inset}
                             gap={1}
                             backgroundColor={
                               props.locked
@@ -765,7 +766,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
                           </box>
                           <For each={option.details}>
                             {(detail) => (
-                              <box paddingLeft={3} paddingRight={3}>
+                              <box paddingLeft={Space.inset} paddingRight={Space.inset}>
                                 <text fg={theme.textMuted} wrapMode="none">
                                   {Locale.truncateMiddle(detail, Math.max(1, Math.min(76, dimensions().width - 12)))}
                                 </text>
@@ -786,8 +787,8 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
         <box
           minWidth={0}
           flexWrap="wrap"
-          paddingRight={3}
-          paddingLeft={3}
+          paddingRight={Space.inset}
+          paddingLeft={Space.inset}
           paddingTop={1}
           paddingBottom={1}
           flexDirection="row"
@@ -797,11 +798,11 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
           border={["top"]}
           borderColor={theme.borderSubtle}
         >
-          <box flexDirection="row" gap={2} minWidth={0} flexShrink={1}>
+          <box flexDirection="row" gap={Space.gapWide} minWidth={0} flexShrink={1}>
             {props.footer}
             <For each={left()}>{(item) => <FooterAction item={item} />}</For>
           </box>
-          <box flexDirection="row" gap={2} minWidth={0} flexShrink={1}>
+          <box flexDirection="row" gap={Space.gapWide} minWidth={0} flexShrink={1}>
             <For each={right()}>{(item) => <FooterAction item={item} />}</For>
           </box>
         </box>
@@ -850,7 +851,7 @@ function Option(props: {
         attributes={props.active && !props.muted ? TextAttributes.BOLD : undefined}
         overflow="hidden"
         wrapMode="none"
-        paddingLeft={3}
+        paddingLeft={Space.inset}
       >
         {props.titleView ??
           (props.truncateTitle === false

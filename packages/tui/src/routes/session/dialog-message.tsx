@@ -1,4 +1,5 @@
 import { createMemo, createSignal, For, onMount } from "solid-js"
+import { Space } from "../../ui/chrome"
 import { useSync } from "../../context/sync"
 import { useSDK } from "../../context/sdk"
 import { useRoute } from "../../context/route"
@@ -229,7 +230,7 @@ export function DialogMessage(props: {
             return (
               <box
                 flexDirection="row"
-                paddingLeft={3}
+                paddingLeft={Space.inset}
                 paddingRight={2}
                 minWidth={0}
                 onMouseOver={() => setFocused(i())}
@@ -271,7 +272,7 @@ export function DialogMessage(props: {
       <box
         width="100%"
         minWidth={0}
-        paddingLeft={3} paddingRight={2} paddingTop={1} paddingBottom={1}
+        paddingLeft={Space.inset} paddingRight={2} paddingTop={1} paddingBottom={1}
         backgroundColor={theme.backgroundPanel}
         border={["top"]} borderColor={theme.borderSubtle}
       >

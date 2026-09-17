@@ -1,4 +1,5 @@
 import { createMemo, createSignal } from "solid-js"
+import { Space } from "../ui/chrome"
 import { Glyph } from "../branding"
 import { useLocal } from "../context/local"
 import { map, pipe, flatMap, entries, filter, sortBy, take } from "remeda"
@@ -184,7 +185,7 @@ export function DialogModel(props: {
       title={title()}
       current={local.model.current()}
       emptyView={
-        <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+        <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
           <text fg={theme.textMuted}>No models found — try another search or connect a provider.</text>
         </box>
       }

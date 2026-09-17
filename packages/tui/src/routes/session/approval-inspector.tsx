@@ -1,4 +1,5 @@
 import { createMemo, For, onMount, Show, type Accessor } from "solid-js"
+import { Space } from "../../ui/chrome"
 import { RGBA, TextAttributes } from "@opentui/core"
 import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import type { ApprovalSnapshotDetail } from "../../shell/command-spine/approval-http-bridge"
@@ -186,7 +187,7 @@ export function ApprovalInspector(props: {
         flexGrow={1}
         minHeight={0}
         paddingTop={1}
-        paddingBottom={2}
+        paddingBottom={Space.padX}
         paddingLeft={2}
         paddingRight={2}
         verticalScrollbarOptions={{

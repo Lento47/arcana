@@ -1,5 +1,6 @@
 /** @jsxImportSource @opentui/solid */
 import { batch, For, Show, Switch, Match, createContext, createMemo, createSignal, createEffect, onMount, useContext, type JSX } from "solid-js"
+import { Space } from "../../ui/chrome"
 import { Dynamic } from "solid-js/web"
 import { BoxRenderable, RGBA } from "@opentui/core"
 import type { AssistantMessage, Part, ToolPart, TextPart, UserMessage, Provider } from "@arcana/sdk/v2"
@@ -117,7 +118,7 @@ export function UserMessage(props: {
       <Show when={text()}>
         <box
           id={props.message.id}
-          paddingLeft={3}
+          paddingLeft={Space.inset}
           marginTop={props.index === 0 ? 0 : 1}
           minWidth={0}
         >
@@ -248,7 +249,7 @@ export function AssistantMessage(props: {
 
   return (
     <>
-      <box paddingLeft={3} marginTop={props.last ? 0 : 1} minWidth={0}>
+      <box paddingLeft={Space.inset} marginTop={props.last ? 0 : 1} minWidth={0}>
         <text fg={theme.textMuted}>
           {arcanaDitherPattern(props.message.id, 10)} ASSISTANT {model()}
           {duration() ? ` ${Locale.duration(duration())}` : ""}
@@ -271,7 +272,7 @@ export function AssistantMessage(props: {
         }}
       </For>
       <Show when={hasTaskTool()}>
-        <box paddingTop={1} paddingLeft={3}>
+        <box paddingTop={1} paddingLeft={Space.inset}>
           <text fg={theme.text}>
             {childShortcut()}
             <span style={{ fg: theme.textMuted }}> view subagents</span>
@@ -288,7 +289,7 @@ export function AssistantMessage(props: {
           id={`assistant-error-${props.message.id}`}
           paddingTop={1}
           paddingBottom={1}
-          paddingLeft={3}
+          paddingLeft={Space.inset}
           marginTop={1}
           backgroundColor={theme.backgroundPanel}
           gap={0}
@@ -301,7 +302,7 @@ export function AssistantMessage(props: {
       </Show>
       <Switch>
         <Match when={props.last || final() || props.message.error?.name === "MessageAbortedError"}>
-          <box id={`assistant-summary-${props.message.id}`} paddingLeft={3}>
+          <box id={`assistant-summary-${props.message.id}`} paddingLeft={Space.inset}>
             <text marginTop={1}>
               <span
                 style={{
@@ -371,7 +372,7 @@ export function ReasoningPart(props: { last: boolean; part: ReasoningPartType; m
     <Show when={content()}>
       <box
         id={`text-${props.part.messageID}-${props.part.id}`}
-        paddingLeft={3}
+        paddingLeft={Space.inset}
         marginTop={1}
         flexDirection="column"
         flexShrink={0}
@@ -475,7 +476,7 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
   const content = createMemo(() => props.part.text.replace(/\r\n/g, "\n").replace(/\r/g, "\n"))
   return (
     <Show when={content().trim()}>
-      <box id={`text-${props.part.messageID}-${props.part.id}`} paddingLeft={3} marginTop={1} flexShrink={0} minWidth={0}>
+      <box id={`text-${props.part.messageID}-${props.part.id}`} paddingLeft={Space.inset} marginTop={1} flexShrink={0} minWidth={0}>
         <markdown
           syntaxStyle={syntax()}
           streaming={streaming()}
@@ -879,7 +880,7 @@ function GenericTool(props: ToolProps) {
         part={props.part}
         onClick={collapsed().overflow ? () => setExpanded((prev) => !prev) : undefined}
       >
-        <box gap={1} paddingLeft={3} flexGrow={1} minWidth={0}>
+        <box gap={1} paddingLeft={Space.inset} flexGrow={1} minWidth={0}>
           <Switch>
             <Match when={formattedOutput().type === "todos"}>
               <For each={(formattedOutput() as { type: "todos"; items: any[] }).items}>
@@ -1112,7 +1113,7 @@ export function InlineToolRow(props: {
   return (
     <box
       id={props.id}
-      paddingLeft={3}
+      paddingLeft={Space.inset}
       border={props.glowing ? ["left"] : undefined}
       customBorderChars={HairlineBorder}
       borderColor={props.glowColor}
@@ -1160,7 +1161,7 @@ export function InlineToolRow(props: {
         )}
       </Show>
       <Show when={(props.failed || props.denied) && props.errorExpanded}>
-        <box paddingLeft={4}>
+        <box paddingLeft={Space.insetWide}>
           <Scramble error text={props.error ?? ""} fg={props.errorColor} />
         </box>
       </Show>
@@ -1364,8 +1365,8 @@ function Read(props: ToolProps) {
       </InlineTool>
       <For each={loaded()}>
         {(filepath, index) => (
-          <box id={`tool-inline-loaded-${props.part.messageID}-${props.part.id}-${index()}`} paddingLeft={3}>
-            <text paddingLeft={3} fg={theme.textMuted}>
+          <box id={`tool-inline-loaded-${props.part.messageID}-${props.part.id}-${index()}`} paddingLeft={Space.inset}>
+            <text paddingLeft={Space.inset} fg={theme.textMuted}>
               ↳ Loaded {pathFormatter.format(filepath)}
             </text>
           </box>

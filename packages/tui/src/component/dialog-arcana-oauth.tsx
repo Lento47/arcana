@@ -1,4 +1,5 @@
 import { createSignal, onCleanup, Show } from "solid-js"
+import { Space } from "../ui/chrome"
 import { TextAttributes } from "@opentui/core"
 import { useDialog } from "../ui/dialog"
 import { useSDK } from "../context/sdk"
@@ -298,7 +299,7 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
         {/* Two key hints, each a whole readout. Elastic, they were the pair a
             narrow dialog split: `enter open` / `link` beside `c copy` / `link`,
             which reads as four separate keys. A key hint is never prose. */}
-        <box flexDirection="row" gap={2}>
+        <box flexDirection="row" gap={Space.gapWide}>
           <text fg={theme.text} wrapMode="none" flexShrink={0}>
             enter <span style={{ fg: theme.textMuted }}>open link</span>
           </text>

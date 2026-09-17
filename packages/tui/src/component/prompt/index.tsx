@@ -18,7 +18,7 @@ import { Flag } from "@arcana/core/flag/flag"
 import { toolsOverrideKey, toolsPayload } from "../../util/tools-override"
 import { tint, useTheme } from "../../context/theme"
 import { fade } from "../../theme/emphasis"
-import { RoundBorder } from "../../ui/chrome"
+import { RoundBorder, Space } from "../../ui/chrome"
 import { useTuiPaths, useTuiTerminalEnvironment } from "../../context/runtime"
 import { useClipboard } from "../../context/clipboard"
 import { Spinner } from "../spinner"
@@ -2403,7 +2403,7 @@ export function Prompt(props: PromptProps) {
             </Match>
             <Match when={workspace.notice()}>
               {(notice) => (
-                <box paddingLeft={3}>
+                <box paddingLeft={Space.inset}>
                   <text fg={theme.accent}>
                     {Locale.truncate(notice(), Math.max(20, dimensions().width - 8))}
                   </text>
@@ -2412,7 +2412,7 @@ export function Prompt(props: PromptProps) {
             </Match>
             <Match when={workspace.label()}>
               {(label) => (
-                <box paddingLeft={3} flexDirection="row" gap={1}>
+                <box paddingLeft={Space.inset} flexDirection="row" gap={1}>
                   <Show when={workspace.creating()}>
                     <Spinner color={theme.accent} />
                   </Show>
@@ -2446,7 +2446,7 @@ export function Prompt(props: PromptProps) {
             </Match>
             <Match when={move.progress()}>
               {(progress) => (
-                <box paddingLeft={3}>
+                <box paddingLeft={Space.inset}>
                   <Spinner color={theme.accent}>
                     {progress()}
                     <span style={{ fg: theme.textMuted }}>…</span>
@@ -2455,7 +2455,7 @@ export function Prompt(props: PromptProps) {
               )}
             </Match>
             <Match when={move.pendingNew()}>
-              <box paddingLeft={3}>
+              <box paddingLeft={Space.inset}>
                 <text fg={theme.accent}>(new working copy)</text>
               </box>
             </Match>

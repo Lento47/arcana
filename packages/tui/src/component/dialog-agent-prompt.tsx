@@ -1,4 +1,5 @@
 import { createMemo, createSignal, Show } from "solid-js"
+import { Space } from "../ui/chrome"
 import { useLocal } from "../context/local"
 import { useTuiPaths } from "../context/runtime"
 import { useTheme } from "../context/theme"
@@ -82,7 +83,7 @@ export function DialogAgentPrompt() {
         title={`${Glyph.sigil} Edit Agent Prompt`}
         options={options()}
         emptyView={
-          <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+          <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
             <text fg={theme.textMuted}>No agents available.</text>
           </box>
         }

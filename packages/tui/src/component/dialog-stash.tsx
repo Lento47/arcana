@@ -1,4 +1,5 @@
 import { useDialog } from "../ui/dialog"
+import { Space } from "../ui/chrome"
 import { DialogSelect } from "../ui/dialog-select"
 import { createMemo, createSignal } from "solid-js"
 import { Locale } from "../util/locale"
@@ -61,7 +62,7 @@ export function DialogStash(props: { onSelect: (entry: StashEntry) => void }) {
       title={`${Glyph.sigil} Stash`}
       options={options()}
       emptyView={
-        <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+        <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
           <text fg={theme.textMuted}>
             {stashHint()
               ? `No stashed prompts yet — press ${stashHint()} in the composer to stash one.`

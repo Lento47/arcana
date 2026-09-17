@@ -1,4 +1,5 @@
 import { DialogSelect, type DialogSelectOption } from "../ui/dialog-select"
+import { Space } from "../ui/chrome"
 import { createResource, createMemo, createSignal, Show } from "solid-js"
 import { useDialog } from "../ui/dialog"
 import { useSDK } from "../context/sdk"
@@ -54,7 +55,7 @@ export function DialogSkill(props: DialogSkillProps) {
         <Show
           when={skills.loading}
           fallback={
-            <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+            <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
               <text fg={loadError() ? theme.error : theme.textMuted}>
                 {loadError()
                   ? `Failed to load skills — ${errorMessage(loadError())}. Press Esc and reopen to retry.`
@@ -63,7 +64,7 @@ export function DialogSkill(props: DialogSkillProps) {
             </box>
           }
         >
-          <box paddingLeft={4} paddingRight={4} paddingTop={1} flexDirection="row" gap={1}>
+          <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1} flexDirection="row" gap={1}>
             <Spinner />
             <text fg={theme.textMuted}>Loading skills…</text>
           </box>

@@ -180,7 +180,7 @@ describe("C4 statusbar chip edge", () => {
   })
 
   test("leading chip compensates its own left inset (3 = bar 0 + chip 3)", () => {
-    expect(statusbarSrc.includes("paddingLeft={chipAtEdge() ? 3 : 1}")).toBe(true)
+    expect(statusbarSrc.includes("paddingLeft={chipAtEdge() ? Space.inset : 1}")).toBe(true)
   })
 
   test("chipAtEdge only when the chip is the first visible element", () => {

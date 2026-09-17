@@ -1,4 +1,5 @@
 import { createMemo, onMount } from "solid-js"
+import { Space } from "../../ui/chrome"
 import { useSync } from "../../context/sync"
 import { DialogSelect, type DialogSelectOption } from "../../ui/dialog-select"
 import type { TextPart } from "@arcana/sdk/v2"
@@ -52,7 +53,7 @@ export function DialogTimeline(props: {
       title={`${Glyph.sigil} Chronicle`}
       options={options()}
       emptyView={
-        <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+        <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
           <text fg={theme.textMuted}>No messages to jump to yet — send one first.</text>
         </box>
       }

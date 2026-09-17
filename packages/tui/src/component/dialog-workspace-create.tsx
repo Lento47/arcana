@@ -1,4 +1,5 @@
 import type { ExperimentalWorkspaceAdapterListResponse, Workspace } from "@arcana/sdk/v2"
+import { Space } from "../ui/chrome"
 import { useDialog } from "../ui/dialog"
 import { DialogSelect, type DialogSelectOption } from "../ui/dialog-select"
 import { useSync } from "../context/sync"
@@ -326,7 +327,7 @@ function DialogExistingWorkspaceSelect(props: {
       title={`${Glyph.sigil} Existing Workspace`}
       options={options()}
       emptyView={
-        <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+        <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
           <text fg={theme.textMuted}>No connected workspaces available.</text>
         </box>
       }
@@ -346,7 +347,7 @@ function DialogExistingWorkspaceSelect(props: {
 function DialogWorkspaceLoading() {
   const { theme } = useTheme()
   return (
-    <box padding={3} flexDirection="row" gap={1} alignItems="center">
+    <box padding={Space.inset} flexDirection="row" gap={1} alignItems="center">
       <Spinner />
       <text fg={theme.textMuted}>Loading workspace adapters…</text>
     </box>
@@ -375,7 +376,7 @@ export function DialogWorkspaceError(props: { onRetry: () => void }) {
     ],
   }))
   return (
-    <box padding={3} gap={1}>
+    <box padding={Space.inset} gap={1}>
       <text fg={theme.error} attributes={TextAttributes.BOLD}>
         {WORKSPACE_ADAPTERS_FAILED}
       </text>

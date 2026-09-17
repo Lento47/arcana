@@ -1,4 +1,5 @@
 import { createMemo, createSignal, Show } from "solid-js"
+import { Space } from "../ui/chrome"
 import { useLocal } from "../context/local"
 import { useSync } from "../context/sync"
 import { map, pipe, entries, sortBy } from "remeda"
@@ -134,7 +135,7 @@ export function DialogMcp() {
       actions={actions()}
       placeholder={COPY.dialog.filterServers}
       emptyView={
-        <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+        <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
           <Show
             when={options().length === 0}
             fallback={<text fg={theme.textMuted}>{COPY.noEchoesFound}</text>}

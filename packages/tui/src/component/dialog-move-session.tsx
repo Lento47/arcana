@@ -1,4 +1,5 @@
 import { useRenderer } from "@opentui/solid"
+import { Space } from "../ui/chrome"
 import { useTerminalSize } from "../util/terminal-size"
 import { TextAttributes } from "@opentui/core"
 import { createMemo, createResource, createSignal, onMount, Show } from "solid-js"
@@ -312,7 +313,7 @@ export function DialogMoveSession(props: DialogMoveSessionProps) {
         options={options()}
         emptyView={
           showError() ? (
-            <box paddingLeft={4} paddingRight={4}>
+            <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide}>
               <text fg={theme.error} attributes={TextAttributes.BOLD}>
                 Could not load project directories
               </text>

@@ -31,7 +31,7 @@ import { taskRowChrome, toolChipModel } from "./spine-chrome"
 import { toolChipSummaryBudget } from "./spine-tool-chip"
 import { canToggleSpineEntry } from "./spine-navigation"
 import { HairlineBorder } from "../../ui/border"
-import { RoundBorder } from "../../ui/chrome"
+import { RoundBorder, Space } from "../../ui/chrome"
 import type { StreamFrameGate } from "../../util/stream-frame"
 import {
   toSpineEntryView,
@@ -829,7 +829,7 @@ export function SpineEntry(props: {
                     flexShrink={0}
                     minWidth={0}
                     width={props.thinkContentWidth ?? props.contentWidth ?? ("100%" as any)}
-                    paddingLeft={3}
+                    paddingLeft={Space.inset}
                     marginTop={0}
                   >
                     <SpineProse

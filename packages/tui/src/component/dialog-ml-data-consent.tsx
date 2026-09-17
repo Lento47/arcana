@@ -1,4 +1,5 @@
 import { TextAttributes } from "@opentui/core"
+import { Space } from "../ui/chrome"
 import { Show, createSignal, onMount } from "solid-js"
 
 import { useTheme } from "../context/theme"
@@ -214,7 +215,7 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
                 `[key] verb`. Wrapping the row instead makes each phrase a unit —
                 two fit per line, the third takes the next — and every hint stays
                 whole. */}
-            <box flexDirection="row" gap={2} flexWrap="wrap">
+            <box flexDirection="row" gap={Space.gapWide} flexWrap="wrap">
               <text
                 fg={disclosure() && !busy() ? theme.primary : theme.textMuted}
                 attributes={TextAttributes.UNDERLINE}
@@ -252,7 +253,7 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
             </text>
             {/* The same shape as the workspace row above, and the same rule:
                 hints are units that wrap between each other, never inside. */}
-            <box flexDirection="row" gap={2} flexWrap="wrap">
+            <box flexDirection="row" gap={Space.gapWide} flexWrap="wrap">
               <text
                 fg={disclosure() && !busy() ? theme.primary : theme.textMuted}
                 attributes={TextAttributes.UNDERLINE}
@@ -283,7 +284,7 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
             <text fg={theme.text} wrapMode="word">
               {consentConfirmMessage(choice())}
             </text>
-            <box flexDirection="row" gap={2} flexWrap="wrap">
+            <box flexDirection="row" gap={Space.gapWide} flexWrap="wrap">
               <text
                 fg={!busy() ? theme.primary : theme.textMuted}
                 attributes={TextAttributes.UNDERLINE}

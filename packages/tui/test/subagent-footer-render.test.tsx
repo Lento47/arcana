@@ -118,21 +118,25 @@ function rows(frame: string): string[] {
   return frame.split("\n").filter((line) => line.trim().length > 0)
 }
 
-/** The row's content line: the border is the row above it. */
+/**
+ * The row's content line. The top border was removed (the composer frame
+ * below already separates the surfaces), so the footer is exactly one row;
+ * a footer that grows still shows up here as extra rows.
+ */
 function row(app: Awaited<ReturnType<typeof mountFooter>>): string {
   const lines = rows(app.captureCharFrame())
-  expect(lines.length).toBe(2)
-  return lines[1]!
+  expect(lines.length).toBe(1)
+  return lines[0]!
 }
 
-test("the footer is a border and one content row, from wide to very narrow", async () => {
+test("the footer is one content row, from wide to very narrow", async () => {
   // 20 is past the point where the identity group alone overruns: the row is
   // expected to clip at its right edge, never to grow or wrap.
   for (const width of [140, 120, 100, 80, 60, 44, 30, 20]) {
     const app = await mountFooter(width)
     try {
       // The pre-fix frame was four rows at every one of these widths.
-      expect(rows(app.captureCharFrame()).length).toBe(2)
+      expect(rows(app.captureCharFrame()).length).toBe(1)
     } finally {
       app.renderer.destroy()
     }

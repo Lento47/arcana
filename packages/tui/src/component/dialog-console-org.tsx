@@ -1,4 +1,5 @@
 import { createResource, createMemo, createSignal } from "solid-js"
+import { Space } from "../ui/chrome"
 import { DialogSelect } from "../ui/dialog-select"
 import { useSDK } from "../context/sdk"
 import { useDialog } from "../ui/dialog"
@@ -100,7 +101,7 @@ export function DialogConsoleOrg() {
         value: item,
         category: accountLabel(item),
         categoryView: (
-          <box flexDirection="row" gap={2}>
+          <box flexDirection="row" gap={Space.gapWide}>
             {/* Both halves are bounded readouts, not prose: each is already
                 truncated to its own 40 columns, and neither may be the segment
                 that gives way. Left elastic, a too-narrow dialog wrapped the

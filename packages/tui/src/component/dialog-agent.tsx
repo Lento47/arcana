@@ -1,4 +1,5 @@
 import { createMemo } from "solid-js"
+import { Space } from "../ui/chrome"
 import { useLocal } from "../context/local"
 import { useTheme } from "../context/theme"
 import { DialogSelect } from "../ui/dialog-select"
@@ -26,7 +27,7 @@ export function DialogAgent() {
       current={local.agent.current()?.name}
       options={options()}
       emptyView={
-        <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+        <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
           <text fg={theme.textMuted}>No agents available.</text>
         </box>
       }

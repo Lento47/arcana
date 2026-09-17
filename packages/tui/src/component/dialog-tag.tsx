@@ -1,4 +1,5 @@
 import { createMemo, createResource, createSignal, Show } from "solid-js"
+import { Space } from "../ui/chrome"
 import { DialogSelect } from "../ui/dialog-select"
 import { useDialog } from "../ui/dialog"
 import { useProject } from "../context/project"
@@ -56,7 +57,7 @@ export function DialogTag(props: { onSelect?: (value: string) => void }) {
         <Show
           when={loadError()}
           fallback={
-            <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+            <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
               <text fg={theme.textMuted}>
                 {files.loading
                   ? "Searching files…"
@@ -67,7 +68,7 @@ export function DialogTag(props: { onSelect?: (value: string) => void }) {
             </box>
           }
         >
-          <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+          <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
             <text fg={theme.error}>
               Failed to search files — {errorMessage(loadError())}. Keep typing to retry.
             </text>
