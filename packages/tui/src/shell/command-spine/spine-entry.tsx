@@ -11,6 +11,7 @@ import type {
 } from "./spine-types"
 import { spineOuterPadding, spineRailWidth } from "./spine-types"
 import { selectedForeground, tint, useTheme } from "../../context/theme"
+import { Alpha } from "../../theme/emphasis"
 import { createEase } from "../../util/motion"
 import { useSync } from "../../context/sync"
 import { SpineGutter } from "./spine-gutter"
@@ -432,7 +433,7 @@ export function SpineEntry(props: {
   // their static "this is me" fill. The glide only moves the whisper; nothing
   // changes row geometry, so focused and unfocused frames have identical
   // content columns.
-  const WHISPER_FILL = 0.3
+  const WHISPER_FILL = Alpha.whisper
   const focusGlide = createEase(() => (props.focused === true ? 1 : 0), {
     stepMs: 16,
     riseRate: 0.6,

@@ -1,6 +1,7 @@
 import { MouseButton, type MouseEvent, type RGBA } from "@opentui/core"
 import { createMemo, createSignal } from "solid-js"
 import { tint, useTheme } from "../../context/theme"
+import { Alpha } from "../../theme/emphasis"
 import { COPY, Glyph } from "../../branding"
 import { compactSpineElapsed, formatElapsedMs, spineElapsedMax, type SpineLayout } from "./spine-types"
 import type { ActivityEntry } from "./spine-entry-view"
@@ -44,7 +45,7 @@ export function ActivityReel(props: {
   const settleFlare = createFlare(() => props.view.streaming !== true)
   const flareInk = (base: RGBA) => {
     const intensity = settleFlare()
-    return intensity > 0 ? tint(base, theme.text, intensity * 0.5) : base
+    return intensity > 0 ? tint(base, theme.text, intensity * Alpha.lift) : base
   }
 
   // The shared tick only invalidates the live duration. It must never choose

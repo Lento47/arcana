@@ -9,6 +9,7 @@
  * module boundary).
  */
 import type { ScrollBoxRenderable } from "@opentui/core"
+import { ToastDuration } from "../../ui/toast"
 import { batch } from "solid-js"
 import { recordTuiFeedback } from "../../feedback"
 import { openEditor } from "../../editor"
@@ -266,7 +267,7 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
           toast.show({
             variant: "warning",
             message: "Connect a provider to summarize this session",
-            duration: 3000,
+            duration: ToastDuration.brief,
           })
           return
         }
@@ -281,7 +282,7 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
               toast.show({
                 variant: "error",
                 message: `Compaction failed: ${String(response.error)} — try again`,
-                duration: 5000,
+                duration: ToastDuration.normal,
               })
             }
           })
@@ -289,7 +290,7 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
             toast.show({
               variant: "error",
               message: `Compaction failed: ${error instanceof Error ? error.message : String(error)} — try again`,
-              duration: 5000,
+              duration: ToastDuration.normal,
             })
           })
         dialog.clear()
@@ -833,7 +834,7 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
             title: "Session contract",
             message: "No active goal. Send an explicit multi-step mutation request or use /goal to start one.",
             variant: "info",
-            duration: 8000,
+            duration: ToastDuration.long,
           })
           return
         }
@@ -841,7 +842,7 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
           title: "Session contract",
           message: `Goal: ${snap.goal}\nStatus: ${snap.status}\nScope: ${"scope" in snap ? snap.scope : "—"}\nPriority: ${"priority" in snap ? snap.priority : "—"}`,
           variant: "info",
-          duration: 8000,
+          duration: ToastDuration.long,
         })
       },
     },
@@ -859,7 +860,7 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
             message:
               "No active goal. Explicit multi-step mutation work can start one; greetings, reviews, and read-only requests stay goal-free.",
             variant: "info",
-            duration: 8000,
+            duration: ToastDuration.long,
           })
           return
         }
@@ -867,7 +868,7 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
           title: "Drive",
           message: `Goal: ${snap.goal}\nStatus: ${snap.status}\nDrive agents (build/general) keep going while this is in_progress.`,
           variant: "info",
-          duration: 8000,
+          duration: ToastDuration.long,
         })
       },
     },
@@ -889,7 +890,7 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
           title: "Verifier Status",
           message: `${verifier.checks?.map((c: any) => `${c.check}: ${c.status ?? "pending"}`).join("\n") ?? "no checks"}`,
           variant: "info",
-          duration: 8000,
+          duration: ToastDuration.long,
         })
       },
     },
@@ -910,7 +911,7 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
           title: `Governance · ${snapshot.trace.status}`,
           message: events.slice(-8).map((event: any) => `#${event.sequence} ${event.type}`).join("\n"),
           variant: "info",
-          duration: 8000,
+          duration: ToastDuration.long,
         })
       },
     },
@@ -937,7 +938,7 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
             "ARCANA_FILE_EDIT_BACKUP_THRESHOLD",
           ].join("\n"),
           variant: "info",
-          duration: 10000,
+          duration: ToastDuration.extended,
         })
       },
     },

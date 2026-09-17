@@ -6,6 +6,7 @@
  * a declarative object with a name, title, category, and run handler.
  */
 import { Show } from "solid-js"
+import { ToastDuration } from "./ui/toast"
 import { Flag } from "@arcana/core/flag/flag"
 import { APP_NAME, APP_ABBR, DOCS_URL, COPY } from "./branding"
 import { CommandPaletteDialog } from "./component/command-palette"
@@ -551,7 +552,7 @@ export function buildAppCommands(deps: {
                 .replace(/<\/*active-goal>/g, "")
                 .trim(),
               variant: "info",
-              duration: 8000,
+              duration: ToastDuration.long,
             })
           })
           .catch((error: unknown) => deps.toast.error(error))
@@ -629,7 +630,7 @@ export function buildAppCommands(deps: {
           title: "Agent",
           message: agent ? agent.name : "No primary agent available",
           variant: agent ? "info" : "warning",
-          duration: 1800,
+          duration: ToastDuration.flash,
         })
       },
     },
@@ -758,7 +759,7 @@ export function buildAppCommands(deps: {
         deps.toast.show({
           variant: "info",
           message: `Heap snapshot written to ${files?.join(", ")}`,
-          duration: 5000,
+          duration: ToastDuration.normal,
         })
         deps.dialog.clear()
       },

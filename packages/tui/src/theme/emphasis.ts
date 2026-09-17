@@ -79,6 +79,23 @@ export function withAlpha(color: RGBA, alpha: number): RGBA {
   return RGBA.fromInts(r, g, b, Math.round(clamped * 255))
 }
 
+/**
+ * The alpha ladder for tints and fills. Values are the ones the app actually
+ * uses; naming them keeps a "whisper" a whisper wherever it appears. Logo art
+ * (its gradients and shadow) keeps its own numbers: those are drawing, not
+ * chrome.
+ */
+export const Alpha = {
+  /** A fill that is present but must not compete (the focus whisper). */
+  whisper: 0.3,
+  /** A quiet accent lift (the think node's flare at rest). */
+  quiet: 0.4,
+  /** A lifted chip or bulb (the activity reel's flare). */
+  lift: 0.5,
+  /** The brand ink mix: text that belongs to the palette, not to a token. */
+  ink: 0.62,
+} as const
+
 /** Modal backdrop alpha — heavy enough to recede the app behind the card. */
 export const SCRIM_ALPHA = 150 / 255
 
@@ -104,7 +121,7 @@ export function backdropScrim(theme: Pick<Theme, "background">): RGBA {
  * of being a fixed gray.
  */
 export function logoInk(theme: Pick<Theme, "background" | "text">): RGBA {
-  return tint(theme.background, theme.text, 0.62)
+  return tint(theme.background, theme.text, Alpha.ink)
 }
 
 /**

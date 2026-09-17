@@ -1,6 +1,7 @@
 import { Show, createMemo, createSignal } from "solid-js"
 import type { MouseEvent, RGBA } from "@opentui/core"
 import { tint, useTheme } from "../../context/theme"
+import { Alpha } from "../../theme/emphasis"
 import { Glyph } from "../../branding"
 import { displayWidth, truncate } from "../../util/locale"
 import { createFlare } from "../../util/motion"
@@ -37,6 +38,14 @@ export function nodeMetaStrip(disclosure: string, elapsed: string): NodeMetaPart
 
 /** Wider column for chat voice so "assistant" / "you" are not truncated. */
 const CHAT_LABEL_WIDTH = 10
+
+/**
+ * Actor column widths: agents ("Gilded") carry a longer name than the human
+ * roles ("you" / "system"), and a fixed column keeps the timestamps aligned
+ * down the transcript.
+ */
+const ACTOR_WIDTH = 5
+const AGENT_ACTOR_WIDTH = 12
 
 /** Truncate/pad actor name to the column width, display-column aware (audit T4). */
 function truncateActor(name: string, width: number): string {
@@ -107,7 +116,7 @@ export function SpineNode(props: {
   const settleFlare = createFlare(() => kind() === "think" && streaming() !== true)
   const flareInk = (base: RGBA) => {
     const intensity = settleFlare()
-    return intensity > 0 ? tint(base, theme.text, intensity * 0.4) : base
+    return intensity > 0 ? tint(base, theme.text, intensity * Alpha.quiet) : base
   }
 
   // Live ticking chrome: while a running row carries an absolute start time,
@@ -252,11 +261,13 @@ export function SpineNode(props: {
     </box>
   )
 
+  const actorColumn = () => (kind() === "agent" ? AGENT_ACTOR_WIDTH : ACTOR_WIDTH)
+
   const actorBox = () => (
     <Show when={showActor()}>
-      <box flexShrink={0} width={kind() === "agent" ? 12 : 5}>
+      <box flexShrink={0} width={actorColumn()}>
         <text fg={theme.spineActor}>
-          {truncateActor(actor(), kind() === "agent" ? 12 : 5)}
+          {truncateActor(actor(), actorColumn())}
         </text>
       </box>
     </Show>

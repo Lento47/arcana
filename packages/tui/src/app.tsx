@@ -60,7 +60,7 @@ import { useTheme } from "./context/theme"
 import { Home } from "./routes/home"
 import { Session } from "./routes/session"
 import { usePromptQueue } from "./context/prompt-queue"
-import { Toast, useToast } from "./ui/toast"
+import { Toast, useToast, ToastDuration } from "./ui/toast"
 import { truncate, truncateMiddle } from "./util/locale"
 import { useKV } from "./context/kv"
 import { useClipboard } from "./context/clipboard"
@@ -363,7 +363,7 @@ export function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: T
     })
     .catch((error) => {
       console.error("Failed to load TUI plugins", error)
-      toast.show({ message: "Failed to load plugins — check console for details", variant: "error", duration: 8000 })
+      toast.show({ message: "Failed to load plugins — check console for details", variant: "error", duration: ToastDuration.long })
     })
     .finally(() => {
       if (process.env["ARCANA_PROFILE_STARTUP"]) {

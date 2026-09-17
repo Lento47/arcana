@@ -10,6 +10,7 @@
  * without touching real state; production uses the dynamic import.
  */
 import { errorMessage } from "../../util/error"
+import { ToastDuration } from "../../ui/toast"
 import { Locale } from "../../util/locale"
 
 type ToastLike = {
@@ -136,7 +137,7 @@ export function runLoopCommand(deps: SlashGoalDeps): true | undefined {
             actorAgent: deps.agentName,
           }).replace(/<\/?active-goal>/g, "").trim(),
           variant: "info",
-          duration: 8000,
+          duration: ToastDuration.long,
         })
       })
       .catch((error: unknown) => {

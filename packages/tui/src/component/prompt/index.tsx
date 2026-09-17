@@ -53,7 +53,7 @@ import { useDialog } from "../../ui/dialog"
 import { DialogProvider as DialogProviderConnect } from "../dialog-provider"
 import { DialogAlert } from "../../ui/dialog-alert"
 import { DialogConfirm } from "../../ui/dialog-confirm"
-import { useToast } from "../../ui/toast"
+import { useToast, ToastDuration } from "../../ui/toast"
 import { useKV } from "../../context/kv"
 import { createFadeIn } from "../../util/signal"
 import { createBreath } from "../../util/motion"
@@ -301,7 +301,7 @@ export function Prompt(props: PromptProps) {
     toast.show({
       variant: "warning",
       message: "Connect a provider to send prompts",
-      duration: 3000,
+      duration: ToastDuration.brief,
     })
     if (sync.data.provider.length === 0) {
       dialog.replace(() => <DialogProviderConnect />)
@@ -1166,7 +1166,7 @@ export function Prompt(props: PromptProps) {
           title: "Unknown command",
           message: `/${slashName} is not a registered command. Open the command palette for the full list.`,
           variant: "warning",
-          duration: 5000,
+          duration: ToastDuration.normal,
         })
         clearPrompt()
         return true
@@ -1193,7 +1193,7 @@ export function Prompt(props: PromptProps) {
       toast.show({
         message: "Select a model with /models to continue.",
         variant: "warning",
-        duration: 5000,
+        duration: ToastDuration.normal,
       })
       return false
     }
@@ -1392,7 +1392,7 @@ export function Prompt(props: PromptProps) {
               .filter(Boolean)
               .join(" · ")} — retry the action, or check the logs.`,
             variant: "error",
-            duration: 8000,
+            duration: ToastDuration.long,
           })
           route.navigate({ type: "home" })
           return true
@@ -1690,7 +1690,7 @@ export function Prompt(props: PromptProps) {
               title: "Agent suggestion",
               message: bits.join(" · ") + " · Tab to switch session agent",
               variant: "info",
-              duration: 5000,
+              duration: ToastDuration.normal,
             })
           }
         })

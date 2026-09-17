@@ -5,7 +5,7 @@ import { Lexicon } from "../branding"
 import { createVoiceOrchestrator, type VoiceLexicon, type VoiceOrchestrator } from "../voice/orchestrator"
 import { createVoiceHoldListener } from "../voice/hold"
 import { usePromptRef } from "./prompt"
-import { useToast } from "../ui/toast"
+import { useToast, ToastDuration } from "../ui/toast"
 import { useKV } from "./kv"
 import { createSimpleContext } from "./helper"
 import { ARCANA_BASE_MODE, useBindings } from "../keymap"
@@ -71,7 +71,7 @@ const VoiceContext = createSimpleContext({
           toast.show({
             message: `${lexicon().disabled} Run /voice to unseal.`,
             variant: "info",
-            duration: 5000,
+            duration: ToastDuration.normal,
           })
         },
       }),

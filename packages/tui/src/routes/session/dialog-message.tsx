@@ -25,6 +25,10 @@ type Act = {
   onSelect: () => void
 }
 
+/** Fixed columns of a timeline row: the step number rail, then the connector. */
+const STEP_RAIL_WIDTH = 5
+const CONNECTOR_WIDTH = 2
+
 export function DialogMessage(props: {
   messageID: string
   sessionID: string
@@ -236,14 +240,14 @@ export function DialogMessage(props: {
                 onMouseOver={() => setFocused(i())}
               >
                 {/* Rail column — compact */}
-                <box width={5} flexShrink={0} alignItems="center" justifyContent="center">
+                <box width={STEP_RAIL_WIDTH} flexShrink={0} alignItems="center" justifyContent="center">
                   <text fg={isFirst() ? theme.textMuted : theme.borderSubtle}>
                     {isFirst() ? `[${step()}]` : "│"}
                   </text>
                 </box>
 
                 {/* Connector */}
-                <box width={2} flexShrink={0} justifyContent="center" alignItems="center">
+                <box width={CONNECTOR_WIDTH} flexShrink={0} justifyContent="center" alignItems="center">
                   <text fg={isFocused() ? theme.accent : theme.borderSubtle}>
                     {isFocused() ? Glyph.diamond : (isFirst() ? "┬" : "├")}
                   </text>

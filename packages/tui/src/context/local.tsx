@@ -11,7 +11,7 @@ import { useSDK } from "./sdk"
 import { RGBA } from "@opentui/core"
 import { readJson, writeJsonAtomic } from "../util/persistence"
 import { useTheme } from "./theme"
-import { useToast } from "../ui/toast"
+import { useToast, ToastDuration } from "../ui/toast"
 import { useRoute } from "./route"
 
 export type LocalTheme = {
@@ -98,7 +98,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             return toast.show({
               variant: "warning",
               message: `Agent not found: ${name}`,
-              duration: 3000,
+              duration: ToastDuration.brief,
             })
           setAgentStore("current", name)
         },
@@ -295,7 +295,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             toast.show({
               variant: "info",
               message: "Add a favorite model to use this shortcut",
-              duration: 3000,
+              duration: ToastDuration.brief,
             })
             return
           }
@@ -325,7 +325,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               toast.show({
                 message: `Model ${model.providerID}/${model.modelID} is not valid`,
                 variant: "warning",
-                duration: 3000,
+                duration: ToastDuration.brief,
               })
               return
             }
@@ -344,7 +344,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               toast.show({
                 message: `Model ${model.providerID}/${model.modelID} is not valid`,
                 variant: "warning",
-                duration: 3000,
+                duration: ToastDuration.brief,
               })
               return
             }
@@ -553,7 +553,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       toast.show({
         variant: "warning",
         message: `Agent ${value.name}'s configured model ${value.model.providerID}/${value.model.modelID} is not valid`,
-        duration: 3000,
+        duration: ToastDuration.brief,
       })
     })
 

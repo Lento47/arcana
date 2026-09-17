@@ -44,7 +44,7 @@ describe("D7 — toast surface is app-global, not per-route", () => {
   test("app.tsx renders one global <Toast /> surface", () => {
     const src = app()
     expect(src).toContain("<Toast />")
-    expect(src).toContain('import { Toast, useToast } from "./ui/toast"')
+    expect(src).toContain('import { Toast, useToast, ToastDuration } from "./ui/toast"')
     // ProviderTree owns composition; App owns the single visible surface.
     expect(providerTree()).toContain('import { ToastProvider } from "./ui/toast"')
   })

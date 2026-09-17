@@ -23,7 +23,7 @@ import { useSync } from "./context/sync"
 import { useLocal } from "./context/local"
 import { useKV } from "./context/kv"
 import { useSDK } from "./context/sdk"
-import { useToast } from "./ui/toast"
+import { useToast, ToastDuration } from "./ui/toast"
 import { useDialog } from "./ui/dialog"
 import { useEvent } from "./context/event"
 import { useProject } from "./context/project"
@@ -233,7 +233,7 @@ export function useAppEffects(props: {
           return toast.show({
             variant: "warning",
             message: `Invalid model format: ${args.model}`,
-            duration: 3000,
+            duration: ToastDuration.brief,
           })
         local.model.set({ providerID, modelID }, { recent: true })
       }
@@ -351,7 +351,7 @@ export function useAppEffects(props: {
       toast.show({
         variant: "error",
         message: `${message} — retry the prompt, or run /status for details.`,
-        duration: 8000,
+        duration: ToastDuration.long,
       })
     }),
   )
@@ -382,7 +382,7 @@ export function useAppEffects(props: {
       toast.show({
         variant: "info",
         message: `Updating to v${version}…`,
-        duration: 30000,
+        duration: ToastDuration.progress,
       })
 
       const result = await sdk.client.global.upgrade({ target: version })
@@ -392,7 +392,7 @@ export function useAppEffects(props: {
           variant: "error",
           title: "Update Failed",
           message: "Nothing was changed — run arcana upgrade in a terminal to retry.",
-          duration: 10000,
+          duration: ToastDuration.extended,
         })
         return
       }

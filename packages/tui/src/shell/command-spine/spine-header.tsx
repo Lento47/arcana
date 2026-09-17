@@ -106,11 +106,14 @@ function zonedDisplayWidth(items: readonly ZonedItem[]): number {
   return width + runtime + branch
 }
 
+/** Columns the brand wordmark reserves in the header; row 2 aligns under it. */
+const BRAND_COLUMN = 8
+
+/** Columns the navigation rail reserves per layout before it gives ground. */
+const NAVIGATION_MINIMUM = { minimal: 8, narrow: 12, compact: 18, wide: 24 } as const
+
 function navigationMinimum(layout: SpineLayout): number {
-  if (layout === "wide") return 24
-  if (layout === "compact") return 18
-  if (layout === "narrow") return 12
-  return 8
+  return NAVIGATION_MINIMUM[layout]
 }
 
 /**
@@ -249,7 +252,7 @@ export function SpineHeader(props: {
     return typeof width === "number" && Number.isFinite(width) ? Math.floor(width) : 120
   })
   const contentWidth = createMemo(() => Math.max(8, finiteWidth() - pad() * 2))
-  const brandWidth = createMemo(() => showBrand() ? 8 : 0)
+  const brandWidth = createMemo(() => showBrand() ? BRAND_COLUMN : 0)
   const primaryWidth = createMemo(() => Math.max(8, contentWidth() - brandWidth()))
   const statusBudget = createMemo(() => {
     const titleReserve = props.layout === "wide" ? 24 : props.layout === "compact" ? 18 : 12
@@ -353,7 +356,7 @@ export function SpineHeader(props: {
           <Show when={!short() && (hasNavigation() || visibleContext().length > 0 || Boolean(sessionMeta()))}>
             <box flexDirection="row" paddingLeft={pad()} paddingRight={pad()} minWidth={0}>
             <Show when={showBrand()}>
-              <box width={8} flexShrink={0} />
+              <box width={BRAND_COLUMN} flexShrink={0} />
             </Show>
             <Show when={hasNavigation()}>
               <box width={navigationWidth()} minWidth={0} flexShrink={1} overflow="hidden">

@@ -1,4 +1,5 @@
 import { createSignal } from "solid-js"
+import { ToastDuration } from "../ui/toast"
 import { unlink } from "node:fs/promises"
 import type { Voice } from "../config"
 import type { useToast } from "../ui/toast"
@@ -179,7 +180,7 @@ export function createVoiceOrchestrator(input: {
           duration: 60_000,
         })
       } else {
-        input.toast.show({ message: `${input.lexicon().transcribe}…`, variant: "info", duration: 3000 })
+        input.toast.show({ message: `${input.lexicon().transcribe}…`, variant: "info", duration: ToastDuration.brief })
       }
       const rawText = await services.transcribe(wavPath, asr, pipelineAbort.signal)
       if (!rawText.trim()) {
@@ -187,7 +188,7 @@ export function createVoiceOrchestrator(input: {
       }
 
       notifyStatus("normalizing")
-      input.toast.show({ message: `${input.lexicon().normalize}…`, variant: "info", duration: 3000 })
+      input.toast.show({ message: `${input.lexicon().normalize}…`, variant: "info", duration: ToastDuration.brief })
       let promptText = rawText.trim()
       try {
         promptText = await services.normalize(

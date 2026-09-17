@@ -13,8 +13,24 @@ import { KVContext } from "../context/kv"
  * their components; these primitives are for tints, trails and gauges.
  */
 
-/** Timer cadence while a color-only effect is in flight. */
-export const MOTION_STEP_MS = 50
+/**
+ * Named timings, in milliseconds.
+ *
+ * The app's motion clusters on four values; naming them keeps a "fast" move
+ * fast wherever it appears. `step` is the tick every primitive steps on, not a
+ * duration of its own. Per-cue cadences that are tuned to their cue rather than
+ * to the scale (the focus glide's 16ms, the breath's 120ms) stay local.
+ */
+export const Motion = {
+  /** The animation tick shared by every primitive. */
+  step: 50,
+  /** A quick approach: one move for a small state change (the metrics bar). */
+  fast: 80,
+  /** An entrance or exit (the composer's meta fade-in). */
+  base: 160,
+  /** A flare settling back to rest (the reel, the node, the tool chip). */
+  slow: 280,
+} as const
 
 /** One decay step of a flare: fraction `stepMs / fallMs` of the way to rest. */
 export function nextFlareValue(value: number, rest: number, stepMs: number, fallMs: number): number {
@@ -62,8 +78,8 @@ export type FlareOptions = Readonly<{
 export function createFlare(active: Accessor<boolean>, options: FlareOptions = {}): Accessor<number> {
   const animationsEnabled = useMotionEnabled()
   const rest = options.rest ?? 0
-  const stepMs = Math.max(16, options.stepMs ?? MOTION_STEP_MS)
-  const fallMs = Math.max(stepMs, options.fallMs ?? 280)
+  const stepMs = Math.max(16, options.stepMs ?? Motion.step)
+  const fallMs = Math.max(stepMs, options.fallMs ?? Motion.slow)
   const [value, setValue] = createSignal(rest)
   let timer: ReturnType<typeof setInterval> | undefined
   let previous = active()
@@ -127,7 +143,7 @@ export type EaseOptions = Readonly<{
  */
 export function createEase(source: Accessor<number>, options: EaseOptions = {}): Accessor<number> {
   const animationsEnabled = useMotionEnabled()
-  const stepMs = Math.max(16, options.stepMs ?? MOTION_STEP_MS)
+  const stepMs = Math.max(16, options.stepMs ?? Motion.step)
   const riseRate = options.riseRate ?? 0.4
   const fallRate = options.fallRate ?? 0.28
   const epsilon = options.epsilon ?? 0.01

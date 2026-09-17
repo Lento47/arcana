@@ -20,9 +20,35 @@ export type ToastOptions = {
 type ToastInput = Omit<ToastOptions, "id" | "duration"> & { duration?: number }
 
 const MAX_VISIBLE = 3
+
+/**
+ * The toast's duration ladder, in milliseconds.
+ *
+ * Duration is reading time, not severity: the app shows an 8-second `info`
+ * notice (a report the operator scans) and a 5-second `warning` (one line to
+ * act on). Pick the tier by how much there is to read, or pass an explicit
+ * number for an off-ladder case (a download in progress, a 2-second cue).
+ */
+export const ToastDuration = {
+  /** A flash: state that is also visible elsewhere (a mode toggle). */
+  flash: 1800,
+  /** A quick cue: an action acknowledged as it happens. */
+  brief: 3000,
+  /** The module default: a sentence to read and act on. */
+  normal: 5000,
+  /** A notice with detail worth re-reading. */
+  long: 8000,
+  /** An outcome worth attention when the operator looks up. */
+  extended: 10_000,
+  /** Work in progress, refreshed by the next event. */
+  progress: 30_000,
+  /** A failure: read it, act, dismiss. The `toast.error` default. */
+  error: 14_000,
+} as const
+
 /** Default auto-dismiss. Errors stay longer so decrypt + reading can finish. */
-const DEFAULT_DURATION_MS = 5000
-const DEFAULT_ERROR_DURATION_MS = 14_000
+const DEFAULT_DURATION_MS = ToastDuration.normal
+const DEFAULT_ERROR_DURATION_MS = ToastDuration.error
 let _nextId = 0
 
 export function Toast() {
