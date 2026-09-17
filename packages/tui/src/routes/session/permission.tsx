@@ -753,7 +753,7 @@ function GateFrame(props: {
       flexDirection="column"
       flexShrink={0}
       width="100%"
-      paddingTop={1}
+      paddingTop={0}
       paddingBottom={1}
       {...(props.expanded
         ? { top: 1, bottom: 1, left: 0, right: 0, position: "absolute", zIndex: 20, backgroundColor: theme.background }

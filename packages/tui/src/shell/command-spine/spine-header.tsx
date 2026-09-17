@@ -378,7 +378,7 @@ export function SpineHeader(props: {
         )}
       </Show>
       <Show when={showBrand() || visibleStatus().length > 0 || visibleContext().length > 0 || lockReason() || props.session()}>
-        <box border={["bottom"]} borderColor={theme.borderSubtle} marginTop={1} marginBottom={1} />
+        <box border={["bottom"]} borderColor={theme.borderSubtle} marginTop={1} marginBottom={0} />
       </Show>
     </box>
   )

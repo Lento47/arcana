@@ -213,7 +213,8 @@ export function SubagentFooter() {
   }
   return (
     <box flexDirection="column" flexShrink={0} paddingLeft={2} paddingRight={1}>
-      <box border={["top"]} borderColor={(t.spineRail ?? theme.borderSubtle) as any} flexShrink={0} />
+      {/* No top border: the composer frame directly below (and the transcript
+          above) already draw the separation; a second rule cost a row. */}
       {/*
         One content row, and only one, at every width.
 

@@ -56,6 +56,7 @@ import { DialogConfirm } from "../../ui/dialog-confirm"
 import { useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv"
 import { createFadeIn } from "../../util/signal"
+import { createBreath } from "../../util/motion"
 import { DialogSkill } from "../dialog-skill"
 import { DialogWorkspaceUnavailable } from "../dialog-workspace-unavailable"
 import { contextUsageFor, hasContextUsage } from "../../util/context-pressure"
@@ -77,7 +78,7 @@ import { readLocalAttachment } from "./local-attachment"
 import { addOptimisticMessage, clearOptimisticMessages, remapOptimisticSession } from "./optimistic"
 import { arcanaTaskInstruction, assessArcanaTaskRisk, parseArcanaPromptCommand } from "../../arcana/task"
 import { useSessionPrewarm } from "../../routes/home/prewarm-session"
-import { formatSessionMetrics, METRICS_BORDER_OVERHEAD, type SessionMetricSnapshot } from "./metrics"
+import { cacheMissPercent, formatSessionMetrics, METRICS_BORDER_OVERHEAD, type SessionMetricSnapshot } from "./metrics"
 import { PromptMetricsBorder } from "./metrics-border"
 
 export type PromptProps = {
@@ -357,17 +358,26 @@ export function Prompt(props: PromptProps) {
     interrupt: 0,
   })
 
+  // Caret rest color: the exact static assignment the effect always made.
+  const caretRest = createMemo(() => {
+    if (props.disabled) return isCommandSpine() ? theme.spineDiffMuted : theme.backgroundElement
+    if (isCommandSpine()) return store.mode === "shell" ? theme.primary : theme.spinePrompt
+    return theme.text
+  })
+  // Idle breathing caret: only while the composer is empty, the session is idle
+  // and animations are on. Typing, streaming or disabling snaps back to rest.
+  const caretIdle = () =>
+    animationsEnabled()
+    && !props.disabled
+    && store.prompt.input === ""
+    && status().type === "idle"
+  const caretBreath = createBreath(caretIdle, { periodMs: 2400, stepMs: 120 })
+  const caretAccent = createMemo(() => (isCommandSpine() ? theme.spinePrompt : theme.accent))
+
   createEffect(() => {
     if (!input || input.isDestroyed) return
-    if (props.disabled) {
-      input.cursorColor = isCommandSpine() ? theme.spineDiffMuted : theme.backgroundElement
-      return
-    }
-    if (isCommandSpine()) {
-      input.cursorColor = store.mode === "shell" ? theme.primary : theme.spinePrompt
-      return
-    }
-    input.cursorColor = theme.text
+    const rest = caretRest()
+    input.cursorColor = caretIdle() ? tint(rest, caretAccent(), 0.6 * caretBreath()) : rest
   })
 
   createEffect(
@@ -1969,14 +1979,24 @@ export function Prompt(props: PromptProps) {
     return attempts[attempts.length - 1]?.firstContentMs
   })
 
-  const cacheRead = createMemo(() => {
-    const last = lastAssistant() as { tokens?: { cache?: { read?: number } } | undefined } | undefined
-    return last?.tokens?.cache?.read
-  })
+  // Session-scoped cache read/write counters, aligned with the session
+  // input/output/total beside them. Per-turn cache behaviour is carried by
+  // the miss % "turn" scope below.
+  const cacheRead = createMemo(() => tokens()?.cache?.read)
 
-  const cacheWrite = createMemo(() => {
-    const last = lastAssistant() as { tokens?: { cache?: { write?: number } } | undefined } | undefined
-    return last?.tokens?.cache?.write
+  const cacheWrite = createMemo(() => tokens()?.cache?.write)
+
+  // Cache miss share, both scopes: per-turn (last assistant message) and
+  // session-wide (cumulative session tokens). Same denominator — uncached
+  // input + cache read + cache write.
+  const cacheMiss = createMemo(() => {
+    const last = lastAssistant() as
+      | { tokens?: { input?: number; cache?: { read?: number; write?: number } } }
+      | undefined
+    return {
+      turn: cacheMissPercent(last?.tokens),
+      session: cacheMissPercent(tokens()),
+    }
   })
 
   const frameWidth = createMemo(() => {
@@ -1995,6 +2015,8 @@ export function Prompt(props: PromptProps) {
       ttftMs: ttft(),
       cacheReadTokens: cacheRead(),
       cacheWriteTokens: cacheWrite(),
+      cacheMissPercentTurn: cacheMiss().turn,
+      cacheMissPercentSession: cacheMiss().session,
       costUsd: metricsSession()?.cost,
       pressure: pressure(),
     }
@@ -2286,6 +2308,19 @@ export function Prompt(props: PromptProps) {
           <VoiceWave status={voiceStatus} />
         </box>
       </Show>
+      {/* Bottom line renders only when it has something to say: the
+          command-spine variant passes no `hint`, and the old `Match when={true}`
+          fallback painted an empty <text /> row below the metrics border. */}
+      <Show
+        when={
+          (!isCommandSpine() && status().type !== "idle")
+          || Boolean(workspace.notice())
+          || Boolean(workspace.label())
+          || Boolean(move.progress())
+          || Boolean(move.pendingNew())
+          || Boolean(props.hint)
+        }
+      >
         <box width="100%" flexDirection="row" justifyContent="space-between">
           <Switch>
             <Match when={!isCommandSpine() && status().type !== "idle"}>
@@ -2424,13 +2459,14 @@ export function Prompt(props: PromptProps) {
                 <text fg={theme.accent}>(new working copy)</text>
               </box>
             </Match>
-            <Match when={true}>{props.hint ?? <text />}</Match>
+            <Match when={props.hint}>{props.hint}</Match>
           </Switch>
           {/* Keybind hint row removed for v0.3.18 — was "tab agents / ctrl+p commands" plus
               the file-context label. The command-spine footer keeps metrics in its
               rounded frame; the default shell retains the standalone metrics bar.
               The keybinds are still discoverable via `?` (help.show) and the command palette. */}
-      </box>
+        </box>
+      </Show>
       {/* Default shell: absolute overlay relative to prompt parent. */}
       <Show when={!isCommandSpine()}>
         <AutocompleteSlot layout="overlay" />
