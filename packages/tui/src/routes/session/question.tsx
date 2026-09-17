@@ -15,9 +15,55 @@ import { useSpineLayout } from "../../shell/command-spine/use-spine-layout"
 import { useToast } from "../../ui/toast"
 import { isUnknownRequestNotFoundError } from "../../util/api-error"
 import { errorMessage } from "../../util/error"
+import { Locale } from "../../util/locale"
+import { Space } from "../../ui/chrome"
+import { useKV } from "../../context/kv"
+import { rendererWidth, sessionContentWidth } from "../../util/geometry"
+import { isDensity, type Density } from "../../shell/command-spine/spine-types"
 
 const QUESTION_MODE = "question"
 const ESC_ARM_MS = 2_000
+
+/**
+ * The gate's fixed strings, at module scope, so the row that prints them and the
+ * measurement that decides whether they fit cannot drift apart.
+ */
+const HINT_SUBMIT = "enter submit · tab navigate"
+const HINT_ESC_ARMED = "Esc again to discard this form"
+const HINT_REQUIRED = (list: string) => `Required: answer ${list} · enter jumps to it`
+const SUBMIT_BUSY = "Submitting…"
+const SUBMIT_READY = "Submit"
+const SUBMIT_INCOMPLETE = "Submit (incomplete)"
+/** The button's own horizontal padding, which its label sits inside. */
+const SUBMIT_PAD = 2
+/**
+ * The button measured at its widest label, so its cost is one number the fit
+ * check can charge: the label changes with the form's completeness, and a row
+ * that restacks as the operator answers is worse than one that holds still.
+ */
+const SUBMIT_WIDTH =
+  SUBMIT_PAD + Math.max(...[SUBMIT_BUSY, SUBMIT_READY, SUBMIT_INCOMPLETE].map((label) => Locale.displayWidth(label)))
+
+/** The gate's own lead — the frame already insets the spine, so `pad` is 0. */
+function questionLead(pad: number, gutter: number, rail: number) {
+  return pad * 2 + gutter + rail
+}
+
+/**
+ * The columns this gate's rows actually have, or `undefined` when the renderer
+ * has not been laid out yet.
+ *
+ * Unmeasured is not narrow: an undefined budget must never be read as "no room"
+ * and stack a row that would have fit. Same rule as `rendererWidth` states.
+ */
+function questionContentWidth(
+  lead: number,
+  termWidth: number | undefined,
+  density: Density,
+): number | undefined {
+  if (termWidth === undefined) return undefined
+  return sessionContentWidth(termWidth, density) - lead
+}
 
 export function QuestionPrompt(props: { request: QuestionRequest; directory?: string }) {
   const sdk = useSDK()
@@ -31,6 +77,11 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
   const questions = createMemo(() => props.request.questions ?? [])
   const layout = useSpineLayout(() => dimensions().width)
   const metrics = createMemo(() => spineLeadMetrics(layout()))
+  const kv = useKV()
+  const density = createMemo(() => {
+    const stored = kv.get("density")
+    return isDensity(stored) ? stored : "cozy"
+  })
   const [answers, setAnswers] = createSignal<QuestionAnswer[]>(questions().map(() => []))
   /** Drafts survive edit-cancel; only submit/reject consumes them. */
   const [customValues, setCustomValues] = createSignal<string[]>(questions().map(() => ""))
@@ -312,6 +363,56 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
     }
   })
 
+  /**
+   * The columns this gate's rows have, or `undefined` when the renderer has not
+   * been laid out yet — which is not the same as narrow, and must never stack a
+   * row that would have fit.
+   */
+  const budget = createMemo(() =>
+    questionContentWidth(
+      questionLead(metrics().pad, metrics().gutter, metrics().rail),
+      rendererWidth({ width: dimensions().width }),
+      density(),
+    ),
+  )
+  /** How wide the leading marker has to be to hold the largest index printed. */
+  const indexWidth = createMemo(() => String(questions().length).length + 1)
+  /**
+   * The hint above the submit control, by state — the same literal `stacks()`
+   * measures, so the row and its measurement cannot disagree.
+   */
+  const footerHint = createMemo(() => {
+    if (escArmed()) return HINT_ESC_ARMED
+    if (unanswered().length > 0) return HINT_REQUIRED(unanswered().join(", "))
+    return HINT_SUBMIT
+  })
+  /**
+   * Whether the hint and the submit control stack.
+   *
+   * Both were elastic in a `space-between` row, so a row narrower than the two
+   * did not push the control to the far edge — yoga shared the deficit between
+   * them and both decoded. At 40 columns the row printed `Required: answer 1 ·
+   * Submit (` over `enter jumps to it   incomplete)`, and at 32 the two ran
+   * together with no gap between them at all: `Required: answer Submit (` over
+   * `1 · enter jumps  incomplete)`. The one control on the gate — the thing the
+   * operator is looking for — was the part that came apart.
+   *
+   * Measured against the longest hint the gate can print, every question
+   * unanswered, rather than the hint's current text: answering the last question
+   * shortens the hint, and a row that reflows under the operator's cursor is a
+   * worse trade than two rows that hold still.
+   */
+  const stacks = createMemo(() => {
+    const width = budget()
+    if (width === undefined) return false
+    const longest = Math.max(
+      Locale.displayWidth(HINT_REQUIRED(questions().map((_, index) => index + 1).join(", "))),
+      Locale.displayWidth(HINT_ESC_ARMED),
+      Locale.displayWidth(HINT_SUBMIT),
+    )
+    return longest + Space.gap + SUBMIT_WIDTH > width
+  })
+
   return (
     <box flexDirection="column" flexShrink={0} width="100%" paddingTop={1} paddingBottom={1}>
       <box flexDirection="row" width="100%" paddingLeft={metrics().pad} paddingRight={metrics().pad}>
@@ -361,11 +462,22 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
                   minWidth={0}
                   backgroundColor={flashing() ? theme.backgroundElement : undefined}
                 >
-                  <box flexDirection="row" minWidth={0}>
-                    <text fg={flashing() ? theme.warning : focused() ? theme.accent : answered(index()) ? theme.success : theme.textMuted}>
+                  <box flexDirection="row" minWidth={0} gap={Space.gap}>
+                    {/* The index is the row's address, so it is whole or absent
+                        — never shrunk. Sharing the deficit with the question
+                        text ate the space that separated them, and from 64
+                        columns down every question printed glued to its own
+                        number: `1.Deployment target`. The width is reserved at
+                        the widest index the form can print, so a ticked
+                        question does not shift its own text. */}
+                    <text
+                      width={indexWidth()}
+                      flexShrink={0}
+                      fg={flashing() ? theme.warning : focused() ? theme.accent : answered(index()) ? theme.success : theme.textMuted}
+                    >
                       {answered(index()) ? "✓" : `${index() + 1}.`}
                     </text>
-                    <text fg={theme.text} wrapMode="word"> {question.header ? `${question.header} — ` : ""}{question.question}</text>
+                    <text fg={theme.text} wrapMode="word">{question.header ? `${question.header} — ` : ""}{question.question}</text>
                   </box>
                   <Show when={question.multiple === true}>
                     <text fg={theme.textMuted}>  Select all that apply</text>
@@ -441,15 +553,23 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
       <box flexDirection="row" width="100%" paddingLeft={metrics().pad} paddingRight={metrics().pad} marginTop={1}>
         <SpineGutterSpacer layout={layout()} />
         <SpineRail layout={layout()} />
-        <box flexDirection="row" flexGrow={1} justifyContent="space-between" minWidth={0}>
+        <box
+          flexDirection={stacks() ? "column" : "row"}
+          flexGrow={1}
+          justifyContent="space-between"
+          minWidth={0}
+          gap={stacks() ? Space.gap : 0}
+        >
           <text fg={escArmed() ? theme.error : unanswered().length > 0 ? theme.warning : theme.textMuted} wrapMode="word">
-            {escArmed()
-              ? "Esc again to discard this form"
-              : unanswered().length > 0
-                ? `Required: answer ${unanswered().join(", ")} · enter jumps to it`
-                : "enter submit · tab navigate"}
+            {footerHint()}
           </text>
+          {/* The control is whole or absent: `flexShrink={0}` and a label that
+              cannot wrap, so the hint beside it is the row's only elastic part.
+              Stacked, it keeps the right edge — the family's action position —
+              rather than starting a new left-aligned line. */}
           <box
+            alignSelf={stacks() ? "flex-end" : "stretch"}
+            flexShrink={0}
             paddingLeft={1}
             paddingRight={1}
             backgroundColor={submitFocused() ? theme.accent : complete() ? theme.backgroundElement : theme.backgroundMenu}
@@ -457,8 +577,8 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
             onMouseOut={() => setSubmitFocused(false)}
             onMouseUp={() => { if (!hasMeaningfulSelection()) { if (complete()) void submit(); else focusFirstUnanswered() } }}
           >
-            <text fg={submitFocused() ? selectedForeground(theme, theme.accent) : complete() ? theme.text : theme.textMuted}>
-              {busy() ? "Submitting…" : complete() ? "Submit" : "Submit (incomplete)"}
+            <text wrapMode="none" fg={submitFocused() ? selectedForeground(theme, theme.accent) : complete() ? theme.text : theme.textMuted}>
+              {busy() ? SUBMIT_BUSY : complete() ? SUBMIT_READY : SUBMIT_INCOMPLETE}
             </text>
           </box>
         </box>
