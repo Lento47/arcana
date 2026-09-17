@@ -44,6 +44,7 @@ import { DialogModel } from "../../component/dialog-model"
 import { useLocal } from "../../context/local"
 import { errorMessage } from "../../util/error"
 import { useStreamFrameGate } from "../../util/stream-frame"
+import { burnSeries } from "../../ui/kit/telemetry"
 
 export function CommandSpineShell(props: ShellProps) {
   const { theme } = useTheme()
@@ -62,6 +63,9 @@ export function CommandSpineShell(props: ShellProps) {
   // Use the session gate when provided; legacy shell callers get one gate for
   // the whole shell instead of one timer per streamed prose component.
   const streamFrame = useStreamFrameGate(props.streamFrame)
+  // Burn history for the header sparkline: the newest eight turns' context
+  // sizes, derived once per message-list change (not per delta).
+  const burn = createMemo(() => burnSeries(props.messages(), 8))
   const [escapeStage, setEscapeStage] = createSignal<0 | 1 | 2>(0)
   const [recoveryActionIndex, setRecoveryActionIndex] = createSignal(0)
   let escapeResetTimer: ReturnType<typeof setTimeout> | undefined
@@ -858,6 +862,7 @@ export function CommandSpineShell(props: ShellProps) {
               trust={projection.trust()}
               charter={projection.sessionCharter()}
               governed={projection.governedChip()}
+              burn={burn()}
               onNavigateToSession={props.onNavigateToSession}
               onPreviousSession={() => keymap.dispatchCommand("session.child.previous")}
               onNextSession={() => keymap.dispatchCommand("session.child.next")}

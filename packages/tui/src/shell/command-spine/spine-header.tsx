@@ -8,6 +8,7 @@ import { spineOuterPadding, statusToneColor, type SpineLayout, type StatusSegmen
 import { displayWidth, truncate } from "../../util/locale"
 import { useTerminalSize } from "../../util/terminal-size"
 import { Size, Space } from "../../ui/chrome"
+import { Sparkline } from "../../ui/kit/sparkline-view"
 import { useTuiConfig } from "../../config"
 import type { SpineTrustStatus } from "./spine-trust"
 import type { SessionCharter, SessionCharterChip, SessionCharterTone } from "./session-charter"
@@ -194,6 +195,8 @@ export function SpineHeader(props: {
   charter?: SessionCharter
   /** Governed-action tally — header only, not a chat row. */
   governed?: SessionCharterChip
+  /** Per-turn context sizes (oldest → newest) for the burn sparkline. */
+  burn?: readonly number[]
 }) {
   const { theme } = useTheme()
   const tuiConfig = useTuiConfig()
@@ -337,6 +340,17 @@ export function SpineHeader(props: {
             </text>
           </box>
           <box flexGrow={1} minWidth={0} />
+          {/* Burn history: the last turns' context sizes as one sparkline row.
+              Hidden on minimal layouts and until three turns exist — two points
+              are a line, not a history. */}
+          <Show when={props.burn && props.burn.length >= 3 && props.layout !== "minimal"}>
+            <box flexShrink={0} flexDirection="row" gap={Space.gap} paddingLeft={Space.padX} alignItems="center">
+              <text fg={theme.spineContext} wrapMode="none">
+                {Glyph.charge}
+              </text>
+              <Sparkline values={props.burn!} width={8} />
+            </box>
+          </Show>
           <Show when={visibleStatus().length > 0}>
             <box minWidth={0} flexShrink={1} overflow="hidden">
               <ZonedStatusLine items={visibleStatus()} theme={theme} leading={false} />

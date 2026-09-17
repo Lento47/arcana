@@ -4,6 +4,7 @@ import { BrailleGrid, brailleSeries, plotSeries } from "../src/ui/kit/braille"
 import { gaugeCells, labeledGauge } from "../src/ui/kit/gauge"
 import { chunks, clamp01, extent, normalize } from "../src/ui/kit/scale"
 import { SparkMean, sparkline, SPARK_GLYPHS } from "../src/ui/kit/sparkline"
+import { burnSeries } from "../src/ui/kit/telemetry"
 
 describe("kit scale", () => {
   test("clamp01 bounds and forgives non-finite input", () => {
@@ -161,5 +162,22 @@ describe("kit gauge", () => {
   test("labeledGauge never hides the value behind a clipped bar", () => {
     expect(labeledGauge(0.5, 4, "ctx")).toBe("██░░ ctx 50%")
     expect(labeledGauge(Number.NaN, 4)).toBe("░░░░ 0%")
+  })
+})
+
+describe("kit telemetry", () => {
+  test("burn keeps assistant turns with context, oldest to newest", () => {
+    const messages = [
+      { role: "user", tokens: { input: 5 } },
+      { role: "assistant", tokens: { input: 100, output: 10 } },
+      { role: "assistant", tokens: { input: 0, output: 0 } },
+      { role: "assistant", tokens: { input: 200, output: 20, reasoning: 5 } },
+    ]
+    expect(burnSeries(messages)).toEqual([110, 225])
+  })
+
+  test("limit keeps the newest turns", () => {
+    const messages = [1, 2, 3, 4].map((n) => ({ role: "assistant", tokens: { input: n * 10 } }))
+    expect(burnSeries(messages, 2)).toEqual([30, 40])
   })
 })
