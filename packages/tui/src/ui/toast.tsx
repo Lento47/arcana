@@ -5,7 +5,7 @@ import { Glyph } from "../branding"
 import { useRenderer } from "@opentui/solid"
 import { useTerminalSize } from "../util/terminal-size"
 import { SplitBorder } from "./border"
-import { Size, Space } from "./chrome"
+import { Layer, Size, Space } from "./chrome"
 import { paneWidth } from "../util/geometry"
 import { TextAttributes, type MouseEvent } from "@opentui/core"
 import { Scramble } from "../component/scramble"
@@ -65,7 +65,7 @@ export function Toast() {
       right={2}
       flexDirection="column"
       gap={Space.gap}
-      zIndex={4000}
+      zIndex={Layer.toast}
     >
       <For each={toast.toasts.slice(-MAX_VISIBLE)}>
         {(item) => {

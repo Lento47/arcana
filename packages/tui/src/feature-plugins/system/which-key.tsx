@@ -3,7 +3,7 @@ import { RGBA, TextAttributes, type KeyEvent, type Renderable } from "@opentui/c
 import { useRenderer } from "@opentui/solid"
 import { useTerminalSize } from "../../util/terminal-size"
 import { displayWidth } from "../../util/locale"
-import { Size, Space } from "../../ui/chrome"
+import { Layer, Size, Space } from "../../ui/chrome"
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
 import { useBindings, useKeymapSelector } from "../../keymap"
 import type { ActiveKey } from "@opentui/keymap"
@@ -426,7 +426,7 @@ function WhichKeyPanel(props: {
     <Show when={visible()}>
       <box
         position={props.layout === "overlay" ? "absolute" : "relative"}
-        zIndex={3500}
+        zIndex={Layer.help}
         left={0}
         bottom={props.layout === "overlay" ? 0 : undefined}
         width={dimensions().width}

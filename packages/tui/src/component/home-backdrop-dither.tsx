@@ -3,6 +3,7 @@ import { useRenderer } from "@opentui/solid"
 import { useTerminalSize } from "../util/terminal-size"
 import { createEffect } from "solid-js"
 import { useTheme } from "../context/theme"
+import { Layer } from "../ui/chrome"
 
 const DEFAULT_SEED = 0x00c0ffee
 const DITHER_LEVELS = 4
@@ -1349,7 +1350,7 @@ export function HomeBackdropDither(props: HomeBackdropDitherProps = {}) {
       height="100%"
       wrapMode="none"
       selectable={false}
-      zIndex={-1}
+      zIndex={Layer.behind}
       ref={(value: TextRenderable) => {
         node = value
         if (latest && !value.isDestroyed) value.content = latest

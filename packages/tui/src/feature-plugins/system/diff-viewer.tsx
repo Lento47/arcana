@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/solid */
 import type { TuiPlugin, TuiPluginApi, TuiRouteCurrent } from "@arcana/plugin/tui"
-import { Space } from "../../ui/chrome"
+import { Layer, Space } from "../../ui/chrome"
 import type { SnapshotFileDiff, VcsFileDiff } from "@arcana/sdk/v2"
 import {
   TextAttributes,
@@ -944,7 +944,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
   }))
 
   return (
-    <box position="absolute" zIndex={2500} left={0} top={0} width={dimensions().width} height={dimensions().height}>
+    <box position="absolute" zIndex={Layer.pane} left={0} top={0} width={dimensions().width} height={dimensions().height}>
       <PanelGroup axis="y" width="100%" height="100%">
         <Panel border="none" flexShrink={0} padding={0} paddingLeft={Space.unit}>
           <text fg={theme().text} wrapMode="none" flexShrink={0}>

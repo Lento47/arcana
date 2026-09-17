@@ -87,6 +87,36 @@ export const Space = {
   },
 } as const
 
+/**
+ * The stacking ladder for floating surfaces.
+ *
+ * Anything that stacks over the app picks a layer here. Local paint order
+ * inside one component (a panel over its own background, a logo's own marks)
+ * stays local: it is composition, not elevation.
+ */
+export const Layer = {
+  /** Decorative art behind the content (the home backdrop dither). */
+  behind: -1,
+  /** In-surface overlays: over the content, under popovers. */
+  state: 10,
+  /** Scroll cues floating over the transcript. */
+  cue: 50,
+  /** The autocomplete popup over the composer. */
+  popover: 200,
+  /** The home prompt over its backdrop. */
+  prompt: 1000,
+  /** Full-screen viewers (diff, artifact). */
+  pane: 2500,
+  /** The dialog card and its scrim. */
+  dialog: 3000,
+  /** The which-key help sheet. */
+  help: 3500,
+  /** Toasts. */
+  toast: 4000,
+  /** The boot splash. */
+  splash: 5000,
+} as const
+
 /** Layout widths / breakpoints previously hardcoded across components. */
 export const Size = {
   wideBreakpoint: 120,

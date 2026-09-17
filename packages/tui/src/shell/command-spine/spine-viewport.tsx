@@ -2,6 +2,7 @@ import { ErrorBoundary, For, Show, createSignal } from "solid-js"
 import type { Accessor } from "solid-js"
 import type { MouseEvent, ScrollAcceleration, ScrollBoxRenderable } from "@opentui/core"
 import { useTheme } from "../../context/theme"
+import { Layer } from "../../ui/chrome"
 import { type SpineLayout, type SpineEntry, type SpineEntryAction } from "./spine-types"
 import { SpineEntryBinding } from "./spine-entry-binding"
 import { SpineRowError } from "./spine-row-error"
@@ -140,7 +141,7 @@ export function SpineViewport(props: {
           position="absolute"
           top={0}
           right={0}
-          zIndex={50}
+          zIndex={Layer.cue}
           width={1}
           height={1}
           onMouseUp={props.onScrollToTop}
@@ -156,7 +157,7 @@ export function SpineViewport(props: {
           position="absolute"
           bottom={0}
           right={0}
-          zIndex={50}
+          zIndex={Layer.cue}
           width={1}
           height={1}
           onMouseUp={props.onScrollToBottom}
