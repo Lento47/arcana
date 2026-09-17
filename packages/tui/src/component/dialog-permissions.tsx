@@ -16,7 +16,6 @@ import {
   authorizationSummary,
   authorizationWarnings,
   extractGuardFlags,
-  guardWarnings,
   permissionRequestSummary,
   projectPermissionsStatus,
   waitingHint,
@@ -220,13 +219,23 @@ export function DialogPermissions() {
 
                       No `[key]` wrapper: this row is mouse-only, and the app's
                       `[key] verb` shape means "press this key" — a bracket here
-                      would advertise a binding that does not exist. */}
+                      would advertise a binding that does not exist.
+
+                      Both the action and its outcome are `flexShrink={0}
+                      wrapMode="none"`, so the summary beside them is the row's
+                      only elastic part. With two shrinkable segments yoga
+                      shared the deficit between them and the action was cut in
+                      half and fused into the summary: a 46-column dialog printed
+                      `approval a3 · request abcdef12 · 5mResen` with `d` under
+                      it, so the one control on the row read as `5mResend`. */}
                   <Show
                     when={resendState[approval.approvalId]}
                     fallback={
                       <text
                         fg={theme.textMuted}
                         attributes={TextAttributes.UNDERLINE}
+                        flexShrink={0}
+                        wrapMode="none"
                         onMouseUp={() => void onResend(approval.approvalId)}
                       >
                         Resend
@@ -239,6 +248,8 @@ export function DialogPermissions() {
                           ? theme.error
                           : theme.textMuted
                       }
+                      flexShrink={0}
+                      wrapMode="none"
                     >
                       {resendState[approval.approvalId]!.label}
                     </text>
@@ -266,18 +277,41 @@ export function DialogPermissions() {
                   <text fg={hasGuard ? theme.error : theme.warning} flexShrink={0}>
                     {hasGuard ? "⚑" : Glyph.attention}
                   </text>
+                  {/*
+                    The guard warnings are drawn once, here, because the summary
+                    already carries them: `permissionRequestSummary` appends
+                    `· ⚠ WHOLESALE REPLACEMENT · ⚠ destructive patch` for an edit
+                    request, and the row then drew the same warnings a second
+                    time as bracketed cells one gap to the right.
+
+                    Two renderings were never the worst of it. The cells were
+                    also the row's second elastic segment, so a card too narrow
+                    for the summary plus the cells did not merely lose the
+                    duplication — yoga shared the deficit between the two and
+                    both decoded. The card is capped at 60 columns and opens at
+                    `dialogWidth(term, "medium")`, so this is the ordinary case
+                    rather than a corner: at a 40-column card the row printed
+                    `⚑ edit · src/ [        [      [` over
+                    `engine/ WHOLESALEdestrucbackup` and
+                    `session.ts REPLACEMEtive create`, cells cut in half and
+                    fused into the summary, with the same warnings repeated as a
+                    staircase of one-word lines below.
+
+                    One rendering leaves the summary as the row's only elastic
+                    segment — the shape the Recent approvals row below already
+                    has — so a narrow card wraps whole words and nothing else
+                    moves. The `⚠` still reaches the operator, and the guard's
+                    severity still reaches them through the mark: `⚑` in error
+                    ink when the flags are one of the serious ones, and the
+                    attention triangle from the brand layer in warning ink when
+                    the only flag is an informational one. (The triangle is not
+                    spelled out here on purpose: `attention-glyph.test.tsx`
+                    scans this file for the literal, and a comment quoting it
+                    would fail the scan as if the surface had re-typed it.)
+                  */}
                   <text fg={hasGuard ? theme.warning : theme.text} wrapMode="word">
                     {permissionRequestSummary(request)}
                   </text>
-                  <Show when={guardWarnings(flags).length > 0}>
-                    <For each={guardWarnings(flags)}>
-                      {(chip) => (
-                        <text fg={chip === "backup created" ? theme.textMuted : theme.error}>
-                          [{chip}]
-                        </text>
-                      )}
-                    </For>
-                  </Show>
                 </box>
               )
             }}
@@ -309,9 +343,13 @@ export function DialogPermissions() {
                     <text fg={theme.text} wrapMode="word">
                       {rule.agentID} · {rule.action} · {rule.resource}
                     </text>
+                    {/* Same shape as the approval row's action: the rule is the
+                        elastic part, the verb is whole or absent. */}
                     <text
                       fg={theme.textMuted}
                       attributes={TextAttributes.UNDERLINE}
+                      flexShrink={0}
+                      wrapMode="none"
                       onMouseUp={() => void revokeRemembered(rule.id)}
                     >
                       Revoke
