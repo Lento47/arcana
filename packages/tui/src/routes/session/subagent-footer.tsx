@@ -4,6 +4,7 @@ import { useRenderer } from "@opentui/solid"
 import { useRouteData } from "../../context/route"
 import { useSync } from "../../context/sync"
 import { useTheme } from "../../context/theme"
+import { StatusGlyph } from "../../branding"
 import type { AssistantMessage } from "@arcana/sdk/v2"
 import { Locale } from "../../util/locale"
 import { contextUsageFor, hasContextUsage } from "../../util/context-pressure"
@@ -72,14 +73,14 @@ export function SubagentFooter() {
 
   const status = createMemo(() => {
     const s = session()
-    if (!s) return { glyph: "○", tone: "muted" as const, label: "pending" }
+    if (!s) return { glyph: StatusGlyph.pending, tone: "muted" as const, label: "pending" }
     const msg = messages()
-    if (!msg.length) return { glyph: "○", tone: "muted" as const, label: "pending" }
+    if (!msg.length) return { glyph: StatusGlyph.pending, tone: "muted" as const, label: "pending" }
     const last = msg[msg.length - 1]
     if (last?.role === "assistant" && (last as AssistantMessage).tokens?.output > 0) {
-      return { glyph: "◎", tone: "ok" as const, label: "done" }
+      return { glyph: StatusGlyph.done, tone: "ok" as const, label: "done" }
     }
-    return { glyph: "◇", tone: "run" as const, label: "running" }
+    return { glyph: StatusGlyph.running, tone: "run" as const, label: "running" }
   })
 
   const tailMessages = createMemo(() => messages().slice(-3).map(compactTailText).filter(Boolean))

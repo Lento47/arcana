@@ -46,7 +46,7 @@ describe("projectSessionCharter", () => {
     expect(formatHeaderStatusLabel({ key: "live", label: "live" })).toBe("LIVE")
     expect(formatHeaderStatusLabel({ key: "contract", label: "none" })).toBe("")
     expect(formatHeaderStatusLabel({ key: "proof", label: "P1 valid" })).toBe("P1 ✓ verified")
-    expect(formatHeaderStatusLabel({ key: "proof", label: "P1 invalid" })).toBe("P1 × invalid")
+    expect(formatHeaderStatusLabel({ key: "proof", label: "P1 invalid" })).toBe("P1 ✗ invalid")
     expect(formatHeaderStatusLabel({ key: "governed", label: "3 governed | 1 denied" })).toBe("3 governed · 1 denied")
   })
 

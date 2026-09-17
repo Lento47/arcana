@@ -86,6 +86,28 @@ export const AgentSigil = {
   all: "⛧",
 } as const
 
+/**
+ * Lifecycle marks — one vocabulary for pending → running → done/failed.
+ *
+ * Every surface that reports whether work has happened draws from here: the
+ * subagent footer, task rows, todo items, effect verification and the tool
+ * chips. They used to each spell these differently (`◎`/`✓`, `◇`/`●`,
+ * `×`/`✗`), so the same state read as two different states depending on where
+ * it was drawn. The spine's *event-kind* glyphs (inspect `◇`, plan `▸`) are a
+ * different vocabulary and stay with their kinds.
+ */
+export const StatusGlyph = {
+  /** Enqueued and not started (a quiet dot; the tool chips' queued state). */
+  queued: "·",
+  /** Awaiting first evidence (a session with no output yet, a todo item). */
+  pending: "○",
+  running: "●",
+  done: "✓",
+  failed: "✗",
+  /** Stopped before finishing — a sibling failed, the operator cancelled. */
+  interrupted: "!",
+} as const
+
 // --- Phase 5a: Voice Core ---
 
 /**

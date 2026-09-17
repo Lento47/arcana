@@ -19,6 +19,7 @@ import type { SpineApprovalSnapshot, SpineEntry, SpineKind, StatusTone } from ".
 import { SPINE_GLYPH } from "./spine-types"
 import { createDedupeKey, dedupeKeyToString } from "./spine-ordering"
 import { Locale } from "../../util/locale"
+import { StatusGlyph } from "../../branding"
 
 // ─── Approval → SpineEntry ──────────────────────────────────────────
 
@@ -96,12 +97,12 @@ export function approvalToSpineEntry(approval: ApprovalRecord, snapshot?: SpineA
 function approvalGlyph(state: ApprovalState): string {
   switch (state) {
     case "PENDING": return SPINE_GLYPH.approve ?? "◤"
-    case "APPROVED": return "✓"
-    case "DENIED": return "✗"
+    case "APPROVED": return StatusGlyph.done
+    case "DENIED": return StatusGlyph.failed
     case "CLAIMED": return "▷"
     case "CONSUMED": return "▣"
-    case "EXPIRED": return "×"
-    case "INVALIDATED": return "✗"
+    case "EXPIRED": return StatusGlyph.failed
+    case "INVALIDATED": return StatusGlyph.failed
     default: return "?"
   }
 }

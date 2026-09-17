@@ -5,7 +5,7 @@ import { Dynamic } from "solid-js/web"
 import { BoxRenderable, RGBA } from "@opentui/core"
 import type { AssistantMessage, Part, ToolPart, TextPart, UserMessage, Provider } from "@arcana/sdk/v2"
 import type { ReasoningPart as ReasoningPartType } from "@arcana/sdk/v2"
-import { Lexicon, Glyph, AgentSigil, VerbPool } from "../../branding"
+import { Lexicon, Glyph, AgentSigil, VerbPool, StatusGlyph } from "../../branding"
 import { arcanaDitherPattern, arcanaDitherTick } from "../../ui/arcana"
 import { arcanaTaskFromPart, promptTextFromPart } from "../../arcana/task"
 import * as Model from "../../util/model"
@@ -908,7 +908,7 @@ function GenericTool(props: ToolProps) {
                 return <box flexDirection="column" gap={0}>
                   <Show when={taskState}>
                     <text fg={theme.textMuted}>
-                      {(taskState![1] === "completed" ? "◎" : "◇") + " Task " + taskState![1]}
+                      {(taskState![1] === "completed" ? StatusGlyph.done : StatusGlyph.running) + " Task " + taskState![1]}
                     </text>
                   </Show>
                   <Show when={activeGoal}>

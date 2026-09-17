@@ -4,7 +4,7 @@ import { createMemo, For, Match, onCleanup, Show, Switch } from "solid-js"
 import { Portal, useRenderer, type JSX } from "@opentui/solid"
 import { useTerminalSize } from "../../util/terminal-size"
 import type { RGBA, TextareaRenderable } from "@opentui/core"
-import { Glyph } from "../../branding"
+import { Glyph, StatusGlyph } from "../../branding"
 import { useTheme, selectedForeground } from "../../context/theme"
 import type { PermissionRequest } from "@arcana/sdk/v2"
 import { useSDK } from "../../context/sdk"
@@ -908,7 +908,7 @@ export function RejectPrompt(props: { busy?: boolean; onConfirm: (message: strin
 
   return (
     <GateFrame
-      glyph="✗"
+      glyph={StatusGlyph.failed}
       color={theme.spineFail}
       header={
         <box flexDirection="column" gap={0} minWidth={0}>

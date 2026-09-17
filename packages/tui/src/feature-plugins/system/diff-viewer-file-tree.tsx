@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/solid */
 import type { ColorInput, RGBA, ScrollBoxRenderable } from "@opentui/core"
-import { COPY } from "../../branding"
+import { COPY, StatusGlyph } from "../../branding"
 import { Locale } from "../../util/locale"
 import { dim } from "../../theme/emphasis"
 import { createEffect, createMemo, createSignal, For, Match, Switch } from "solid-js"
@@ -219,5 +219,5 @@ function fileTreeRowStatus(row: FileTreeRow, files: readonly FileTreeItem[], rev
   if (row.fileIndex === undefined) return ""
   const status = files[row.fileIndex]?.status
   const marker = status === "modified" ? "M" : status === "added" ? "A" : status === "deleted" ? "D" : "?"
-  return `${reviewed ? "✓" : " "}${marker}`.padStart(FILE_TREE_STATUS_WIDTH)
+  return `${reviewed ? StatusGlyph.done : " "}${marker}`.padStart(FILE_TREE_STATUS_WIDTH)
 }

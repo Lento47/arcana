@@ -4,6 +4,7 @@
  */
 
 import { displayWidth } from "../../util/locale"
+import { StatusGlyph } from "../../branding"
 
 export type SessionCharterTone = "ok" | "warn" | "error" | "muted"
 
@@ -84,7 +85,7 @@ export function formatHeaderStatusLabel(item: Pick<HeaderStatusItem, "key" | "la
     const match = raw.match(/^(\S+)\s+(valid|invalid|unverified)$/i)
     if (match) {
       const state = match[2]!.toLowerCase()
-      const glyph = state === "valid" ? "✓" : state === "invalid" ? "×" : "?"
+      const glyph = state === "valid" ? StatusGlyph.done : state === "invalid" ? StatusGlyph.failed : "?"
       const word = state === "valid" ? "verified" : state
       return `${match[1]} ${glyph} ${word}`
     }

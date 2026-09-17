@@ -8,6 +8,7 @@
  */
 
 import { formatElapsedMs, type SpineEntry, type SpineKind } from "./spine-types"
+import { StatusGlyph } from "../../branding"
 
 // Delegation is a navigation boundary, not just another tool step. Keeping
 // agent rows out of the reel means each subagent remains a first-class row
@@ -139,7 +140,7 @@ function buildWorkActivity(units: SpineEntry[], turnID: string): SpineEntry {
     startMs: startFor(units),
     occurredAt: firstOccurrence,
     kind: first.kind,
-    glyph: streaming ? "●" : "✓",
+    glyph: streaming ? StatusGlyph.running : StatusGlyph.done,
     label: "work",
     summary,
     collapsible: true,
@@ -166,7 +167,7 @@ function rebuildActivity(parent: SpineEntry, children: SpineEntry[], elapsedMs: 
   const streaming = children.some((child) => child.streaming === true)
   return {
     ...parent,
-    glyph: streaming ? "●" : "✓",
+    glyph: streaming ? StatusGlyph.running : StatusGlyph.done,
     streaming,
     elapsedMs,
     elapsed: elapsedMs !== undefined ? formatElapsedMs(elapsedMs) : parent.elapsed,

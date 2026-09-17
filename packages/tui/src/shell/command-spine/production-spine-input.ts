@@ -17,6 +17,7 @@ import type { SpineEntry, SpineKind } from "./spine-types"
 import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import { approvalToSpineEntry } from "./approval-spine-adapter"
 import { Locale } from "../../util/locale"
+import { StatusGlyph } from "../../branding"
 import { asRecordOrEmpty } from "../../util/record"
 import { shortHash } from "./approval-snapshot"
 import type { GovernanceRunProof } from "../types"
@@ -147,7 +148,7 @@ export function governanceExecutedToSpineEntry(input: {
     occurredAt: view.timestamp,
     timestamp: formatWallClock(view.timestamp),
     kind: failed ? "fail" : "ok",
-    glyph: failed ? "×" : "◎",
+    glyph: failed ? StatusGlyph.failed : StatusGlyph.done,
     label: failed ? "effect failed" : "verified effect",
     summary: `${failed ? "EFFECT FAILED" : "VERIFIED EFFECT"} · ${tool}`,
     body,
@@ -179,7 +180,7 @@ export function governanceTraceToSpineEntry(view: GovernanceTraceView): SpineEnt
     index: 0,
     elapsed: "",
     kind: "fail",
-    glyph: "!",
+    glyph: StatusGlyph.interrupted,
     label: "trace health",
     summary: view.status === "DEGRADED" ? "Governance trace degraded" : "Governance trace unavailable",
     body: [
@@ -269,7 +270,7 @@ export function governanceProofToSpineEntry(sessionId: string, proof: Governance
     occurredAt: Date.parse(proof.derivedAt),
     timestamp: formatWallClock(Date.parse(proof.derivedAt)),
     kind: evidenceUnhealthy ? "fail" : verified ? "ok" : "inspect",
-    glyph: evidenceUnhealthy ? "!" : verified ? "✓" : "◇",
+    glyph: evidenceUnhealthy ? StatusGlyph.interrupted : verified ? StatusGlyph.done : "◇",
     label: "proof",
     summary: `${proof.proofLevel} · ${overall} · ${allowed} authorized · ${executed} executed · ${denied} denied${failureSuffix}`,
     body,
@@ -318,7 +319,7 @@ function governancePresentation(view: GovernanceView): {
       return { kind: "plan", glyph: "◇", label: "contract", summary: `Intent contract proposed${suffix(detail || subject)}`, expandedByDefault: false }
     }
     case "contract.activated":
-      return { kind: "ok", glyph: "✓", label: "contract", summary: `Intent contract active${suffix(subject)}`, expandedByDefault: false }
+      return { kind: "ok", glyph: StatusGlyph.done, label: "contract", summary: `Intent contract active${suffix(subject)}`, expandedByDefault: false }
     case "contract.amended":
       return { kind: "inspect", glyph: "◇", label: "contract", summary: `Intent contract updated${suffix(firstText(payload.resolution, payload.reason) ?? subject)}`, expandedByDefault: false }
     case "claim.created":
@@ -326,7 +327,7 @@ function governancePresentation(view: GovernanceView): {
     case "claim.transitioned": {
       const status = firstText(payload.newStatus) ?? "status unavailable"
       const failed = status === "contradicted"
-      return { kind: failed ? "fail" : status === "verified" ? "ok" : "inspect", glyph: failed ? "✗" : status === "verified" ? "✓" : "◇", label: "claim", summary: `Claim ${status}${suffix(subject)}`, expandedByDefault: failed }
+      return { kind: failed ? "fail" : status === "verified" ? "ok" : "inspect", glyph: failed ? StatusGlyph.failed : status === "verified" ? StatusGlyph.done : "◇", label: "claim", summary: `Claim ${status}${suffix(subject)}`, expandedByDefault: failed }
     }
     case "evidence.attached":
       return { kind: "ok", glyph: "+", label: "evidence", summary: `Provenance evidence attached${suffix(firstText(payload.relationship) ?? subject)}`, expandedByDefault: false }
@@ -335,54 +336,54 @@ function governancePresentation(view: GovernanceView): {
     case "obligation.resolved": {
       const status = firstText(payload.status) ?? "status unavailable"
       const failed = status === "failed" || status === "waived"
-      return { kind: failed ? "fail" : "ok", glyph: failed ? "✗" : "✓", label: "verify", summary: `Verification obligation ${status}${suffix(subject)}`, expandedByDefault: failed }
+      return { kind: failed ? "fail" : "ok", glyph: failed ? StatusGlyph.failed : StatusGlyph.done, label: "verify", summary: `Verification obligation ${status}${suffix(subject)}`, expandedByDefault: failed }
     }
     case "completion.attempted":
       return { kind: "inspect", glyph: "◇", label: "verify", summary: `Completion verification requested${suffix(subject)}`, expandedByDefault: false }
     case "completion.resolved": {
       const method = firstText(payload.method) ?? "method unavailable"
       const verifiedCompletion = method === "VERIFIED_COMPLETE"
-      return { kind: verifiedCompletion ? "ok" : "inspect", glyph: verifiedCompletion ? "✓" : "◇", label: "verify", summary: `Completion resolved · ${method}`, expandedByDefault: !verifiedCompletion }
+      return { kind: verifiedCompletion ? "ok" : "inspect", glyph: verifiedCompletion ? StatusGlyph.done : "◇", label: "verify", summary: `Completion resolved · ${method}`, expandedByDefault: !verifiedCompletion }
     }
     case "intent.enforcement_required": {
       const revision = firstText(payload.contractRevision) ?? "revision unavailable"
-      return { kind: "ok", glyph: "✓", label: "intent", summary: `Exact intent enforcement required · ${revision}${suffix(subject)}`, expandedByDefault: false }
+      return { kind: "ok", glyph: StatusGlyph.done, label: "intent", summary: `Exact intent enforcement required · ${revision}${suffix(subject)}`, expandedByDefault: false }
     }
     case "intent.binding_created": {
       const justification = firstText(payload.justification) ?? "justification unavailable"
-      return { kind: "ok", glyph: "✓", label: "intent", summary: `Exact intent binding created · ${justification}${suffix(subject)}`, expandedByDefault: false }
+      return { kind: "ok", glyph: StatusGlyph.done, label: "intent", summary: `Exact intent binding created · ${justification}${suffix(subject)}`, expandedByDefault: false }
     }
     case "intent.binding_revoked":
-      return { kind: "fail", glyph: "×", label: "intent revoked", summary: `Intent binding revoked${suffix(reason ?? subject)}`, expandedByDefault: true, breakthrough: true }
+      return { kind: "fail", glyph: StatusGlyph.failed, label: "intent revoked", summary: `Intent binding revoked${suffix(reason ?? subject)}`, expandedByDefault: true, breakthrough: true }
     case "intent.compatibility_mode":
-      return { kind: "fail", glyph: "!", label: "intent degraded", summary: `Intent enforcement is LEGACY_COMPAT${suffix(reason ?? subject)}`, expandedByDefault: true, breakthrough: true }
+      return { kind: "fail", glyph: StatusGlyph.interrupted, label: "intent degraded", summary: `Intent enforcement is LEGACY_COMPAT${suffix(reason ?? subject)}`, expandedByDefault: true, breakthrough: true }
     case "authorization.requested":
       return { kind: "inspect", glyph: "◇", label: "authorization", summary: `Authorization requested${suffix(subject)}`, expandedByDefault: false }
     case "authorization.allowed":
-      return { kind: "ok", glyph: "✓", label: "authorized", summary: `Authorization allowed${suffix(subject)}`, expandedByDefault: false }
+      return { kind: "ok", glyph: StatusGlyph.done, label: "authorized", summary: `Authorization allowed${suffix(subject)}`, expandedByDefault: false }
     case "authorization.denied":
-      return { kind: "fail", glyph: "✗", label: "denied", summary: `Authorization denied${suffix(reason ?? subject ?? "reason unavailable")}`, expandedByDefault: true, breakthrough: true }
+      return { kind: "fail", glyph: StatusGlyph.failed, label: "denied", summary: `Authorization denied${suffix(reason ?? subject ?? "reason unavailable")}`, expandedByDefault: true, breakthrough: true }
     case "authorization.approval_required":
       return { kind: "approve", glyph: "◤", label: "approval required", summary: `Approval required${suffix(reason ?? subject)}`, expandedByDefault: true }
     case "authorization.stale":
-      return { kind: "fail", glyph: "!", label: "stale decision", summary: `Authorization became stale${suffix(reason ?? subject)}`, expandedByDefault: true, breakthrough: true }
+      return { kind: "fail", glyph: StatusGlyph.interrupted, label: "stale decision", summary: `Authorization became stale${suffix(reason ?? subject)}`, expandedByDefault: true, breakthrough: true }
     case "authorization.executed":
-      return { kind: "ok", glyph: "✓", label: "executed", summary: `Authorized effect executed${suffix(subject)}`, expandedByDefault: false }
+      return { kind: "ok", glyph: StatusGlyph.done, label: "executed", summary: `Authorized effect executed${suffix(subject)}`, expandedByDefault: false }
     case "authorization.execution_failed":
-      return { kind: "fail", glyph: "✗", label: "execution failed", summary: `Authorized effect failed${suffix(reason ?? subject)}`, expandedByDefault: true, breakthrough: true }
+      return { kind: "fail", glyph: StatusGlyph.failed, label: "execution failed", summary: `Authorized effect failed${suffix(reason ?? subject)}`, expandedByDefault: true, breakthrough: true }
     case "capability.created":
       return { kind: "ok", glyph: "+", label: "capability", summary: `Capability created${suffix(subject)}`, expandedByDefault: false }
     case "capability.revoked":
-      return { kind: "fail", glyph: "×", label: "revoked", summary: `Capability revoked${suffix(reason ?? subject)}`, expandedByDefault: true, breakthrough: true }
+      return { kind: "fail", glyph: StatusGlyph.failed, label: "revoked", summary: `Capability revoked${suffix(reason ?? subject)}`, expandedByDefault: true, breakthrough: true }
     case "capability.exhausted":
-      return { kind: "fail", glyph: "×", label: "exhausted", summary: `Capability exhausted${suffix(subject)}`, expandedByDefault: true, breakthrough: true }
+      return { kind: "fail", glyph: StatusGlyph.failed, label: "exhausted", summary: `Capability exhausted${suffix(subject)}`, expandedByDefault: true, breakthrough: true }
     case "verification.recorded": {
       const outcome = firstText(payload.outcome) ?? "recorded"
       const verification = firstText(payload.verification) ?? "verification"
       const failed = outcome === "failed" || outcome === "waived"
       return {
         kind: failed ? "fail" : "ok",
-        glyph: failed ? "✗" : "✓",
+        glyph: failed ? StatusGlyph.failed : StatusGlyph.done,
         label: "operator decision",
         summary: `Operator verification ${outcome} · ${verification}${suffix(reason)}`,
         expandedByDefault: failed,

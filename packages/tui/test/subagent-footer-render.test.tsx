@@ -150,7 +150,7 @@ test("the identity, the run and the status share the row", async () => {
     // Each of these was on a row of its own before the direction fix.
     expect(line).toContain("mesh")
     expect(line).toContain("Gilded")
-    expect(line).toContain("◎")
+    expect(line).toContain("✓")
     expect(line).toContain("· run 2/2")
     expect(line).toContain("· done")
     expect(line.indexOf("mesh")).toBeLessThan(line.indexOf("Gilded"))
@@ -164,7 +164,7 @@ test("a wide terminal draws the whole readout, chips included", async () => {
   const app = await mountFooter(140)
   try {
     const line = row(app)
-    expect(line).toContain("mesh Gilded ◎ · run 2/2 · done")
+    expect(line).toContain("mesh Gilded ✓ · run 2/2 · done")
     expect(line).toContain(CONTEXT_RUN)
     for (const chip of ["parent", "prev", "next"]) expect(line).toContain(chip)
     // The chips are the row's right edge, and the readout keeps clear of them.
@@ -193,7 +193,7 @@ test("a narrow terminal drops the context run rather than shred it", async () =>
   const app = await mountFooter(44)
   try {
     const line = row(app)
-    expect(line).toContain("mesh Gilded ◎ · run 2/2 · done")
+    expect(line).toContain("mesh Gilded ✓ · run 2/2 · done")
     // Nothing of the telemetry survives: `ctx 45.0...3%` is a segment to decode,
     // not to read, and it was what the footer drew at this width.
     expect(line).not.toContain("ctx")
@@ -208,7 +208,7 @@ test("a long agent name costs the segments beside it, not the row", async () => 
   const app = await mountFooter(60, "Verylongagentname")
   try {
     const line = row(app)
-    expect(line).toContain("mesh Verylongagentname ◎")
+    expect(line).toContain("mesh Verylongagentname ✓")
     // The name is reserved at its real width, so what follows is what fits —
     // and the group keeps its own spaces rather than losing them to a shrink.
     expect(line).toContain("· run 2/2")

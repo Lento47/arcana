@@ -6,7 +6,7 @@
 import type { SpineApprovalSnapshot, SpineKind, SpineLayout, SpineReceipt } from "./spine-types"
 import { selectionActions } from "../../util/selection"
 import { displayWidth } from "../../util/locale"
-import { Glyph } from "../../branding"
+import { Glyph, StatusGlyph } from "../../branding"
 
 /** Label column shared by approval / proof key-value rows. */
 export const FACT_LABEL_WIDTH = 12
@@ -249,11 +249,11 @@ export function toolChipModel(input: {
     interrupted: "interrupted",
   }
   const glyphs: Record<ToolChipLifecycle, ToolChipModel["glyph"]> = {
-    queued: "·",
-    running: "●",
-    success: "✓",
-    failure: "✗",
-    interrupted: "!",
+    queued: StatusGlyph.queued,
+    running: StatusGlyph.running,
+    success: StatusGlyph.done,
+    failure: StatusGlyph.failed,
+    interrupted: StatusGlyph.interrupted,
   }
   const summary = normalizeToolText(input.summary)
   const outcome = receiptOutcome(input.receipt, lifecycle)
@@ -290,7 +290,14 @@ export function toolChipChrome(input: {
 }) {
   const status = toolChipStatus(input)
   const label = (input.label ?? input.kind).trim()
-  const glyph = status === "live" ? "●" : status === "fail" ? "✗" : status === "done" ? "✓" : "·"
+  const glyph =
+    status === "live"
+      ? StatusGlyph.running
+      : status === "fail"
+        ? StatusGlyph.failed
+        : status === "done"
+          ? StatusGlyph.done
+          : StatusGlyph.queued
   // Done is implied by the check glyph — don't paint a leftover "done" label.
   const cue = status === "live" ? "live" : status === "fail" ? "fail" : ""
   return { label, status, glyph, cue }

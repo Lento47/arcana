@@ -5,6 +5,7 @@ import { useTheme } from "../../context/theme"
 import type { Theme } from "../../theme"
 import type { SpineLayout, SpineProofContinuation } from "./spine-types"
 import { FACT_LABEL_WIDTH } from "./spine-chrome"
+import { StatusGlyph } from "../../branding"
 
 function ProofRow(props: { label: string; value?: string; tone?: RGBA; theme: Theme }) {
   const value = props.value?.trim()
@@ -45,7 +46,7 @@ export function SpineProof(props: {
   return (
     <box flexDirection="column" flexShrink={0} minWidth={0} gap={0} paddingTop={Space.padY}>
       <text fg={props.failed ? theme.spineFail : theme.spineOk} attributes={TextAttributes.BOLD}>
-        {props.failed ? "× EFFECT FAILED" : "◎ VERIFIED EFFECT"}
+        {props.failed ? `${StatusGlyph.failed} EFFECT FAILED` : `${StatusGlyph.done} VERIFIED EFFECT`}
       </text>
       <ProofRow label="receipt" value={props.proof.receipt} theme={theme} />
       <Show when={typeof props.proof.evidence === "number"}>

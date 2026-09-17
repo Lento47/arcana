@@ -3,7 +3,7 @@ import { Space } from "../../ui/chrome"
 import { RGBA, TextAttributes } from "@opentui/core"
 import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import type { ApprovalSnapshotDetail } from "../../shell/command-spine/approval-http-bridge"
-import { Glyph } from "../../branding"
+import { Glyph, StatusGlyph } from "../../branding"
 import { useTheme } from "../../context/theme"
 import { useDialog } from "../../ui/dialog"
 import { DialogPanelHeader } from "../../ui/dialog-chrome"
@@ -200,7 +200,7 @@ export function ApprovalInspector(props: {
             ink={theme.accent}
             frame={theme.borderActive}
             padBottom
-            heading={`REQUEST SNAPSHOT · verified ${snapshot()?.requestHash === a().requestHash ? "✓" : "✗"}`}
+            heading={`REQUEST SNAPSHOT · verified ${snapshot()?.requestHash === a().requestHash ? StatusGlyph.done : StatusGlyph.failed}`}
           />
           <For each={snapshotRows()}>{(row) => <FieldRow label={row[0]} value={row[1]} />}</For>
         </Show>
@@ -271,7 +271,7 @@ export function approvalSnapshotRows(
   rows.push([
     "Hash parity",
     snapshot.requestHash === approval.requestHash
-      ? "verified ✓ matches record requestHash"
+      ? `verified ${StatusGlyph.done} matches record requestHash`
       : "MISMATCH — engine failed closed, do not act",
   ])
   rows.push(["Arguments", prettyJson(snapshot.arguments)])

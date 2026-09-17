@@ -1,4 +1,5 @@
 import { useTheme } from "../context/theme"
+import { StatusGlyph } from "../branding"
 
 export interface TodoItemProps {
   status: string
@@ -10,9 +11,9 @@ export function TodoItem(props: TodoItemProps) {
 
   const glyph = () => {
     switch (props.status) {
-      case "completed": return "✓"
-      case "in_progress": return "●"
-      default: return "○"
+      case "completed": return StatusGlyph.done
+      case "in_progress": return StatusGlyph.running
+      default: return StatusGlyph.pending
     }
   }
 
