@@ -1,10 +1,13 @@
 import { For, Show, createMemo } from "solid-js"
+import { useRenderer } from "@opentui/solid"
 import type { RGBA } from "@opentui/core"
 import { useTheme } from "../../context/theme"
 import type { Theme } from "../../theme"
 import { APP_NAME_UPPER, Glyph } from "../../branding"
 import { spineOuterPadding, statusToneColor, type SpineLayout, type StatusSegment, type StatusTone } from "./spine-types"
 import { displayWidth, truncate } from "../../util/locale"
+import { useTerminalSize } from "../../util/terminal-size"
+import { Size } from "../../ui/chrome"
 import { useTuiConfig } from "../../config"
 import type { SpineTrustStatus } from "./spine-trust"
 import type { SessionCharter, SessionCharterChip, SessionCharterTone } from "./session-charter"
@@ -191,6 +194,14 @@ export function SpineHeader(props: {
 }) {
   const { theme } = useTheme()
   const tuiConfig = useTuiConfig()
+  const renderer = useRenderer()
+  const terminal = useTerminalSize(renderer)
+  // Short terminals collapse the header to the title row: the navigation/meta
+  // line and the separator both give way so the transcript keeps the rows.
+  const short = createMemo(() => {
+    const height = terminal().height
+    return height > 0 && height < Size.shortRows
+  })
   const pad = createMemo(() => spineOuterPadding(props.layout))
   const isWide = createMemo(() => props.layout === "wide")
   const isMinimal = createMemo(() => props.layout === "minimal")
@@ -339,7 +350,8 @@ export function SpineHeader(props: {
       </Show>
       <Show when={props.session()}>
         {(session) => (
-          <box flexDirection="row" paddingLeft={pad()} paddingRight={pad()} minWidth={0}>
+          <Show when={!short() && (hasNavigation() || visibleContext().length > 0 || Boolean(sessionMeta()))}>
+            <box flexDirection="row" paddingLeft={pad()} paddingRight={pad()} minWidth={0}>
             <Show when={showBrand()}>
               <box width={8} flexShrink={0} />
             </Show>
@@ -374,10 +386,11 @@ export function SpineHeader(props: {
                 <text fg={theme.spineDiffMuted} wrapMode="none">{sessionMeta()}</text>
               </box>
             </Show>
-          </box>
+            </box>
+          </Show>
         )}
       </Show>
-      <Show when={showBrand() || visibleStatus().length > 0 || visibleContext().length > 0 || lockReason() || props.session()}>
+      <Show when={!short() && (showBrand() || visibleStatus().length > 0 || visibleContext().length > 0 || lockReason() || props.session())}>
         <box border={["bottom"]} borderColor={theme.borderSubtle} marginTop={1} marginBottom={0} />
       </Show>
     </box>

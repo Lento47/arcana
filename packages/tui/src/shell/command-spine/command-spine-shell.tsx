@@ -9,6 +9,7 @@ import { usePromptQueue } from "../../context/prompt-queue"
 import type { ShellProps } from "../types"
 import type { SpineEntry, SpineEntryAction } from "./spine-types"
 import { frameChrome, isDensity, spineViewportWidth } from "./spine-types"
+import { Space } from "../../ui/chrome"
 import { useSpineLayout } from "./use-spine-layout"
 import { useSpineProjection } from "./use-spine-projection"
 import { useSpineNavigation } from "./use-spine-navigation"
@@ -902,6 +903,7 @@ export function CommandSpineShell(props: ShellProps) {
               showScrollDownButton={scroll.showScrollDownButton()}
               onScrollToTop={scroll.scrollToTop}
               onScrollToBottom={scroll.scrollToBottom}
+              blockGap={Space.blockGap(density())}
             />
             <AuthorityGate permissions={props.permissions()} questions={props.questions()} />
             <SpineComposer

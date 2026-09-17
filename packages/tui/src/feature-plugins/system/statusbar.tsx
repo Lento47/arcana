@@ -3,6 +3,7 @@ import type { TuiPlugin, TuiPluginApi } from "@arcana/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { Locale } from "../../util/locale"
 import { rendererWidth } from "../../util/geometry"
+import { Size } from "../../ui/chrome"
 import {
   compactNowPercent,
   compactSoonPercent,
@@ -247,6 +248,12 @@ function View(props: { api: TuiPluginApi }) {
   /** `undefined` until laid out: the source reports an unmeasured renderer as 0. */
   const termWidth = () => statusbarWidth({ width: size().width })
   const compact = () => isCompactWidth(termWidth())
+  // Short terminals drop the top rule: the bar keeps its content row, the
+  // transcript keeps the row the border would have taken.
+  const short = () => {
+    const height = size().height
+    return height > 0 && height < Size.shortRows
+  }
 
   // C4: the chip is flush with the bar's left edge when it is the first visible
   // element (no busy shimmer leads). The bar collapses its padding and the chip
@@ -274,7 +281,7 @@ function View(props: { api: TuiPluginApi }) {
         paddingLeft={chipAtEdge() ? 0 : 2}
         paddingRight={2}
         backgroundColor={theme().background}
-        border={["top"]}
+        border={short() ? undefined : ["top"]}
         borderColor={theme().borderSubtle}
       >
         <Show when={busyVerb()}>

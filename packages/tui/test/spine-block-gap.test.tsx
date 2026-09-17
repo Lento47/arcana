@@ -19,6 +19,7 @@ import { ProjectProvider } from "../src/context/project"
 import { SyncProvider } from "../src/context/sync"
 import { SpineViewport } from "../src/shell/command-spine/spine-viewport"
 import { spineProseWidth, type SpineEntry } from "../src/shell/command-spine/spine-types"
+import { Space } from "../src/ui/chrome"
 import { TestTuiContexts } from "./fixture/tui-environment"
 import { createTuiResolvedConfig } from "./fixture/tui-runtime"
 import { createEventSource, createFetch, directory } from "./fixture/tui-sdk"
@@ -67,8 +68,7 @@ function entry(id: string, summary: string, index: number): SpineEntry {
 
 const ENTRIES = [entry("e-one", "BLOCK-ONE", 1), entry("e-two", "BLOCK-TWO", 2)]
 
-test("top-level entries are separated by exactly one blank row", async () => {
-  const app = await testRender(
+test("top-level entries are separated by exactly one blank row", async () => {  const app = await testRender(
     () =>
       withProviders(() => (
         <SpineViewport
@@ -113,4 +113,11 @@ test("top-level entries are separated by exactly one blank row", async () => {
   } finally {
     app.renderer.destroy()
   }
+})
+
+test("block gap follows density: compact 0, cozy 1, spacious 2", () => {
+  expect(Space.blockGap("compact")).toBe(0)
+  expect(Space.blockGap("cozy")).toBe(1)
+  expect(Space.blockGap()).toBe(1)
+  expect(Space.blockGap("spacious")).toBe(2)
 })

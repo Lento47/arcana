@@ -202,7 +202,7 @@ test("live SpineHeader at 80 cols fits the session frame when contentWidth is pa
         </TuiConfigProvider>
       </TestTuiContexts>
     ),
-    { width, height: 8 },
+    { width, height: 24 },
   )
   for (let attempt = 0; attempt < 40; attempt++) {
     await Bun.sleep(10)
@@ -264,7 +264,7 @@ test("modern wide header gives the session title priority and keeps metadata sec
         </TuiConfigProvider>
       </TestTuiContexts>
     ),
-    { width, height: 8 },
+    { width, height: 24 },
   )
   for (let attempt = 0; attempt < 40; attempt++) {
     await Bun.sleep(10)

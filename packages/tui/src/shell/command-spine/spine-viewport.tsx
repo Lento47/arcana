@@ -47,6 +47,11 @@ export function SpineViewport(props: {
   showScrollDownButton: boolean
   onScrollToTop: () => void
   onScrollToBottom: () => void
+  /**
+   * Blank rows between top-level entries; density-aware (Space.blockGap).
+   * Defaults to 1 when omitted.
+   */
+  blockGap?: number
 }) {
   const { theme } = useTheme()
   const [upHover, setUpHover] = createSignal(false)
@@ -76,7 +81,7 @@ export function SpineViewport(props: {
         flexGrow={1}
         scrollAcceleration={props.scrollAcceleration}
         onMouseScroll={props.handleMouseScroll}
-        contentOptions={{ gap: 1 }}
+        contentOptions={{ gap: props.blockGap ?? 1 }}
       >
         <For each={props.visibleEntryIDs()}>
           {(id) => {

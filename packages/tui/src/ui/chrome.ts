@@ -89,6 +89,12 @@ export const Space = {
     if (density === "spacious") return 3
     return 2
   },
+  /** One vertical block gap between top-level spine entries, by density. */
+  blockGap(density?: "compact" | "cozy" | "spacious"): number {
+    if (density === "compact") return 0
+    if (density === "spacious") return 2
+    return 1
+  },
 } as const
 
 /** Layout widths / breakpoints previously hardcoded across components. */
@@ -102,6 +108,8 @@ export const Size = {
   toastMaxWidth: 60,
   /** Columns the toast card reserves for its right inset and left margin. */
   toastInset: 6,
+  /** Terminal rows below which chrome collapses (header detail row, statusbar rule). */
+  shortRows: 20,
 } as const
 
 /**
