@@ -10,6 +10,7 @@ import { codeBlockChrome, streamTextCue } from "./spine-chrome"
 import { RoundBorder, Space } from "../../ui/chrome"
 import { HairlineBorder } from "../../ui/border"
 import { useStreamFrameGate, type StreamFrameGate } from "../../util/stream-frame"
+import { warmTreeSitterFiletype } from "../../util/tree-sitter-prewarm"
 
 export type SpineProseMode = "markdown" | "code" | "plain"
 
@@ -263,6 +264,12 @@ export function SpineProse(props: {
   // row's pending callback so a late delta cannot publish into a new row.
   onCleanup(() => streamFrame.cancel(streamContentKey))
   const ft = createMemo(() => resolveFiletype(bodyLabel(), hint(), text(), hint()))
+  // Warm a code body's parser as soon as its filetype is known, so a cold
+  // compile overlaps model/tool latency instead of the first visible frame.
+  createEffect(() => {
+    const filetype = ft()
+    if (filetype && filetype !== "markdown") warmTreeSitterFiletype(filetype)
+  })
   const fg = createMemo(() => {
     if (kind() === "think") return theme.textMuted
     if (kind() === "fail" || bodyLabel() === "error") return theme.error

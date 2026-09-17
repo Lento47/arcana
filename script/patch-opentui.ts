@@ -29,13 +29,18 @@
  * swaps in a new frame only after highlighting succeeds. A failed refresh
  * keeps the last good frame.
  *
- * Arcana never hides painted content. Markdown leaves paint their synchronous
- * `initialStyledText` chunks on the first frame; code/tool leaves paint plain
- * text immediately and settle to syntax colors when the worker answers.
- * Updates keep the last styled frame; a failed (or zero-highlight) pass marks
- * the leaf so later updates keep painting plain instead of cycling
- * blank/plain; and neither a slow parser nor a filetype that resolves
- * mid-stream can blank a body the operator is already reading.
+ * Arcana never hides painted content, and styled text never restyles once it
+ * is on screen. Markdown leaves paint their synchronous `initialStyledText`
+ * chunks on the first frame — including block-level styles, so headings and
+ * blockquotes never flip white -> bold/italic when the worker commits. A
+ * brand-new code leaf whose filetype is already warm holds its first paint for
+ * at most two frames so the commit lands before the body is shown (a cold or
+ * unknown filetype still paints plain immediately). Updates keep the last
+ * styled frame; a failed (or zero-highlight) pass marks the leaf so later
+ * updates keep painting plain instead of cycling blank/plain; identical async
+ * commits never rewrite a settled frame; and neither a slow parser nor a
+ * filetype that resolves mid-stream can blank a body the operator is already
+ * reading.
  *
  * Version-pinned to @opentui/core 0.5.9. Re-run after `bun install`
  * (wired as the root `postinstall` script).
@@ -588,6 +593,238 @@ const CODE_DEFER_V25_FROM = `    if (this._filetype && !this._drawUnstyledText &
 const CODE_DEFER_V25_TO = `    ${NEVER_BLANK_MARKER}`
 
 /**
+ * Seventh pass: block-styled synchronous first frame. Markdown leaves paint a
+ * synchronous first frame, but that frame only carried INLINE styles: headings
+ * lost their colour/bold and blockquotes had no initial text at all. The async
+ * tree-sitter commit then visibly restyled text that was already on screen —
+ * the "coloured bold italic flicker" while the model writes. The sync frame now
+ * applies the block's own highlight group (markup.heading.N) to its chunks, and
+ * blockquote children get a sync frame with their markup.quote base, so the
+ * first frame already matches what the worker later commits.
+ */
+const SYNC_BLOCK_STYLE_MARKER = "// [arcana] block-styled sync first frame (patch-opentui.ts)"
+const MD_FIELDS_ANCHOR = `  _parseState = null;`
+const MD_FIELDS_V26 = `  _parseState = null;
+  ${SYNC_BLOCK_STYLE_MARKER}
+  _arcanaInitialBaseGroup;`
+const MD_INITIAL_SIGNATURE_FROM = `  createInitialStyledText(token) {
+    if (!this._streaming)
+      return;
+    const chunks = [];`
+const MD_INITIAL_SIGNATURE_TO = `  createInitialStyledText(token, baseGroup) {
+    if (!this._streaming)
+      return;
+    const chunks = [];
+    const arcanaPreviousBaseGroup = this._arcanaInitialBaseGroup;
+    this._arcanaInitialBaseGroup = baseGroup !== undefined ? baseGroup : this.arcanaBlockHighlight(token);`
+const MD_INITIAL_RETURN_FROM = `    return chunks.length > 0 ? new StyledText(chunks) : undefined;
+  }`
+const MD_INITIAL_RETURN_TO = `    this._arcanaInitialBaseGroup = arcanaPreviousBaseGroup;
+    return chunks.length > 0 ? new StyledText(chunks) : undefined;
+  }
+  ${SYNC_BLOCK_STYLE_MARKER}
+  arcanaBlockHighlight(token) {
+    if (!token || token.type !== "heading")
+      return;
+    const depth = typeof token.depth === "number" && token.depth >= 1 && token.depth <= 6 ? token.depth : 1;
+    return "markup.heading." + depth;
+  }
+  arcanaInitialChunk(text) {
+    const group = this._arcanaInitialBaseGroup;
+    return group ? this.createChunk(text, group) : this.createDefaultChunk(text);
+  }`
+const MD_INLINE_CHUNK_FROM = `      case "text":
+        chunks.push(this.createDefaultChunk(token.text));
+        break;
+      case "escape":
+        chunks.push(this.createDefaultChunk(token.text));
+        break;`
+const MD_INLINE_CHUNK_TO = `      case "text":
+        chunks.push(this.arcanaInitialChunk(token.text));
+        break;
+      case "escape":
+        chunks.push(this.arcanaInitialChunk(token.text));
+        break;`
+const MD_INLINE_DEFAULT_FROM = `        } else if ("text" in token && typeof token.text === "string") {
+          chunks.push(this.createDefaultChunk(token.text));
+        }`
+const MD_INLINE_DEFAULT_TO = `        } else if ("text" in token && typeof token.text === "string") {
+          chunks.push(this.arcanaInitialChunk(token.text));
+        }`
+const MD_QUOTE_UPDATE_FROM = `      this.applyMarkdownCodeRenderable(child, this.getBlockquoteContent(token), 0, "markup.quote");`
+const MD_QUOTE_UPDATE_TO = `      const arcanaQuoteText = this.getBlockquoteContent(token);
+      this.applyMarkdownCodeRenderable(child, arcanaQuoteText, 0, "markup.quote", this.createInitialStyledText({ type: "paragraph", raw: arcanaQuoteText, text: arcanaQuoteText }, "markup.quote"));`
+const MD_QUOTE_CREATE_FROM = `    renderable.add(this.createMarkdownCodeRenderable(this.getBlockquoteContent(token), \`\${id}-content\`, 0, this._linkifyMarkdownChunks, "markup.quote"));`
+const MD_QUOTE_CREATE_TO = `    const arcanaQuoteText = this.getBlockquoteContent(token);
+    renderable.add(this.createMarkdownCodeRenderable(arcanaQuoteText, \`\${id}-content\`, 0, this._linkifyMarkdownChunks, "markup.quote", this.createInitialStyledText({ type: "paragraph", raw: arcanaQuoteText, text: arcanaQuoteText }, "markup.quote")));`
+const MD_QUOTE_CREATE2_FROM = `    renderable.add(this.createMarkdownCodeRenderable(this.getBlockquoteContent(token), \`\${renderable.id}-content\`, 0, this._linkifyMarkdownChunks, "markup.quote"));`
+const MD_QUOTE_CREATE2_TO = `    const arcanaQuoteText = this.getBlockquoteContent(token);
+    renderable.add(this.createMarkdownCodeRenderable(arcanaQuoteText, \`\${renderable.id}-content\`, 0, this._linkifyMarkdownChunks, "markup.quote", this.createInitialStyledText({ type: "paragraph", raw: arcanaQuoteText, text: arcanaQuoteText }, "markup.quote")));`
+
+/**
+ * Eighth pass: hold the first code paint for a WARM parser. A brand-new code
+ * leaf painted plain, and the worker commit (2-6 ms warm) restyled it one frame
+ * later — every code body flashed plain→coloured. Leaves whose filetype the
+ * client has already warmed now measure their first frame but show nothing
+ * until the commit or a 32 ms deadline (plain fallback). Only the creation
+ * paint is ever held: content updates and later paints behave exactly as the
+ * never-blank policy demands, so this cannot resurrect the blank cycle.
+ */
+const FIRST_PAINT_HOLD_MARKER = "// [arcana] hold the first code paint for a warm parser (patch-opentui.ts)"
+const CODE_FIELDS_V26_ANCHOR = `  _arcanaHasPainted = false;`
+const CODE_FIELDS_V26 = `  _arcanaHasPainted = false;
+  ${FIRST_PAINT_HOLD_MARKER}
+  _arcanaFirstPaintHoldArmed = false;
+  _arcanaFirstPaintHold;
+  _arcanaFrameFromAsync = false;
+  _arcanaStyledSyntax;
+  _arcanaStyledFg;
+  _arcanaStyledBg;
+  _arcanaStyledConceal;`
+const CODE_CTOR_V26_FROM = `    if (this._content.length > 0) {
+      this._arcanaPaintFirstFrame(this._content); // [arcana] paint styled first frame (patch-opentui.ts)
+    }`
+const CODE_CTOR_V26_TO = `    if (this._content.length > 0) {
+      this._arcanaFirstPaintHoldArmed = this._arcanaHoldableFirstPaint(); ${FIRST_PAINT_HOLD_MARKER}
+      this._arcanaPaintFirstFrame(this._content); // [arcana] paint styled first frame (patch-opentui.ts)
+    }`
+const CODE_PAINT_V26_FROM = `      this._arcanaCommitStyledFrame(this._initialStyledText, content, undefined);
+      this._shouldRenderTextBuffer = true;
+      this.requestRender();
+      return;
+    }
+    this.textBuffer.setText(content);`
+const CODE_PAINT_V26_TO = `      this._arcanaCommitStyledFrame(this._initialStyledText, content, undefined);
+      this._arcanaFrameFromAsync = false;
+      this._shouldRenderTextBuffer = true;
+      this.requestRender();
+      return;
+    }
+    if (this._arcanaFirstPaintHoldArmed && !this._arcanaHasPainted && !this._arcanaHasStyledFrame && !this._arcanaFirstFrameFallback) {
+      // ${FIRST_PAINT_HOLD_MARKER}
+      // Measure now, show nothing until the commit or the hold deadline. Only a
+      // leaf created with a warm parser takes this branch; the deadline paints
+      // plain text, so the leaf can be one frame late but never blank.
+      this.textBuffer.setText(content);
+      this.setRenderedLineSources(undefined);
+      this.updateTextInfo();
+      this._shouldRenderTextBuffer = false;
+      this._arcanaArmFirstPaintHold();
+      return;
+    }
+    this.textBuffer.setText(content);`
+const CODE_HOLD_HELPERS_FROM = `    this._shouldRenderTextBuffer = true;
+    this.requestRender();
+  }
+  _arcanaArmDeadline() {`
+const CODE_HOLD_HELPERS_TO = `    this._shouldRenderTextBuffer = true;
+    this.requestRender();
+  }
+  ${FIRST_PAINT_HOLD_MARKER}
+  _arcanaHoldableFirstPaint() {
+    if (this._initialStyledText || this._drawUnstyledText !== false || !this._filetype)
+      return false;
+    const warm = this._treeSitterClient && this._treeSitterClient._arcanaWarmFiletypes;
+    return !!(warm && typeof warm.has === "function" && warm.has(this._filetype));
+  }
+  _arcanaArmFirstPaintHold() {
+    if (this._arcanaFirstPaintHold !== undefined)
+      return;
+    const timer = setTimeout(() => {
+      this._arcanaFirstPaintHold = undefined;
+      this._arcanaFirstPaintHoldArmed = false;
+      if (this.isDestroyed || this._arcanaHasStyledFrame || this._arcanaHasPainted)
+        return;
+      this._arcanaHasPainted = true;
+      this._shouldRenderTextBuffer = true;
+      this.requestRender();
+    }, 32);
+    if (timer && typeof timer.unref === "function")
+      timer.unref();
+    this._arcanaFirstPaintHold = timer;
+  }
+  _arcanaClearFirstPaintHold() {
+    const timer = this._arcanaFirstPaintHold;
+    if (timer === undefined)
+      return;
+    clearTimeout(timer);
+    this._arcanaFirstPaintHold = undefined;
+  }
+  _arcanaArmDeadline() {`
+const CODE_COMMIT_V26_FROM = `    this._arcanaHasPainted = true;
+    this._arcanaLastStyledText = styledText;`
+const CODE_COMMIT_V26_TO = `    this._arcanaHasPainted = true;
+    this._arcanaClearFirstPaintHold();
+    this._arcanaFirstPaintHoldArmed = false;
+    this._arcanaFrameFromAsync = true;
+    this._arcanaStyledSyntax = this._syntaxStyle;
+    this._arcanaStyledFg = this._fg;
+    this._arcanaStyledBg = this._bg;
+    this._arcanaStyledConceal = this._conceal;
+    this._arcanaLastStyledText = styledText;`
+
+/**
+ * Ninth pass: skip redundant async commits. Once a frame has been committed
+ * from a worker result, an identical result (same content, same style inputs)
+ * must not rewrite the buffer again — that rewrite is what made settled blocks
+ * repaint when a late highlight landed.
+ */
+const COMMIT_DEDUPE_MARKER = "// [arcana] skip redundant async commit frames (patch-opentui.ts)"
+const CODE_DEDUPE_V26_FROM = `        const styledText = new StyledText(chunks);
+        this.textBuffer.setStyledText(styledText);
+        this.setRenderedLineSources(renderedLineSources);
+        this._arcanaCommitStyledFrame(styledText, content, renderedLineSources);`
+const CODE_DEDUPE_V26_TO = `        const arcanaIdenticalFrame = this._arcanaHasStyledFrame && this._arcanaFrameFromAsync
+          && this._arcanaLastStyledContent === content
+          && this._arcanaStyledSyntax === this._syntaxStyle
+          && this._arcanaStyledFg === this._fg
+          && this._arcanaStyledBg === this._bg
+          && this._arcanaStyledConceal === this._conceal;
+        if (!arcanaIdenticalFrame) {
+          ${COMMIT_DEDUPE_MARKER}
+          const styledText = new StyledText(chunks);
+          this.textBuffer.setStyledText(styledText);
+          this.setRenderedLineSources(renderedLineSources);
+          this._arcanaCommitStyledFrame(styledText, content, renderedLineSources);
+        }`
+
+/**
+ * Tenth pass: arm the first-paint hold lazily. The JSX reconciler applies props
+ * AFTER construction, so the constructor's `_arcanaHoldableFirstPaint()` ran
+ * with no filetype and never armed. The hold may engage while the leaf has
+ * never actually been painted to a frame (`_arcanaRenderedOnce`), and must not
+ * after — that is the boundary that keeps the never-hide invariant intact.
+ */
+const FIRST_PAINT_HOLD_LAZY_MARKER = "// [arcana] arm the first-paint hold lazily (patch-opentui.ts)"
+const CODE_FIELDS_V27_ANCHOR = `  _arcanaFirstPaintHold;`
+const CODE_FIELDS_V27 = `  _arcanaFirstPaintHold;
+  ${FIRST_PAINT_HOLD_LAZY_MARKER}
+  _arcanaRenderedOnce = false;`
+const CODE_PAINT_V27_FROM = `    if (this._arcanaFirstPaintHoldArmed && !this._arcanaHasPainted && !this._arcanaHasStyledFrame && !this._arcanaFirstFrameFallback) {`
+const CODE_PAINT_V27_TO = `    const arcanaHoldFirstPaint = this._arcanaFirstPaintHoldArmed
+      || (!this._arcanaRenderedOnce && this._arcanaHoldableFirstPaint());
+    if (arcanaHoldFirstPaint && !this._arcanaHasStyledFrame && !this._arcanaFirstFrameFallback) {`
+const CODE_HOLD_DEADLINE_V27_FROM = `      if (this.isDestroyed || this._arcanaHasStyledFrame || this._arcanaHasPainted)
+        return;
+      this._arcanaHasPainted = true;
+      this._shouldRenderTextBuffer = true;
+      this.requestRender();
+    }, 32);`
+const CODE_HOLD_DEADLINE_V27_TO = `      if (this.isDestroyed || this._arcanaHasStyledFrame || this._arcanaRenderedOnce)
+        return;
+      this._arcanaHasPainted = true;
+      this._shouldRenderTextBuffer = true;
+      this.requestRender();
+    }, 32);`
+const CODE_RENDER_ONCE_V27_FROM = `    if (!this._shouldRenderTextBuffer)
+      return;
+    super.renderSelf(buffer);`
+const CODE_RENDER_ONCE_V27_TO = `    if (!this._shouldRenderTextBuffer)
+      return;
+    this._arcanaRenderedOnce = true;
+    super.renderSelf(buffer);`
+
+/**
  * Third pass: keep the fallback monotonic. Once the deadline has painted plain
  * text (broken/slow parser), later content updates must keep the leaf visible
  * instead of re-deferring into a blank block. The flag is cleared by the first
@@ -822,6 +1059,45 @@ function patchCodeRenderable(source: string): string | undefined {
       throw new Error(`CodeRenderable never-blank anchor missing: ${CODE_DEFER_V25_FROM.slice(0, 80)}`)
     }
     code = code.replace(CODE_DEFER_V25_FROM, CODE_DEFER_V25_TO)
+  }
+
+  if (!code.includes(FIRST_PAINT_HOLD_MARKER)) {
+    const holdFixes: Array<[string, string]> = [
+      [CODE_FIELDS_V26_ANCHOR, CODE_FIELDS_V26],
+      [CODE_CTOR_V26_FROM, CODE_CTOR_V26_TO],
+      [CODE_PAINT_V26_FROM, CODE_PAINT_V26_TO],
+      [CODE_HOLD_HELPERS_FROM, CODE_HOLD_HELPERS_TO],
+      [CODE_COMMIT_V26_FROM, CODE_COMMIT_V26_TO],
+    ]
+    for (const [from, to] of holdFixes) {
+      if (!code.includes(from)) {
+        throw new Error(`CodeRenderable first-paint-hold anchor missing: ${from.slice(0, 80)}`)
+      }
+      code = code.replace(from, to)
+    }
+  }
+
+  if (!code.includes(COMMIT_DEDUPE_MARKER)) {
+    if (!code.includes(CODE_DEDUPE_V26_FROM)) {
+      throw new Error(`CodeRenderable commit-dedupe anchor missing: ${CODE_DEDUPE_V26_FROM.slice(0, 80)}`)
+    }
+    code = code.replace(CODE_DEDUPE_V26_FROM, CODE_DEDUPE_V26_TO)
+  }
+
+  if (!code.includes(FIRST_PAINT_HOLD_LAZY_MARKER)) {
+    const lazyHoldFixes: Array<[string, string]> = [
+      [CODE_FIELDS_V27_ANCHOR, CODE_FIELDS_V27],
+      [CODE_PAINT_V27_FROM, CODE_PAINT_V27_TO],
+      [CODE_HOLD_DEADLINE_V27_FROM, CODE_HOLD_DEADLINE_V27_TO],
+      [CODE_RENDER_ONCE_V27_FROM, CODE_RENDER_ONCE_V27_TO],
+    ]
+    for (const [from, to] of lazyHoldFixes) {
+      const occurrences = code.split(from).length - 1
+      if (occurrences !== 1) {
+        throw new Error(`CodeRenderable lazy-hold anchor must be unique (${occurrences}): ${from.slice(0, 80)}`)
+      }
+      code = code.replace(from, to)
+    }
   }
 
   if (!code.includes(CODE_FRAME_RELEASE_MARKER)) {
@@ -1105,6 +1381,57 @@ for (const bundle of collectEntryBundles()) {
   streamingPatched++
 }
 
+let blockStyleTargets = 0
+let blockStyleReady = 0
+let blockStylePatched = 0
+
+for (const bundle of collectEntryBundles()) {
+  const version = versionOf(bundle)
+  if (version !== TARGET_VERSION) {
+    skipped++
+    continue
+  }
+
+  blockStyleTargets++
+  const source = readFileSync(bundle, "utf-8")
+  if (
+    source.includes(SYNC_BLOCK_STYLE_MARKER) &&
+    source.includes("arcanaBlockHighlight") &&
+    source.includes("arcanaInitialChunk")
+  ) {
+    console.log(`[patch-opentui] markdown block styles already patched ${bundle}`)
+    blockStyleReady++
+    skipped++
+    continue
+  }
+  const blockStyleFixes: Array<[string, string]> = [
+    [MD_FIELDS_ANCHOR, MD_FIELDS_V26],
+    [MD_INITIAL_SIGNATURE_FROM, MD_INITIAL_SIGNATURE_TO],
+    [MD_INITIAL_RETURN_FROM, MD_INITIAL_RETURN_TO],
+    [MD_INLINE_CHUNK_FROM, MD_INLINE_CHUNK_TO],
+    [MD_INLINE_DEFAULT_FROM, MD_INLINE_DEFAULT_TO],
+    [MD_QUOTE_UPDATE_FROM, MD_QUOTE_UPDATE_TO],
+    [MD_QUOTE_CREATE_FROM, MD_QUOTE_CREATE_TO],
+    [MD_QUOTE_CREATE2_FROM, MD_QUOTE_CREATE2_TO],
+  ]
+  let next = source
+  let complete = true
+  for (const [from, to] of blockStyleFixes) {
+    if (!next.includes(from)) {
+      console.error(`[patch-opentui] markdown block-style anchor missing in ${bundle}: ${from.slice(0, 80)}`)
+      process.exitCode = 1
+      complete = false
+      break
+    }
+    next = next.replace(from, to)
+  }
+  if (!complete) continue
+  writeFileSync(bundle, next, "utf-8")
+  console.log(`[patch-opentui] patched markdown block styles ${bundle}`)
+  blockStyleReady++
+  blockStylePatched++
+}
+
 let diffTargets = 0
 let diffReady = 0
 let diffPatched = 0
@@ -1179,6 +1506,12 @@ if (streamingTargets === 0) {
   console.error(`[patch-opentui] patched ${streamingReady}/${streamingTargets} markdown streaming flip bundle(s)`)
   process.exitCode = 1
 }
+if (blockStyleTargets === 0) {
+  console.log(`[patch-opentui] no @opentui/core ${TARGET_VERSION} entry bundles found for markdown block styles`)
+} else if (blockStyleReady !== blockStyleTargets) {
+  console.error(`[patch-opentui] patched ${blockStyleReady}/${blockStyleTargets} markdown block style bundle(s)`)
+  process.exitCode = 1
+}
 if (diffTargets === 0) {
   console.log(`[patch-opentui] no @opentui/core ${TARGET_VERSION} entry bundles found for diff unstyled frames`)
 } else if (diffReady !== diffTargets) {
@@ -1186,5 +1519,5 @@ if (diffTargets === 0) {
   process.exitCode = 1
 }
 console.log(
-  `[patch-opentui] loader_patched=${patched} markdown_patched=${markdownPatched} code_patched=${codePatched} parse_patched=${parsePatched} tsclient_patched=${tsClientPatched} streaming_patched=${streamingPatched} diff_patched=${diffPatched} skipped=${skipped}`,
+  `[patch-opentui] loader_patched=${patched} markdown_patched=${markdownPatched} code_patched=${codePatched} parse_patched=${parsePatched} tsclient_patched=${tsClientPatched} streaming_patched=${streamingPatched} diff_patched=${diffPatched} blockstyle_patched=${blockStylePatched} skipped=${skipped}`,
 )

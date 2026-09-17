@@ -226,6 +226,17 @@ test("diff bodies never paint unstyled text before the first highlight", async (
   expect(openTuiPatchSource).toContain("existingRenderable.drawUnstyledText = false")
 })
 
+test("the style-stability passes are present in the patch suite", () => {
+  // Headings/blockquotes must be styled by the synchronous frame, a warm code
+  // leaf must hold its first paint until the commit, and identical async
+  // commits must not rewrite a settled frame.
+  expect(openTuiPatchSource).toContain("block-styled sync first frame")
+  expect(openTuiPatchSource).toContain("hold the first code paint for a warm parser")
+  expect(openTuiPatchSource).toContain("skip redundant async commit frames")
+  expect(openTuiPatchSource).toContain("arm the first-paint hold lazily")
+  expect(spineProseSource).toContain("warmTreeSitterFiletype")
+})
+
 test("failed highlight keeps streamed content visible on every update", async () => {
   // Root cause of "the code blanks and returns": a leaf whose highlight FAILS
   // painted plain once, but the next content update re-entered the styled-first
