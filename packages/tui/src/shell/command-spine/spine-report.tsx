@@ -1,4 +1,5 @@
 import { For, Show, createMemo } from "solid-js"
+import { Space } from "../../ui/chrome"
 import type { SpineReportData, SpineConcernSeverity } from "./spine-types"
 import { useTheme } from "../../context/theme"
 import type { Theme } from "../../theme"
@@ -104,7 +105,7 @@ export function SpineReport(props: {
       </Show>
       {/* Summary paragraph */}
       <Show when={r.summary}>
-        <box flexShrink={0} paddingTop={1} paddingBottom={1}>
+        <box flexShrink={0} paddingTop={Space.padY} paddingBottom={Space.padY}>
           <text fg={theme.textMuted} wrapMode="word">
             {r.summary}
           </text>
@@ -114,13 +115,13 @@ export function SpineReport(props: {
       {/* Scorecard strip — row-packed badges (audit O2: no horizontal overflow;
           long labels truncate to the budget instead of overflowing) */}
       <Show when={props.report.scorecard.length > 0}>
-        <box flexDirection="column" flexShrink={0} gap={1} paddingBottom={1}>
+        <box flexDirection="column" flexShrink={0} gap={Space.gap} paddingBottom={Space.padY}>
           <For each={scorecardRows()}>
             {(row) => (
-              <box flexDirection="row" flexShrink={0} gap={1}>
+              <box flexDirection="row" flexShrink={0} gap={Space.gap}>
                 <For each={row}>
                   {(item) => (
-                    <box flexShrink={0} paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement}>
+                    <box flexShrink={0} paddingLeft={Space.unit} paddingRight={Space.unit} backgroundColor={theme.backgroundElement}>
                       <text fg={scoreColor(item.status, theme)}>
                         {truncate(item.label, badgeLabelMax())} {scoreGlyph(item.status)}
                       </text>
@@ -143,10 +144,10 @@ export function SpineReport(props: {
                 border={["left"]}
                 borderColor={severityColor(concern.severity, theme)}
                 customBorderChars={HairlineBorder}
-                paddingLeft={2}
+                paddingLeft={Space.padX}
                 paddingTop={0}
                 paddingBottom={0}
-                marginBottom={1}
+                marginBottom={Space.gap}
                 minWidth={0}
               >
                 <text fg={severityColor(concern.severity, theme)}>

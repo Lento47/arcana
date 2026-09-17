@@ -1,4 +1,5 @@
 import type { TuiPlugin, TuiPluginApi } from "@arcana/plugin/tui"
+import { Space } from "../../ui/chrome"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { createMemo, Match, Show, Switch } from "solid-js"
 import { abbreviateHome, directoryLabel } from "../../runtime"
@@ -71,7 +72,7 @@ function Mcp(props: { api: TuiPluginApi }) {
 
   return (
     <Show when={has()}>
-      <box gap={1} flexDirection="row" flexShrink={0}>
+      <box gap={Space.gap} flexDirection="row" flexShrink={0}>
         <text wrapMode="none" fg={theme().text}>
           <Switch>
             <Match when={err()}>
@@ -139,8 +140,8 @@ function View(props: { api: TuiPluginApi }) {
   return (
     <box
       width="100%"
-      paddingTop={1}
-      paddingBottom={1}
+      paddingTop={Space.padY}
+      paddingBottom={Space.padY}
       paddingLeft={PADDING}
       paddingRight={PADDING}
       flexDirection="row"

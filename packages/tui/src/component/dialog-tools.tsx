@@ -132,13 +132,13 @@ export function DialogTools(props: { sessionID: string }) {
         <Show
           when={loaded()}
           fallback={
-            <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1} flexDirection="row" gap={1}>
+            <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={Space.padY} flexDirection="row" gap={Space.gap}>
               <Spinner />
               <text fg={theme.textMuted}>Loading tools…</text>
             </box>
           }
         >
-          <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
+          <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={Space.padY}>
             <text fg={loadError() ? theme.error : theme.textMuted}>
               {loadError()
                 ? `Failed to load tools — ${loadError()}. Reopen this dialog to retry.`

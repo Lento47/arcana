@@ -1,4 +1,5 @@
 import { Prompt, type PromptRef } from "../component/prompt"
+import { Space } from "../ui/chrome"
 import { createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { Logo } from "../component/logo"
 import { HomeBackdropDither } from "../component/home-backdrop-dither"
@@ -106,8 +107,8 @@ export function Home() {
       <box
         flexGrow={1}
         alignItems="center"
-        paddingLeft={2}
-        paddingRight={2}
+        paddingLeft={Space.padX}
+        paddingRight={Space.padX}
         position="relative"
       >
         <HomeBackdropDither />
@@ -118,14 +119,14 @@ export function Home() {
             <Logo />
           </pluginRuntime.Slot>
         </box>
-        <box flexShrink={0} paddingTop={1} alignItems="center">
+        <box flexShrink={0} paddingTop={Space.padY} alignItems="center">
           <Scramble text={WORDMARK_TAGLINE} fg={theme.textMuted} />
         </box>
-        <box flexShrink={0} paddingTop={1} alignItems="center">
+        <box flexShrink={0} paddingTop={Space.padY} alignItems="center">
           <Scramble text={epigram()} fg={theme.textMuted} speed={14} />
         </box>
         <box height={1} minHeight={0} flexShrink={1} />
-        <box width="100%" maxWidth={promptMaxWidth()} zIndex={1000} paddingTop={1} flexShrink={0}>
+        <box width="100%" maxWidth={promptMaxWidth()} zIndex={1000} paddingTop={Space.padY} flexShrink={0}>
           <pluginRuntime.Slot name="home_prompt" mode="replace" ref={bind}>
             <Prompt ref={bind} right={<pluginRuntime.Slot name="home_prompt_right" />} placeholders={PLACEHOLDER} />
           </pluginRuntime.Slot>

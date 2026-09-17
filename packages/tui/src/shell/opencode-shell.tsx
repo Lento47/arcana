@@ -16,7 +16,7 @@ import { PermissionPrompt } from "../routes/session/permission"
 import { QuestionPrompt } from "../routes/session/question"
 import { SubagentFooter } from "../routes/session/subagent-footer"
 import { SplitBorder } from "../ui/border"
-import { DashBorder } from "../ui/chrome"
+import { DashBorder, Space } from "../ui/chrome"
 import { useCommandShortcut } from "../keymap"
 import { useOpencodeKeymap } from "../keymap"
 import { usePluginRuntime } from "../plugin/runtime"
@@ -84,16 +84,16 @@ export function OpencodeShell(props: ShellProps) {
                       onMouseOver={() => setHover(true)}
                       onMouseOut={() => setHover(false)}
                       onMouseUp={handleUnrevert}
-                      marginTop={1}
+                      marginTop={Space.gap}
                       flexShrink={0}
                       border={["left"]}
                       customBorderChars={SplitBorder.customBorderChars}
                       borderColor={theme.backgroundPanel}
                     >
                       <box
-                        paddingTop={1}
-                        paddingBottom={1}
-                        paddingLeft={2}
+                        paddingTop={Space.padY}
+                        paddingBottom={Space.padY}
+                        paddingLeft={Space.padX}
                         backgroundColor={hover() ? theme.backgroundElement : theme.backgroundPanel}
                       >
                         <text fg={theme.textMuted}>
@@ -104,7 +104,7 @@ export function OpencodeShell(props: ShellProps) {
                           <span style={{ fg: theme.text }}>{redoShortcut()}</span> or /redo to restore
                         </text>
                         <Show when={props.revert()!.diffFiles?.length}>
-                          <box marginTop={1}>
+                          <box marginTop={Space.gap}>
                             <For each={props.revert()!.diffFiles}>
                               {(file) => (
                                 <text fg={theme.text}>
@@ -134,7 +134,7 @@ export function OpencodeShell(props: ShellProps) {
                     border={["bottom"]}
                     borderColor={theme.borderSubtle}
                     customBorderChars={DashBorder}
-                    marginBottom={1}
+                    marginBottom={Space.gap}
                   />
                 </Show>
                 <UserMessage

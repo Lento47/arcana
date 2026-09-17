@@ -1,4 +1,5 @@
 import { createEffect, createSignal, onCleanup, Show } from "solid-js"
+import { Space } from "../ui/chrome"
 import { getComponentCatalogue } from "@opentui/solid"
 import { useTheme } from "../context/theme"
 import { useKV } from "../context/kv"
@@ -37,7 +38,7 @@ export function Spinner(props: { children?: JSX.Element; color?: RGBA }) {
     <Show
       when={useTextFallback()}
       fallback={
-        <box flexDirection="row" gap={1}>
+        <box flexDirection="row" gap={Space.gap}>
           {/* The glyph is reserved and never wraps: it is the whole point of the
               row, and a flex row that shrinks both children takes the deficit
               out of the mark as readily as out of the label. The intrinsic
@@ -139,7 +140,7 @@ export function TextSpinner(props: { frames: string[]; color?: RGBA; children?: 
   onCleanup(stopAnimation)
   const glyph = () => (props.frames.length === 0 ? "⋯" : props.frames[i()])
   return (
-    <box flexDirection="row" gap={1}>
+    <box flexDirection="row" gap={Space.gap}>
       {/* Reserved and unwrappable, as in the native-glyph path above: the mark
           is one cell and must stay one cell, whatever the label beside it does. */}
       <text fg={props.color} wrapMode="none" flexShrink={0}>

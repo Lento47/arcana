@@ -1,7 +1,7 @@
 import { For, Show, createMemo } from "solid-js"
 import { useTheme } from "../../context/theme"
 import type { Theme } from "../../theme"
-import { RoundBorder } from "../../ui/chrome"
+import { RoundBorder, Space } from "../../ui/chrome"
 import { HairlineBorder } from "../../ui/border"
 import type { InsightCardModel, InsightMetricTone } from "./spine-insight"
 import { chipCellWidth, insightHeaderChrome, packChipRows } from "./spine-chrome"
@@ -46,10 +46,10 @@ export function SpineInsightCard(props: {
       flexDirection="column"
       flexShrink={0}
       minWidth={0}
-      marginTop={1}
-      marginBottom={1}
-      paddingLeft={1}
-      paddingRight={1}
+      marginTop={Space.gap}
+      marginBottom={Space.gap}
+      paddingLeft={Space.unit}
+      paddingRight={Space.unit}
       paddingTop={critical() ? 1 : 0}
       paddingBottom={critical() ? 1 : 0}
       border={critical() ? true : ["left"]}
@@ -57,13 +57,13 @@ export function SpineInsightCard(props: {
       borderColor={severityColor(card().severity, theme)}
       backgroundColor={theme.backgroundPanel}
     >
-      <box flexDirection="row" flexShrink={0} minWidth={0} gap={1} alignItems="center">
+      <box flexDirection="row" flexShrink={0} minWidth={0} gap={Space.gap} alignItems="center">
         <text fg={theme.text} wrapMode="none" overflow="hidden">
           {header().title}
         </text>
         <box flexGrow={1} minWidth={1} />
         <Show when={header().showSeverity}>
-          <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement} flexShrink={0}>
+          <box paddingLeft={Space.unit} paddingRight={Space.unit} backgroundColor={theme.backgroundElement} flexShrink={0}>
             <text fg={severityColor(card().severity, theme)} wrapMode="none">
               {header().severity}
             </text>
@@ -75,16 +75,16 @@ export function SpineInsightCard(props: {
           {card().summary}
         </text>
       </Show>
-      <box flexDirection="column" flexShrink={0} marginTop={1} gap={1}>
+      <box flexDirection="column" flexShrink={0} marginTop={Space.gap} gap={Space.gap}>
         <For each={metricRows()}>
           {(row) => (
-            <box flexDirection="row" flexShrink={0} gap={1} minWidth={0}>
+            <box flexDirection="row" flexShrink={0} gap={Space.gap} minWidth={0}>
               <For each={row}>
                 {(metric) => (
                   <box
                     flexShrink={0}
-                    paddingLeft={1}
-                    paddingRight={1}
+                    paddingLeft={Space.unit}
+                    paddingRight={Space.unit}
                     backgroundColor={metric.tone === "fail" || metric.tone === "warn" ? theme.backgroundElement : undefined}
                   >
                     <text wrapMode="none" overflow="hidden">

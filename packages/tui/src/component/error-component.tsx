@@ -144,7 +144,7 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
   })
 
   return (
-    <box flexDirection="column" gap={1} backgroundColor={colors.bg}>
+    <box flexDirection="column" gap={Space.gap} backgroundColor={colors.bg}>
       <text fg={colors.muted}>{arcanaDitherPattern("fatal-error", 48)} FATAL</text>
       <box
         flexDirection={stacks() ? "column" : "row"}

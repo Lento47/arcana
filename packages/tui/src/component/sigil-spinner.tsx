@@ -1,4 +1,5 @@
 import { createEffect, createSignal, onCleanup, Show } from "solid-js"
+import { Space } from "../ui/chrome"
 import type { JSX } from "@opentui/solid"
 import type { RGBA } from "@opentui/core"
 import { useKV } from "../context/kv"
@@ -114,7 +115,7 @@ export function SigilSpinner(props: {
   const glyph = () => (animate() ? (frames()[i()] ?? "⛧") : "⛧")
 
   return (
-    <box flexDirection="row" gap={1}>
+    <box flexDirection="row" gap={Space.gap}>
       {/* The sigil is one cell and stays one cell: with both children elastic, a
           row too narrow for the label takes the deficit out of the mark first,
           and the sign of the app is what disappears. The label beside it is the

@@ -8,6 +8,7 @@ import {
   TextRenderable,
   type TextChunk,
 } from "@opentui/core"
+import { Space } from "../ui/chrome"
 import { useRenderer } from "@opentui/solid"
 import { For, batch, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { useTheme, tint } from "../context/theme"
@@ -936,7 +937,7 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean } = 
       />
       <For each={ctx.shape.left}>
         {(line, index) => (
-          <box flexDirection="row" gap={1}>
+          <box flexDirection="row" gap={Space.gap}>
             <box flexDirection="row">
               <LogoLine
                 line={line}

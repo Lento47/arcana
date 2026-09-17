@@ -1,4 +1,5 @@
 import type { TuiPlugin, TuiPluginApi } from "@arcana/plugin/tui"
+import { Space } from "../../ui/chrome"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { createMemo, createSignal, Show } from "solid-js"
 import { abbreviateHome } from "../../runtime"
@@ -60,21 +61,21 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
   })
 
   return (
-    <box gap={1}>
+    <box gap={Space.gap}>
       <Show when={show()}>
         <box
           backgroundColor={theme().backgroundElement}
-          paddingTop={1}
-          paddingBottom={1}
-          paddingLeft={2}
-          paddingRight={2}
+          paddingTop={Space.padY}
+          paddingBottom={Space.padY}
+          paddingLeft={Space.padX}
+          paddingRight={Space.padX}
           flexDirection="row"
-          gap={1}
+          gap={Space.gap}
         >
           <text flexShrink={0} fg={theme().text}>
             ⬖
           </text>
-          <box flexGrow={1} gap={1}>
+          <box flexGrow={1} gap={Space.gap}>
             <box flexDirection="row" justifyContent="space-between">
               <text fg={theme().text}>
                 <b>Getting Started</b>
@@ -96,7 +97,7 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
             <text fg={theme().textMuted}>
               Connect from 75+ providers to use other models, including Claude, GPT, and Gemini
             </text>
-            <box flexDirection="row" gap={1} justifyContent="space-between">
+            <box flexDirection="row" gap={Space.gap} justifyContent="space-between">
               <text fg={theme().text}>Connect Provider</text>
               {/* The command is a readout: whole, at its own width, at the
                   card's right edge. It is not a word to wrap. */}

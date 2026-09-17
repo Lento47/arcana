@@ -273,7 +273,7 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
         <SigilSpinner color={theme.textMuted}>Generating sign-in code…</SigilSpinner>
       </Show>
       <Show when={phase() === "waiting" || phase() === "binding" || phase() === "success"}>
-        <box gap={1}>
+        <box gap={Space.gap}>
           <text fg={theme.textMuted} wrapMode="word">
             Visit{" "}
             <span style={{ fg: theme.primary, attributes: TextAttributes.UNDERLINE }}>
@@ -309,7 +309,7 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
         </box>
       </Show>
       <Show when={phase() === "error"}>
-        <box gap={1}>
+        <box gap={Space.gap}>
           <text fg={theme.error}>Sign-in failed</text>
           <text fg={theme.textMuted}>{Locale.truncate(error() ?? "", 120)}</text>
           <text fg={theme.textMuted}>Press esc to close and try again.</text>

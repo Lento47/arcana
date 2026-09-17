@@ -235,7 +235,7 @@ export function DialogMessage(props: {
               <box
                 flexDirection="row"
                 paddingLeft={Space.inset}
-                paddingRight={2}
+                paddingRight={Space.padX}
                 minWidth={0}
                 onMouseOver={() => setFocused(i())}
               >
@@ -254,7 +254,7 @@ export function DialogMessage(props: {
                 </box>
 
                 {/* Action label + desc */}
-                <box flexDirection="row" flexGrow={1} flexShrink={1} minWidth={0} gap={1}>
+                <box flexDirection="row" flexGrow={1} flexShrink={1} minWidth={0} gap={Space.gap}>
                   <text
                     flexShrink={0}
                     fg={isFocused() ? theme.primary : theme.text}
@@ -276,22 +276,22 @@ export function DialogMessage(props: {
       <box
         width="100%"
         minWidth={0}
-        paddingLeft={Space.inset} paddingRight={2} paddingTop={1} paddingBottom={1}
+        paddingLeft={Space.inset} paddingRight={Space.padX} paddingTop={Space.padY} paddingBottom={Space.padY}
         backgroundColor={theme.backgroundPanel}
         border={["top"]} borderColor={theme.borderSubtle}
       >
-        <box flexDirection="row" minWidth={0} gap={1}>
+        <box flexDirection="row" minWidth={0} gap={Space.gap}>
           <text fg={theme.accent} attributes={TextAttributes.BOLD} flexShrink={0}>{active().label.toUpperCase()}</text>
           <text fg={theme.textMuted} flexGrow={1} flexShrink={1} wrapMode="word">
             {active().desc} · message details below.
           </text>
         </box>
-        <box flexDirection="row" flexWrap="wrap" gap={1} paddingTop={1}>
+        <box flexDirection="row" flexWrap="wrap" gap={Space.gap} paddingTop={Space.padY}>
           {/* A hint is the pair `[key] Verb` and only reads as one if the pair
               survives together — wrapping is how this row gives way, so the
               unit that moves is the pair, never the key alone on the row above
               its own verb. */}
-          <box flexShrink={0} flexDirection="row" gap={1}>
+          <box flexShrink={0} flexDirection="row" gap={Space.gap}>
             <text fg={theme.primary} wrapMode="none">
               [enter]
             </text>
@@ -302,7 +302,7 @@ export function DialogMessage(props: {
           <text fg={theme.textMuted} flexShrink={0} wrapMode="none">
             ·
           </text>
-          <box flexShrink={0} flexDirection="row" gap={1}>
+          <box flexShrink={0} flexDirection="row" gap={Space.gap}>
             <text fg={theme.primary} wrapMode="none">
               [↓↑]
             </text>

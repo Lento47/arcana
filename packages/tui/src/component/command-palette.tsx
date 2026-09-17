@@ -89,7 +89,7 @@ export function CommandPaletteDialog() {
       title={`ARCANA ${arcanaDitherPattern("commands", 12)} Commands`}
       options={list()}
       emptyView={
-        <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
+        <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={Space.padY}>
           <Show
             when={ref()?.filter}
             fallback={<text fg={theme.textMuted}>No commands available. Press esc to close.</text>}

@@ -135,7 +135,7 @@ export function DialogMcp() {
       actions={actions()}
       placeholder={COPY.dialog.filterServers}
       emptyView={
-        <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
+        <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={Space.padY}>
           <Show
             when={options().length === 0}
             fallback={<text fg={theme.textMuted}>{COPY.noEchoesFound}</text>}

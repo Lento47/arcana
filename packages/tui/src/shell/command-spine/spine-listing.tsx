@@ -1,4 +1,5 @@
 import { For, Show, createMemo } from "solid-js"
+import { Space } from "../../ui/chrome"
 import { useTheme } from "../../context/theme"
 import { truncate } from "../../util/locale"
 import { listingEntryChrome } from "./spine-chrome"
@@ -36,19 +37,19 @@ export function SpineListing(props: {
   }
 
   return (
-    <box flexDirection="column" flexShrink={0} minWidth={0} paddingLeft={1} gap={0}>
+    <box flexDirection="column" flexShrink={0} minWidth={0} paddingLeft={Space.unit} gap={0}>
       {/* Note first, so a capped listing's "N more — refine the query" footer
           is visible without scrolling past hundreds of rows. */}
       <Show when={props.note?.trim()}>
-        <text fg={muted()} wrapMode="word" paddingBottom={1}>
+        <text fg={muted()} wrapMode="word" paddingBottom={Space.padY}>
           {props.note!.trim()}
         </text>
       </Show>
       <For each={rows()}>
         {(entry) => (
-          <box flexDirection="row" flexShrink={0} gap={1} minWidth={0}>
+          <box flexDirection="row" flexShrink={0} gap={Space.gap} minWidth={0}>
             <Show when={!uniformKind()}>
-              <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement} flexShrink={0}>
+              <box paddingLeft={Space.unit} paddingRight={Space.unit} backgroundColor={theme.backgroundElement} flexShrink={0}>
                 <text fg={entry.kind === "dir" ? theme.spineContext : theme.spineDiffMuted} wrapMode="none">
                   {entry.kind}
                 </text>

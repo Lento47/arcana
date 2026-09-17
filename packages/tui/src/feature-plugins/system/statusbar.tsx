@@ -279,7 +279,7 @@ function View(props: { api: TuiPluginApi }) {
         minWidth={0}
         overflow="hidden"
         paddingLeft={chipAtEdge() ? 0 : 2}
-        paddingRight={2}
+        paddingRight={Space.padX}
         backgroundColor={theme().background}
         border={short() ? undefined : ["top"]}
         borderColor={theme().borderSubtle}
@@ -290,7 +290,7 @@ function View(props: { api: TuiPluginApi }) {
           </box>
         </Show>
         <Show when={compacting()}>
-          <box flexShrink={0} backgroundColor={theme().warning} paddingLeft={chipAtEdge() ? Space.inset : 1} paddingRight={1}>
+          <box flexShrink={0} backgroundColor={theme().warning} paddingLeft={chipAtEdge() ? Space.inset : 1} paddingRight={Space.unit}>
             <text wrapMode="none" fg={selectedForeground(theme(), theme().warning)}>
               <span style={{ fg: selectedForeground(theme(), theme().warning), bold: true }}>
                 ⟳ COMPACTING
@@ -300,7 +300,7 @@ function View(props: { api: TuiPluginApi }) {
         </Show>
         <Show when={contextPressure()}>
           {(pressure) => (
-            <box flexShrink={0} backgroundColor={pressure().color} paddingLeft={chipAtEdge() ? Space.inset : 1} paddingRight={1}>
+            <box flexShrink={0} backgroundColor={pressure().color} paddingLeft={chipAtEdge() ? Space.inset : 1} paddingRight={Space.unit}>
               <text wrapMode="none" fg={selectedForeground(theme(), pressure().color)}>
                 <span style={{ fg: selectedForeground(theme(), pressure().color), bold: true }}>
                   {pressure().label}

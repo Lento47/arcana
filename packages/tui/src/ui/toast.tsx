@@ -5,7 +5,7 @@ import { Glyph } from "../branding"
 import { useRenderer } from "@opentui/solid"
 import { useTerminalSize } from "../util/terminal-size"
 import { SplitBorder } from "./border"
-import { Size } from "./chrome"
+import { Size, Space } from "./chrome"
 import { paneWidth } from "../util/geometry"
 import { TextAttributes, type MouseEvent } from "@opentui/core"
 import { Scramble } from "../component/scramble"
@@ -64,7 +64,7 @@ export function Toast() {
       top={2}
       right={2}
       flexDirection="column"
-      gap={1}
+      gap={Space.gap}
       zIndex={4000}
     >
       <For each={toast.toasts.slice(-MAX_VISIBLE)}>
@@ -93,16 +93,16 @@ export function Toast() {
               // because `useTerminalSize` reports an unmeasured renderer as 0
               // and `min(60, -6)` is a negative `maxWidth` handed to yoga.
               maxWidth={Math.min(Size.toastMaxWidth, paneWidth(dimensions().width, Size.toastInset))}
-              paddingLeft={2}
-              paddingRight={1}
-              paddingTop={1}
-              paddingBottom={1}
+              paddingLeft={Space.padX}
+              paddingRight={Space.unit}
+              paddingTop={Space.padY}
+              paddingBottom={Space.padY}
               backgroundColor={theme.backgroundPanel}
               borderColor={theme[item.variant]}
               border={["left", "right"]}
               customBorderChars={SplitBorder.customBorderChars}
               flexDirection="row"
-              gap={1}
+              gap={Space.gap}
               alignItems="flex-start"
             >
               <box flexGrow={1}>

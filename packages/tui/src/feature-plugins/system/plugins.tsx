@@ -1,4 +1,5 @@
 import type { TuiPlugin, TuiPluginApi, TuiPluginStatus } from "@arcana/plugin/tui"
+import { Space } from "../../ui/chrome"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { useRenderer } from "@opentui/solid"
 import { useTerminalSize } from "../../util/terminal-size"
@@ -53,7 +54,7 @@ function Install(props: { api: TuiPluginApi }) {
       busy={busy()}
       busyText="Installing plugin…"
       description={() => (
-        <box flexDirection="row" gap={1}>
+        <box flexDirection="row" gap={Space.gap}>
           {/* Every segment of this line is fixed vocabulary — a label, one of
               two words, a hint — so none of them is elastic and none of them
               can be the thing that gives way. Elastic segments are for prose. */}

@@ -1,4 +1,5 @@
 import { Show, type JSX } from "solid-js"
+import { Space } from "./chrome"
 import { useTheme } from "../context/theme"
 import { useDialog } from "./dialog"
 import { DialogCloseHint } from "./dialog-chrome"
@@ -29,7 +30,7 @@ export function ArcanaSurface(props: { title: string; path?: string; meta?: stri
   const { theme } = useTheme()
   const dialog = useDialog()
   return (
-    <box paddingLeft={1} paddingRight={1} gap={1} paddingBottom={1}>
+    <box paddingLeft={Space.unit} paddingRight={Space.unit} gap={Space.gap} paddingBottom={Space.padY}>
       <box gap={0}>
         <box flexDirection="row" justifyContent="space-between">
           {/* The title yields to the dismissal, as in every dialog title row —

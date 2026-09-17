@@ -57,7 +57,7 @@ export function DialogTag(props: { onSelect?: (value: string) => void }) {
         <Show
           when={loadError()}
           fallback={
-            <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
+            <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={Space.padY}>
               <text fg={theme.textMuted}>
                 {files.loading
                   ? "Searching files…"
@@ -68,7 +68,7 @@ export function DialogTag(props: { onSelect?: (value: string) => void }) {
             </box>
           }
         >
-          <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
+          <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={Space.padY}>
             <text fg={theme.error}>
               Failed to search files — {errorMessage(loadError())}. Keep typing to retry.
             </text>

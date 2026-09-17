@@ -1,4 +1,5 @@
 import { For, Show, createContext, createMemo, createSignal, useContext } from "solid-js"
+import { Space } from "../../ui/chrome"
 import { TextAttributes, type MouseEvent, type RGBA } from "@opentui/core"
 import { selectedForeground, useTheme } from "../../context/theme"
 import type { Theme } from "../../theme"
@@ -44,7 +45,7 @@ function GateRow(props: { label: string; value?: string; tone?: RGBA; theme: The
   const value = props.value?.trim()
   if (!value) return null
   return (
-    <box flexDirection="row" flexShrink={0} minWidth={0} gap={1}>
+    <box flexDirection="row" flexShrink={0} minWidth={0} gap={Space.gap}>
       <box width={FACT_LABEL_WIDTH} flexShrink={0}>
         <text fg={props.theme.spineDiffMuted}>{props.label}</text>
       </box>
@@ -86,7 +87,7 @@ function ActionKeys(props: { theme: Theme; layout: SpineLayout }) {
     handler()
   }
   return (
-    <box flexDirection="row" flexShrink={0} gap={1} paddingTop={1}>
+    <box flexDirection="row" flexShrink={0} gap={Space.gap} paddingTop={Space.padY}>
       <For each={[...facts.keys]}>
         {(item) => {
           const handler = () => handlerFor(item.key)
@@ -95,8 +96,8 @@ function ActionKeys(props: { theme: Theme; layout: SpineLayout }) {
           return (
             <box
               flexShrink={0}
-              paddingLeft={1}
-              paddingRight={1}
+              paddingLeft={Space.unit}
+              paddingRight={Space.unit}
               backgroundColor={active() ? props.theme.primary : props.theme.backgroundElement}
               onMouseUp={(event) => handleActionMouseUp(event, item.key)}
               onMouseOver={() => clickable() && setHover(item.key)}
@@ -154,26 +155,26 @@ export function SpineApprovalGate(props: {
       background={props.focused ? (theme.backgroundElement as any) : theme.backgroundPanel}
       padX={1}
     >
-      <box flexDirection="row" flexShrink={0} alignItems="center" gap={1}>
+      <box flexDirection="row" flexShrink={0} alignItems="center" gap={Space.gap}>
         <text fg={theme.warning} attributes={TextAttributes.BOLD}>
           {facts().title}
         </text>
         <box flexGrow={1} minWidth={1} />
-        <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement} flexShrink={0}>
+        <box paddingLeft={Space.unit} paddingRight={Space.unit} backgroundColor={theme.backgroundElement} flexShrink={0}>
           <text fg={riskColor(risk(), theme)} wrapMode="none">{risk()}</text>
         </box>
       </box>
 
-      <box flexDirection="column" flexShrink={0} gap={0} paddingTop={1} paddingBottom={1}>
+      <box flexDirection="column" flexShrink={0} gap={0} paddingTop={Space.padY} paddingBottom={Space.padY}>
         <For each={primaryRows()}>
           {(row) => (
-            <box flexDirection="row" flexShrink={0} gap={1} minWidth={0}>
+            <box flexDirection="row" flexShrink={0} gap={Space.gap} minWidth={0}>
               <For each={row}>
                 {(item) => (
                   <box
                     flexShrink={0}
-                    paddingLeft={1}
-                    paddingRight={1}
+                    paddingLeft={Space.unit}
+                    paddingRight={Space.unit}
                     backgroundColor={theme.backgroundElement}
                   >
                     <text wrapMode="none">

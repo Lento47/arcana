@@ -1,4 +1,5 @@
 import { createSignal, Show } from "solid-js"
+import { Space } from "../ui/chrome"
 import { Global } from "@arcana/core/global"
 import { useDialog } from "../ui/dialog"
 import { DialogPrompt } from "../ui/dialog-prompt"
@@ -50,7 +51,7 @@ export function DialogSoul() {
     <Show
       when={content() !== undefined}
       fallback={
-        <box paddingLeft={2} paddingRight={2} paddingTop={1} flexDirection="row" gap={1}>
+        <box paddingLeft={Space.padX} paddingRight={Space.padX} paddingTop={Space.padY} flexDirection="row" gap={Space.gap}>
           <Spinner />
           <text fg={theme.textMuted}>Loading personal instructions…</text>
         </box>

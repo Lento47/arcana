@@ -1,4 +1,5 @@
 import { useTheme } from "../../context/theme"
+import { Space } from "../../ui/chrome"
 
 /**
  * Per-row forensic error fallback. One broken row renders this local line
@@ -11,7 +12,7 @@ export function SpineRowError(props: {
 }) {
   const { theme } = useTheme()
   return (
-    <box flexDirection="row" flexShrink={0} width="100%" paddingLeft={1}>
+    <box flexDirection="row" flexShrink={0} width="100%" paddingLeft={Space.unit}>
       <text fg={theme.error} wrapMode="word">
         Spine row error
       </text>

@@ -2228,8 +2228,8 @@ export function Prompt(props: PromptProps) {
               </box>
             </box>
             {/* Info line — Grok model · flags; Arcana: no brand, no default "intent". */}
-            <box flexDirection="row" flexShrink={0} paddingTop={0} gap={1} justifyContent="space-between">
-              <box flexDirection="row" gap={1}>
+            <box flexDirection="row" flexShrink={0} paddingTop={0} gap={Space.gap} justifyContent="space-between">
+              <box flexDirection="row" gap={Space.gap}>
                 <Show when={local.agent.current()} fallback={<box height={1} />}>
                   {(agent) => (
                     <>
@@ -2244,7 +2244,7 @@ export function Prompt(props: PromptProps) {
                       </Show>
                       {/* Command-spine normal: model first; agent only when non-default. */}
                       <Show when={store.mode === "normal"}>
-                        <box flexDirection="row" gap={1}>
+                        <box flexDirection="row" gap={Space.gap}>
                           <Show when={isCommandSpine() && isNonDefaultAgent()}>
                             <text fg={fade(theme.spinePrompt, agentMetaAlpha())}>
                               {agent().name.toLowerCase()}
@@ -2286,7 +2286,7 @@ export function Prompt(props: PromptProps) {
                 </Show>
               </box>
               <Show when={hasRightContent()}>
-                <box flexDirection="row" gap={1} alignItems="center">
+                <box flexDirection="row" gap={Space.gap} alignItems="center">
                   {props.right}
                 </box>
               </Show>
@@ -2326,15 +2326,15 @@ export function Prompt(props: PromptProps) {
             <Match when={!isCommandSpine() && status().type !== "idle"}>
               <box
                 flexDirection="row"
-                gap={1}
+                gap={Space.gap}
                 flexGrow={1}
                 justifyContent={status().type === "retry" ? "space-between" : "flex-start"}
               >
-                <box flexShrink={0} flexDirection="row" gap={1}>
-                  <box marginLeft={1}>
+                <box flexShrink={0} flexDirection="row" gap={Space.gap}>
+                  <box marginLeft={Space.gap}>
                     <SigilSpinner color={highlight()} interval={120} />
                   </box>
-                  <box flexDirection="row" gap={1} flexShrink={0}>
+                  <box flexDirection="row" gap={Space.gap} flexShrink={0}>
                     {(() => {
                       const retry = createMemo(() => {
                         const s = status()
@@ -2412,7 +2412,7 @@ export function Prompt(props: PromptProps) {
             </Match>
             <Match when={workspace.label()}>
               {(label) => (
-                <box paddingLeft={Space.inset} flexDirection="row" gap={1}>
+                <box paddingLeft={Space.inset} flexDirection="row" gap={Space.gap}>
                   <Show when={workspace.creating()}>
                     <Spinner color={theme.accent} />
                   </Show>

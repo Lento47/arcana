@@ -586,7 +586,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
       <box
         paddingLeft={Space.inset}
         paddingRight={Space.inset}
-        paddingBottom={1}
+        paddingBottom={Space.padY}
         backgroundColor={theme.backgroundPanel}
         border={["bottom"]}
         borderColor={theme.borderSubtle}
@@ -609,7 +609,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
 
       {/* Filter */}
       <Show when={props.renderFilter !== false}>
-        <box paddingLeft={Space.inset} paddingRight={Space.inset} paddingTop={1} paddingBottom={1}>
+        <box paddingLeft={Space.inset} paddingRight={Space.inset} paddingTop={Space.padY} paddingBottom={Space.padY}>
           <input
             width="100%"
             minWidth={0}
@@ -643,7 +643,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
           when={grouped().length > 0}
           fallback={
             props.emptyView ?? (
-              <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
+              <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={Space.padY}>
                 <text fg={theme.textMuted}>{COPY.noEchoesFound}</text>
               </box>
             )
@@ -667,8 +667,8 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
             minHeight={1}
             flexGrow={1}
             flexShrink={1}
-            paddingLeft={1}
-            paddingRight={1}
+            paddingLeft={Space.unit}
+            paddingRight={Space.unit}
             verticalScrollbarOptions={{
               trackOptions: { backgroundColor: theme.backgroundElement, foregroundColor: theme.border },
             }}
@@ -733,7 +733,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
                             flexDirection="row"
                             paddingLeft={current() || option.gutter ? 1 : Space.inset}
                             paddingRight={Space.inset}
-                            gap={1}
+                            gap={Space.gap}
                             backgroundColor={
                               props.locked
                                 ? selectedRow()
@@ -789,8 +789,8 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
           flexWrap="wrap"
           paddingRight={Space.inset}
           paddingLeft={Space.inset}
-          paddingTop={1}
-          paddingBottom={1}
+          paddingTop={Space.padY}
+          paddingBottom={Space.padY}
           flexDirection="row"
           justifyContent="space-between"
           flexShrink={0}

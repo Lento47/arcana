@@ -59,7 +59,7 @@ export function Footer() {
   })
 
   return (
-    <box flexDirection="row" justifyContent="space-between" gap={1} flexShrink={0}>
+    <box flexDirection="row" justifyContent="space-between" gap={Space.gap} flexShrink={0}>
       <text fg={theme.textMuted}>{directory()}</text>
       <box gap={Space.gapWide} flexDirection="row" flexShrink={0}>
         <Switch>

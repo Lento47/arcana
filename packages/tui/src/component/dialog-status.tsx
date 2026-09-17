@@ -1,4 +1,5 @@
 import { fileURLToPath } from "bun"
+import { Space } from "../ui/chrome"
 import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
 import { useSync } from "../context/sync"
@@ -54,7 +55,7 @@ export function DialogStatus() {
           <text fg={theme.text}>{countLabel(Object.keys(sync.data.mcp).length, "MCP Server")}</text>
           <For each={Object.entries(sync.data.mcp)}>
             {([key, item]) => (
-              <box flexDirection="row" gap={1}>
+              <box flexDirection="row" gap={Space.gap}>
                 <text
                   flexShrink={0}
                   style={{
@@ -100,7 +101,7 @@ export function DialogStatus() {
           <text fg={theme.text}>{countLabel(sync.data.lsp.length, "LSP Server")}</text>
           <For each={sync.data.lsp}>
             {(item) => (
-              <box flexDirection="row" gap={1}>
+              <box flexDirection="row" gap={Space.gap}>
                 <text
                   flexShrink={0}
                   style={{
@@ -125,7 +126,7 @@ export function DialogStatus() {
           <text fg={theme.text}>{countLabel(enabledFormatters().length, "Formatter")}</text>
           <For each={enabledFormatters()}>
             {(item) => (
-              <box flexDirection="row" gap={1}>
+              <box flexDirection="row" gap={Space.gap}>
                 <text
                   flexShrink={0}
                   style={{
@@ -147,7 +148,7 @@ export function DialogStatus() {
           <text fg={theme.text}>{countLabel(plugins().length, "Plugin")}</text>
           <For each={plugins()}>
             {(item) => (
-              <box flexDirection="row" gap={1}>
+              <box flexDirection="row" gap={Space.gap}>
                 <text
                   flexShrink={0}
                   style={{

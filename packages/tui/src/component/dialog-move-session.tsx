@@ -300,7 +300,7 @@ export function DialogMoveSession(props: DialogMoveSessionProps) {
       <DialogSelect
         title={`${Glyph.sigil} Move Session`}
         titleView={
-          <box flexDirection="row" gap={1}>
+          <box flexDirection="row" gap={Space.gap}>
             <text fg={theme.text} attributes={TextAttributes.BOLD}>
               Move Session
             </text>

@@ -1,5 +1,6 @@
 /** @jsxImportSource @opentui/solid */
 import type { TuiPlugin, TuiPluginApi, TuiRouteCurrent } from "@arcana/plugin/tui"
+import { Space } from "../../ui/chrome"
 import type { SnapshotFileDiff, VcsFileDiff } from "@arcana/sdk/v2"
 import {
   TextAttributes,
@@ -945,7 +946,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
   return (
     <box position="absolute" zIndex={2500} left={0} top={0} width={dimensions().width} height={dimensions().height}>
       <PanelGroup axis="y" width="100%" height="100%">
-        <Panel border="none" flexShrink={0} padding={0} paddingLeft={1}>
+        <Panel border="none" flexShrink={0} padding={0} paddingLeft={Space.unit}>
           <text fg={theme().text} wrapMode="none" flexShrink={0}>
             Diff{" "}
           </text>
@@ -965,19 +966,19 @@ function DiffViewer(props: { api: TuiPluginApi }) {
           <Switch>
             <Match when={diff.loading && !hasDiffSnapshot()}>
               <Separator axis="x" />
-              <box flexGrow={1} paddingLeft={1}>
+              <box flexGrow={1} paddingLeft={Space.unit}>
                 <text fg={theme().textMuted}>Loading diff…</text>
               </box>
             </Match>
             <Match when={hasDiffSnapshot() && files().length === 0}>
               <Separator axis="x" />
-              <box flexGrow={1} paddingLeft={1}>
+              <box flexGrow={1} paddingLeft={Space.unit}>
                 <text fg={theme().textMuted}>No diff — the working tree is clean</text>
               </box>
             </Match>
             <Match when={!hasDiffSnapshot() && diff.error}>
               <Separator axis="x" />
-              <box flexGrow={1} paddingLeft={1}>
+              <box flexGrow={1} paddingLeft={Space.unit}>
                 <text fg={theme().error}>
                   {diff.error instanceof DiffRequestTimeoutError
                     ? "Diff request timed out — press q to close, then reopen the viewer to retry"
@@ -1021,10 +1022,10 @@ function DiffViewer(props: { api: TuiPluginApi }) {
                             {index() !== 0 ? <Separator axis="x" start={showFileTree() ? "edge" : undefined} /> : null}
                             <box
                               flexDirection="row"
-                              gap={1}
+                              gap={Space.gap}
                               flexShrink={0}
-                              paddingLeft={1}
-                              paddingRight={1}
+                              paddingLeft={Space.unit}
+                              paddingRight={Space.unit}
                               border={patchLeftBorder()}
                               borderColor={patchBorderColor()}
                             >
@@ -1093,7 +1094,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
                        }}
                      </For>
                      <Show when={remainingFiles() > 0}>
-                       <box paddingTop={1} paddingLeft={1} border={patchLeftBorder()} borderColor={patchBorderColor()}>
+                       <box paddingTop={Space.padY} paddingLeft={Space.unit} border={patchLeftBorder()} borderColor={patchBorderColor()}>
                          <text fg={theme().textMuted}>
                            + {remainingFiles()} more {remainingFiles() === 1 ? "file" : "files"} hidden — enable single-patch or narrow selection via file tree
                          </text>
@@ -1110,7 +1111,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
           </Switch>
         </box>
 
-        <Panel flexShrink={0} gap={FOOTER_HINT_GAP} paddingLeft={1} border="none">
+        <Panel flexShrink={0} gap={FOOTER_HINT_GAP} paddingLeft={Space.unit} border="none">
           {/* Whole hints only: a hint that fits is rendered, one that does not is
               absent, and neither is ever a flex deficit shared with its
               neighbour. */}
@@ -1193,7 +1194,7 @@ function DiffViewerHelpDialog() {
   ]
 
   return (
-    <box paddingLeft={2} paddingRight={2} paddingBottom={1} gap={1}>
+    <box paddingLeft={Space.padX} paddingRight={Space.padX} paddingBottom={Space.padY} gap={Space.gap}>
       <box flexDirection="row" justifyContent="space-between">
         {/* The panel's title and its way out are both fixed vocabulary — the
             title names the panel, `esc` is one key — so neither is the segment

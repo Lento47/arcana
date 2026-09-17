@@ -1,4 +1,5 @@
 import type { TuiPlugin, TuiPluginApi } from "@arcana/plugin/tui"
+import { Space } from "../../ui/chrome"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { createMemo, For, Show, createSignal } from "solid-js"
 import { Locale } from "../../util/locale"
@@ -21,7 +22,7 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
     <box>
       <box
         flexDirection="row"
-        gap={1}
+        gap={Space.gap}
         onMouseDown={() => list().length > 2 && setOpen((x) => !x)}
         onMouseOver={() => setHovered(true)}
         onMouseOut={() => setHovered(false)}
@@ -48,11 +49,11 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
         </Show>
         <For each={list()}>
           {(item) => (
-            <box flexDirection="row" gap={1} justifyContent="space-between">
+            <box flexDirection="row" gap={Space.gap} justifyContent="space-between">
               <text fg={theme().textMuted} wrapMode="none">
                 {Locale.truncateLeft(item.file, Math.max(2, 36 - changeCountWidth(item)))}
               </text>
-              <box flexDirection="row" gap={1} flexShrink={0}>
+              <box flexDirection="row" gap={Space.gap} flexShrink={0}>
                 <Show when={item.additions}>
                   <text fg={theme().diffAdded}>+{item.additions}</text>
                 </Show>

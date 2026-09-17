@@ -108,7 +108,7 @@ export function DialogWorkspaceList() {
       title={`${Glyph.sigil} Workspaces`}
       options={options()}
       emptyView={
-        <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
+        <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={Space.padY}>
           <text fg={theme.textMuted}>No workspaces yet — move a session to create one.</text>
         </box>
       }

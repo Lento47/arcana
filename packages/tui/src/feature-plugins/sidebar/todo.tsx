@@ -1,4 +1,5 @@
 import type { TuiPlugin, TuiPluginApi } from "@arcana/plugin/tui"
+import { Space } from "../../ui/chrome"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { createMemo, For, Show, createSignal } from "solid-js"
 import { TodoItem } from "../../component/todo-item"
@@ -15,7 +16,7 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
     <box>
       <box
         flexDirection="row"
-        gap={1}
+        gap={Space.gap}
         onMouseDown={() => list().length > 2 && setOpen((x) => !x)}
         onMouseOver={() => setHovered(true)}
         onMouseOut={() => setHovered(false)}

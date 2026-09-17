@@ -141,15 +141,15 @@ export function UserMessage(props: {
               setHover(false)
             }}
             onMouseUp={props.onMouseUp}
-            paddingTop={1}
-            paddingBottom={1}
-            paddingLeft={2}
+            paddingTop={Space.padY}
+            paddingBottom={Space.padY}
+            paddingLeft={Space.padX}
             backgroundColor={hover() ? theme.backgroundElement : theme.backgroundPanel}
             flexShrink={0}
           >
             <Show when={arcanaTask()}>
               {(task) => (
-                <box flexDirection="row" paddingBottom={1}>
+                <box flexDirection="row" paddingBottom={Space.padY}>
                   <text fg={theme.textMuted}>
                     <span style={{ bg: theme.backgroundElement, fg: theme.accent, bold: true }}>
                       /{task().command}
@@ -170,7 +170,7 @@ export function UserMessage(props: {
             </Show>
             <text fg={theme.text}>{text()}</text>
             <Show when={files().length}>
-              <box flexDirection="row" paddingBottom={metadataVisible() ? 1 : 0} paddingTop={1} gap={1} flexWrap="wrap">
+              <box flexDirection="row" paddingBottom={metadataVisible() ? 1 : 0} paddingTop={Space.padY} gap={Space.gap} flexWrap="wrap">
                 <For each={files()}>
                   {(file) => {
                     const bg = createMemo(() => {
@@ -201,7 +201,7 @@ export function UserMessage(props: {
       </Show>
       <Show when={compaction()}>
         <box
-          marginTop={1}
+          marginTop={Space.gap}
           border={["top"]}
           title=" Compaction "
           titleAlignment="center"
@@ -272,7 +272,7 @@ export function AssistantMessage(props: {
         }}
       </For>
       <Show when={hasTaskTool()}>
-        <box paddingTop={1} paddingLeft={Space.inset}>
+        <box paddingTop={Space.padY} paddingLeft={Space.inset}>
           <text fg={theme.text}>
             {childShortcut()}
             <span style={{ fg: theme.textMuted }}> view subagents</span>
@@ -287,10 +287,10 @@ export function AssistantMessage(props: {
       <Show when={props.message.error && props.message.error.name !== "MessageAbortedError"}>
         <box
           id={`assistant-error-${props.message.id}`}
-          paddingTop={1}
-          paddingBottom={1}
+          paddingTop={Space.padY}
+          paddingBottom={Space.padY}
           paddingLeft={Space.inset}
-          marginTop={1}
+          marginTop={Space.gap}
           backgroundColor={theme.backgroundPanel}
           gap={0}
         >
@@ -303,7 +303,7 @@ export function AssistantMessage(props: {
       <Switch>
         <Match when={props.last || final() || props.message.error?.name === "MessageAbortedError"}>
           <box id={`assistant-summary-${props.message.id}`} paddingLeft={Space.inset}>
-            <text marginTop={1}>
+            <text marginTop={Space.gap}>
               <span
                 style={{
                   fg: props.message.error?.name === "MessageAbortedError"
@@ -373,7 +373,7 @@ export function ReasoningPart(props: { last: boolean; part: ReasoningPartType; m
       <box
         id={`text-${props.part.messageID}-${props.part.id}`}
         paddingLeft={Space.inset}
-        marginTop={1}
+        marginTop={Space.gap}
         flexDirection="column"
         flexShrink={0}
       >
@@ -390,7 +390,7 @@ export function ReasoningPart(props: { last: boolean; part: ReasoningPartType; m
         <Show when={(!inMinimal() || expanded()) && body()}>
           <box
             paddingLeft={inMinimal() ? 2 : 0}
-            marginTop={1}
+            marginTop={Space.gap}
             border={["left"]}
             borderColor={theme.borderThinking}
             customBorderChars={HairlineBorder}
@@ -476,7 +476,7 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
   const content = createMemo(() => props.part.text.replace(/\r\n/g, "\n").replace(/\r/g, "\n"))
   return (
     <Show when={content().trim()}>
-      <box id={`text-${props.part.messageID}-${props.part.id}`} paddingLeft={Space.inset} marginTop={1} flexShrink={0} minWidth={0}>
+      <box id={`text-${props.part.messageID}-${props.part.id}`} paddingLeft={Space.inset} marginTop={Space.gap} flexShrink={0} minWidth={0}>
         <markdown
           syntaxStyle={syntax()}
           streaming={streaming()}
@@ -708,7 +708,7 @@ export function ToolOutputFields(props: {
     <box flexDirection="column" gap={0} minWidth={0}>
       <For each={props.entries}>
         {([key, value]) => (
-          <box flexDirection="row" gap={1} minWidth={0} overflow="hidden">
+          <box flexDirection="row" gap={Space.gap} minWidth={0} overflow="hidden">
             {/* Width, not just truncation: a short key has to hold the column
                 open for the long one, or every value starts somewhere else. */}
             <text
@@ -880,7 +880,7 @@ function GenericTool(props: ToolProps) {
         part={props.part}
         onClick={collapsed().overflow ? () => setExpanded((prev) => !prev) : undefined}
       >
-        <box gap={1} paddingLeft={Space.inset} flexGrow={1} minWidth={0}>
+        <box gap={Space.gap} paddingLeft={Space.inset} flexGrow={1} minWidth={0}>
           <Switch>
             <Match when={formattedOutput().type === "todos"}>
               <For each={(formattedOutput() as { type: "todos"; items: any[] }).items}>
@@ -1192,11 +1192,11 @@ function BlockTool(props: {
     <box
       id={props.part ? `tool-block-${props.part.messageID}-${props.part.id}` : undefined}
       border={["left"]}
-      paddingTop={1}
-      paddingBottom={1}
-      paddingLeft={2}
-      marginTop={1}
-      gap={1}
+      paddingTop={Space.padY}
+      paddingBottom={Space.padY}
+      paddingLeft={Space.padX}
+      marginTop={Space.gap}
+      gap={Space.gap}
       backgroundColor={hover() ? theme.backgroundMenu : theme.backgroundPanel}
       customBorderChars={SplitBorder.customBorderChars}
       borderColor={theme.borderActive}
@@ -1265,7 +1265,7 @@ function Shell(props: ToolProps) {
           spinner={isRunning()}
           onClick={collapsed().overflow ? () => setExpanded((prev) => !prev) : undefined}
         >
-          <box gap={1}>
+          <box gap={Space.gap}>
             <text fg={theme.text}>$ {stringValue(props.input.command)}</text>
             <Show
               when={output()}
@@ -1303,7 +1303,7 @@ function Write(props: ToolProps) {
     <Switch>
       <Match when={code().length > 0}>
         <BlockTool title={"# Write " + pathFormatter.format(stringValue(props.input.filePath))} part={props.part}>
-          <line_number fg={theme.textMuted} minWidth={3} paddingRight={1}>
+          <line_number fg={theme.textMuted} minWidth={3} paddingRight={Space.unit}>
             <code
               conceal={false}
               fg={theme.text}
@@ -1566,7 +1566,7 @@ function Edit(props: ToolProps) {
     <Switch>
       <Match when={stringValue(props.metadata.diff) !== undefined}>
         <BlockTool title={"← Edit " + pathFormatter.format(stringValue(props.input.filePath))} part={props.part}>
-          <box paddingLeft={1}>
+          <box paddingLeft={Space.unit}>
             <diff
               diff={diffContent()}
               view={view()}
@@ -1614,7 +1614,7 @@ function ApplyPatch(props: ToolProps) {
 
   function Diff(p: { diff: string; filePath: string }) {
     return (
-      <box paddingLeft={1}>
+      <box paddingLeft={Space.unit}>
         <diff
           diff={p.diff}
           view={view()}
@@ -1716,7 +1716,7 @@ function Question(props: ToolProps) {
     <Switch>
       <Match when={answers()}>
         <BlockTool title="# Questions" part={props.part}>
-          <box gap={1}>
+          <box gap={Space.gap}>
             <For each={questions()}>
               {(q, i) => (
                 <box flexDirection="column">

@@ -7,7 +7,7 @@ import { APP_NAME_UPPER, Glyph } from "../../branding"
 import { spineOuterPadding, statusToneColor, type SpineLayout, type StatusSegment, type StatusTone } from "./spine-types"
 import { displayWidth, truncate } from "../../util/locale"
 import { useTerminalSize } from "../../util/terminal-size"
-import { Size } from "../../ui/chrome"
+import { Size, Space } from "../../ui/chrome"
 import { useTuiConfig } from "../../config"
 import type { SpineTrustStatus } from "./spine-trust"
 import type { SessionCharter, SessionCharterChip, SessionCharterTone } from "./session-charter"
@@ -321,7 +321,7 @@ export function SpineHeader(props: {
     <box flexDirection="column" flexShrink={0}>
       <box flexDirection="row" paddingLeft={pad()} paddingRight={pad()} minWidth={0} alignItems="center">
         <Show when={showBrand()}>
-          <box flexShrink={0} paddingRight={2}>
+          <box flexShrink={0} paddingRight={Space.padX}>
             <text fg={theme.spineBrand} wrapMode="none">
               {APP_NAME_UPPER}
             </text>
@@ -385,7 +385,7 @@ export function SpineHeader(props: {
               </box>
             </Show>
             <Show when={sessionMeta()}>
-              <box flexShrink={0} paddingLeft={2}>
+              <box flexShrink={0} paddingLeft={Space.padX}>
                 <text fg={theme.spineDiffMuted} wrapMode="none">{sessionMeta()}</text>
               </box>
             </Show>
@@ -394,7 +394,7 @@ export function SpineHeader(props: {
         )}
       </Show>
       <Show when={!short() && (showBrand() || visibleStatus().length > 0 || visibleContext().length > 0 || lockReason() || props.session())}>
-        <box border={["bottom"]} borderColor={theme.borderSubtle} marginTop={1} marginBottom={0} />
+        <box border={["bottom"]} borderColor={theme.borderSubtle} marginTop={Space.gap} marginBottom={0} />
       </Show>
     </box>
   )

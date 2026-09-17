@@ -1,4 +1,5 @@
 import { For, Show, createMemo } from "solid-js"
+import { Space } from "../../ui/chrome"
 import { useTheme } from "../../context/theme"
 import { projectInsightCard } from "./spine-insight"
 import { SpineInsightCard } from "./spine-insight-card"
@@ -29,12 +30,12 @@ export function SpineListArtifact(props: {
             flexShrink={0}
             minWidth={0}
             paddingTop={ri() > 0 && hasMultiRow ? 1 : 0}
-            paddingBottom={1}
-            paddingLeft={1}
+            paddingBottom={Space.padY}
+            paddingLeft={Space.unit}
           >
             <For each={row}>
               {(cell, ci) => (
-                <box flexDirection="row" flexShrink={0} minWidth={0} gap={1}>
+                <box flexDirection="row" flexShrink={0} minWidth={0} gap={Space.gap}>
                   <box width={FACT_LABEL_WIDTH} flexShrink={0}>
                     <text fg={theme.spineContext} wrapMode="none">
                       {truncate(props.headers[ci()] ?? "", FACT_LABEL_WIDTH)}

@@ -185,7 +185,7 @@ export function DialogModel(props: {
       title={title()}
       current={local.model.current()}
       emptyView={
-        <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
+        <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={Space.padY}>
           <text fg={theme.textMuted}>No models found — try another search or connect a provider.</text>
         </box>
       }

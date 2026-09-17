@@ -92,9 +92,9 @@ function SnapshotBanner(props: {
   return (
     <box
       flexDirection="column"
-      marginTop={1}
+      marginTop={Space.gap}
       marginBottom={props.padBottom ? 1 : undefined}
-      paddingLeft={1}
+      paddingLeft={Space.unit}
       backgroundColor={theme.backgroundPanel}
       border={["top", "bottom"]}
       borderColor={props.frame}

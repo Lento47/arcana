@@ -841,7 +841,7 @@ export function CommandSpineShell(props: ShellProps) {
       <Show when={props.session()}>
       <ErrorBoundary
         fallback={(error) => (
-          <box flexDirection="column" padding={1} flexGrow={1}>
+          <box flexDirection="column" padding={Space.unit} flexGrow={1}>
             <text fg={theme.text}>{`\u26A0 Spine render error: ${error.message}`}</text>
             <text fg={theme.textMuted}>Switch sessions or restart the TUI to recover</text>
           </box>
@@ -864,14 +864,14 @@ export function CommandSpineShell(props: ShellProps) {
               onParentSession={() => keymap.dispatchCommand("session.parent")}
             />
             <Show when={props.historyLoading?.() && props.messages().length === 0}>
-              <box paddingLeft={1} paddingRight={1} height={1}>
+              <box paddingLeft={Space.unit} paddingRight={Space.unit} height={1}>
                 <text fg={theme.textMuted}>Loading recent history…</text>
               </box>
             </Show>
             {/* Explicit empty state: a newly created session must say what to do
                 next instead of rendering a silently blank viewport. */}
             <Show when={!props.historyLoading?.() && props.messages().length === 0}>
-              <box paddingLeft={1} paddingRight={1}>
+              <box paddingLeft={Space.unit} paddingRight={Space.unit}>
                 <text fg={theme.textMuted}>No messages yet · type a prompt below to start</text>
               </box>
             </Show>

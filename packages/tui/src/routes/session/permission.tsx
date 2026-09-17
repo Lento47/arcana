@@ -123,7 +123,7 @@ function EditBody(props: { request: PermissionRequest }) {
   const scrollAcceleration = createMemo(() => getScrollAcceleration(config))
 
   return (
-    <box flexDirection="column" gap={1} minWidth={0}>
+    <box flexDirection="column" gap={Space.gap} minWidth={0}>
       <Show when={diff()}>
         <scrollbox
           height="100%"
@@ -157,7 +157,7 @@ function EditBody(props: { request: PermissionRequest }) {
         </scrollbox>
       </Show>
       <Show when={!diff()}>
-        <box paddingLeft={1}>
+        <box paddingLeft={Space.unit}>
           <text fg={theme.textMuted}>No diff provided for this edit — review the request details before deciding.</text>
         </box>
       </Show>
@@ -207,7 +207,7 @@ function InspectBody(props: { request: PermissionRequest }) {
   return (
     <Show when={inspect}>
       {(report) => (
-        <box paddingLeft={1} paddingTop={1} flexDirection="column" gap={0}>
+        <box paddingLeft={Space.unit} paddingTop={Space.padY} flexDirection="column" gap={0}>
           <text fg={report().verdict === "block" ? theme.error : theme.warning}>
             {`inspect ${report().verdict} · ${report().risk}`}
           </text>
@@ -228,7 +228,7 @@ function TextBody(props: { title: string; description?: string; icon?: string })
   const { theme } = useTheme()
   return (
     <>
-      <box flexDirection="row" gap={1} paddingLeft={1} minWidth={0}>
+      <box flexDirection="row" gap={Space.gap} paddingLeft={Space.unit} minWidth={0}>
         <Show when={props.icon}>
           <text fg={theme.textMuted} flexShrink={0}>
             {props.icon}
@@ -239,7 +239,7 @@ function TextBody(props: { title: string; description?: string; icon?: string })
         </text>
       </box>
       <Show when={props.description}>
-        <box paddingLeft={1}>
+        <box paddingLeft={Space.unit}>
           <text fg={theme.text} wrapMode="word">
             {props.description}
           </text>
@@ -364,7 +364,7 @@ export function PermissionPrompt(props: {
                 />
               </Match>
               <Match when={true}>
-                <box paddingLeft={1} gap={1}>
+                <box paddingLeft={Space.unit} gap={Space.gap}>
                   <text fg={theme.textMuted}>
                     This will allow the following patterns for this workspace and agent across future sessions.
                   </text>
@@ -414,7 +414,7 @@ export function PermissionPrompt(props: {
                 icon: "◇",
                 title: typeof objective === "string" ? objective : "Activate completion contract",
                 body: (
-                  <box paddingLeft={1}>
+                  <box paddingLeft={Space.unit}>
                     <text fg={theme.textMuted} wrapMode="word">
                       This governs completion evidence only. Consequential actions still require their own authorization.
                     </text>
@@ -441,7 +441,7 @@ export function PermissionPrompt(props: {
                 title: `Read ${pathFormatter.format(filePath)}`,
                 body: (
                   <Show when={filePath}>
-                    <box paddingLeft={1}>
+                    <box paddingLeft={Space.unit}>
                       <text fg={theme.textMuted}>{"Path: " + pathFormatter.format(filePath)}</text>
                     </box>
                   </Show>
@@ -456,7 +456,7 @@ export function PermissionPrompt(props: {
                 title: `Glob "${Locale.truncate(pattern, 60)}"`,
                 body: (
                   <Show when={pattern}>
-                    <box paddingLeft={1}>
+                    <box paddingLeft={Space.unit}>
                       <text fg={theme.textMuted}>{"Pattern: " + Locale.truncate(pattern, 120)}</text>
                     </box>
                   </Show>
@@ -471,7 +471,7 @@ export function PermissionPrompt(props: {
                 title: `Grep "${Locale.truncate(pattern, 60)}"`,
                 body: (
                   <Show when={pattern}>
-                    <box paddingLeft={1}>
+                    <box paddingLeft={Space.unit}>
                       <text fg={theme.textMuted}>{"Pattern: " + Locale.truncate(pattern, 120)}</text>
                     </box>
                   </Show>
@@ -487,7 +487,7 @@ export function PermissionPrompt(props: {
                 title: `List ${pathFormatter.format(dir)}`,
                 body: (
                   <Show when={dir}>
-                    <box paddingLeft={1}>
+                    <box paddingLeft={Space.unit}>
                       <text fg={theme.textMuted}>{"Path: " + pathFormatter.format(dir)}</text>
                     </box>
                   </Show>
@@ -504,7 +504,7 @@ export function PermissionPrompt(props: {
                 title,
                 body: (
                   <Show when={command}>
-                    <box paddingLeft={1}>
+                    <box paddingLeft={Space.unit}>
                       <text fg={theme.text}>{"$ " + Locale.truncate(command, 120)}</text>
                     </box>
                   </Show>
@@ -520,7 +520,7 @@ export function PermissionPrompt(props: {
                 title: `${Locale.titlecase(type)} Task`,
                 body: (
                   <Show when={desc}>
-                    <box paddingLeft={1}>
+                    <box paddingLeft={Space.unit}>
                       <text fg={theme.text}>{"◉ " + desc}</text>
                     </box>
                   </Show>
@@ -535,7 +535,7 @@ export function PermissionPrompt(props: {
                 title: `WebFetch ${Locale.truncate(url, 80)}`,
                 body: (
                   <Show when={url}>
-                    <box paddingLeft={1}>
+                    <box paddingLeft={Space.unit}>
                       <text fg={theme.textMuted}>{"URL: " + Locale.truncate(url, 120)}</text>
                     </box>
                   </Show>
@@ -550,7 +550,7 @@ export function PermissionPrompt(props: {
                 title: `${webSearchProviderLabel(data.provider)} "${query}"`,
                 body: (
                   <Show when={query}>
-                    <box paddingLeft={1}>
+                    <box paddingLeft={Space.unit}>
                       <text fg={theme.textMuted}>{"Query: " + query}</text>
                     </box>
                   </Show>
@@ -575,7 +575,7 @@ export function PermissionPrompt(props: {
                 title: `External directory ${dir}`,
                 body: (
                   <Show when={patterns.length > 0}>
-                    <box paddingLeft={1} gap={1}>
+                    <box paddingLeft={Space.unit} gap={Space.gap}>
                       <text fg={theme.textMuted}>Scope</text>
                       <box>
                         <For each={patterns}>{(p) => <text fg={theme.text}>{"- " + p}</text>}</For>
@@ -591,7 +591,7 @@ export function PermissionPrompt(props: {
                 icon: "⟳",
                 title: "Continue after repeated failures",
                 body: (
-                  <box paddingLeft={1}>
+                  <box paddingLeft={Space.unit}>
                     <text fg={theme.textMuted}>This keeps the session running despite repeated failures.</text>
                   </box>
                 ),
@@ -602,7 +602,7 @@ export function PermissionPrompt(props: {
               icon: "⚙",
               title: `Call tool ${permission}`,
               body: (
-                <box paddingLeft={1}>
+                <box paddingLeft={Space.unit}>
                   <text fg={theme.textMuted}>{"Tool: " + permission}</text>
                 </box>
               ),
@@ -627,12 +627,12 @@ export function PermissionPrompt(props: {
                 heading text — with the mark gone it would push the icon two
                 columns right of the heading it belongs to.
               */}
-              <box flexDirection="row" gap={1} flexShrink={0} minWidth={0}>
+              <box flexDirection="row" gap={Space.gap} flexShrink={0} minWidth={0}>
                 <text fg={theme.text} wrapMode="word">
                   {contractAdmission() ? "COMPLETION CONTRACT" : "ACTION GATE"}
                 </text>
               </box>
-              <box flexDirection="row" gap={1} flexShrink={0} minWidth={0}>
+              <box flexDirection="row" gap={Space.gap} flexShrink={0} minWidth={0}>
                 <text fg={theme.textMuted} flexShrink={0}>
                   {current.icon}
                 </text>
@@ -695,7 +695,7 @@ export function GateQueueLine(props: { queue?: { index: number; total: number; n
   const { theme } = useTheme()
   return (
     <Show when={props.queue && props.queue.total > 1}>
-      <box flexDirection="row" paddingLeft={2} flexShrink={0} minWidth={0}>
+      <box flexDirection="row" paddingLeft={Space.padX} flexShrink={0} minWidth={0}>
         <text fg={theme.textMuted} wrapMode="none">
           Request {props.queue!.index} of {props.queue!.total}
           {props.queue!.next ? ` · next: ${props.queue!.next}` : ""}
@@ -754,18 +754,18 @@ function GateFrame(props: {
       flexShrink={0}
       width="100%"
       paddingTop={0}
-      paddingBottom={1}
+      paddingBottom={Space.padY}
       {...(props.expanded
         ? { top: 1, bottom: 1, left: 0, right: 0, position: "absolute", zIndex: 20, backgroundColor: theme.background }
         : {})}
     >
       <GateRow rail="node">{props.header}</GateRow>
-      <GateRow rail="line" marginTop={1}>
+      <GateRow rail="line" marginTop={Space.gap}>
         {props.body}
       </GateRow>
       <Show when={props.footer}>
         {(footer) => (
-          <GateRow rail="line" marginTop={1}>
+          <GateRow rail="line" marginTop={Space.gap}>
             {footer()}
           </GateRow>
         )}
@@ -933,14 +933,14 @@ export function RejectPrompt(props: { busy?: boolean; onConfirm: (message: strin
         <box
           flexDirection={stacks() ? "column" : "row"}
           flexShrink={0}
-          paddingTop={1}
-          paddingLeft={1}
-          paddingRight={2}
-          paddingBottom={1}
+          paddingTop={Space.padY}
+          paddingLeft={Space.unit}
+          paddingRight={Space.padX}
+          paddingBottom={Space.padY}
           backgroundColor={theme.backgroundElement}
           justifyContent={stacks() ? "flex-start" : "space-between"}
           alignItems={stacks() ? "flex-start" : "center"}
-          gap={1}
+          gap={Space.gap}
         >
           <textarea
             width="100%"
@@ -1094,7 +1094,7 @@ function Prompt<const T extends Record<string, string>>(props: {
 
   const defaultHeader = (
     <box flexDirection="column" gap={0} minWidth={0}>
-      <box flexDirection="row" gap={1} minWidth={0}>
+      <box flexDirection="row" gap={Space.gap} minWidth={0}>
         <text fg={theme.spineFix} flexShrink={0}>
           {Glyph.attention}
         </text>
@@ -1106,12 +1106,12 @@ function Prompt<const T extends Record<string, string>>(props: {
   )
 
   const footer = (
-    <box flexDirection="column" gap={1} minWidth={0}>
-      <box flexDirection={stacks() ? "column" : "row"} gap={1} flexShrink={0} minWidth={0}>
+    <box flexDirection="column" gap={Space.gap} minWidth={0}>
+      <box flexDirection={stacks() ? "column" : "row"} gap={Space.gap} flexShrink={0} minWidth={0}>
         <text fg={theme.spineContext} flexShrink={0}>
           {DECISION_LABEL}
         </text>
-        <box flexDirection={stacks() ? "column" : "row"} gap={1} flexShrink={0} minWidth={0}>
+        <box flexDirection={stacks() ? "column" : "row"} gap={Space.gap} flexShrink={0} minWidth={0}>
           <For each={keys}>
             {(option) => {
               const selected = createMemo(() => option === store.selected)

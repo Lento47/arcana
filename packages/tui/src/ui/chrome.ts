@@ -63,6 +63,8 @@ export const RAIL = "┃"
  * consumer instead of only the session frame.
  */
 export const Space = {
+  /** The base unit: a chip's inner inset, content against a frame's hairline. */
+  unit: 1,
   padX: 2,
   padY: 1,
   gap: 1,

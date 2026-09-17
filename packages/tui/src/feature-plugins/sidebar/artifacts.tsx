@@ -1,4 +1,5 @@
 import type { TuiPlugin, TuiPluginApi } from "@arcana/plugin/tui"
+import { Space } from "../../ui/chrome"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { listArtifacts } from "../../util/artifacts"
@@ -24,7 +25,7 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
   const hidden = createMemo(() => Math.max(0, artifacts().length - visible().length))
 
   return (
-    <box flexDirection="column" gap={1}>
+    <box flexDirection="column" gap={Space.gap}>
       <text fg={theme().text}>
         <span style={{ fg: theme().accent }}>◇ </span>
         <b>ARTIFACTS</b>

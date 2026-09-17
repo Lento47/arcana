@@ -1,4 +1,5 @@
 import { Show, createMemo, createSignal } from "solid-js"
+import { Space } from "../../ui/chrome"
 import type { MouseEvent, RGBA } from "@opentui/core"
 import { tint, useTheme } from "../../context/theme"
 import { Alpha } from "../../theme/emphasis"
@@ -284,7 +285,7 @@ export function SpineNode(props: {
             <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} alignItems="flex-start">
               {actorBox()}
               <Show when={thinking()}>
-                <box flexDirection="row" gap={1} flexShrink={0} alignItems="center">
+                <box flexDirection="row" gap={Space.gap} flexShrink={0} alignItems="center">
                   <text fg={activityColor()} wrapMode="none">
                     {thinking() || thinkChrome().verb}
                   </text>
@@ -318,7 +319,7 @@ export function SpineNode(props: {
             <Show when={props.onDismiss}>
               <box
                 flexShrink={0}
-                paddingLeft={1}
+                paddingLeft={Space.unit}
                 onMouseUp={handleDismissMouseUp}
                 onMouseOver={() => setDismissHover(true)}
                 onMouseOut={() => setDismissHover(false)}
@@ -365,7 +366,7 @@ export function SpineNode(props: {
               </box>
             }
           >
-            <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} alignItems="flex-start" gap={1}>
+            <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} alignItems="flex-start" gap={Space.gap}>
               {/* One cell, one shape: the speaker label is fixed vocabulary in
                   both branches, so it is reserved and unwrappable in both. The
                   fallback branch (governance `ok` rows, approve/question) is
@@ -409,7 +410,7 @@ export function SpineNode(props: {
               <Show when={props.onDismiss}>
                 <box
                   flexShrink={0}
-                  paddingLeft={1}
+                  paddingLeft={Space.unit}
                   onMouseUp={handleDismissMouseUp}
                   onMouseOver={() => setDismissHover(true)}
                   onMouseOut={() => setDismissHover(false)}

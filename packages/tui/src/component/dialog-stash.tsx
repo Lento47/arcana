@@ -62,7 +62,7 @@ export function DialogStash(props: { onSelect: (entry: StashEntry) => void }) {
       title={`${Glyph.sigil} Stash`}
       options={options()}
       emptyView={
-        <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
+        <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={Space.padY}>
           <text fg={theme.textMuted}>
             {stashHint()
               ? `No stashed prompts yet — press ${stashHint()} in the composer to stash one.`

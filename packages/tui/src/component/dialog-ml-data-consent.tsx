@@ -277,7 +277,7 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
         }
       >
         {(choice) => (
-          <box flexDirection="column" gap={1}>
+          <box flexDirection="column" gap={Space.gap}>
             <text fg={theme.warning} attributes={TextAttributes.BOLD}>
               Confirm {choice().decision} — {choice().scope}
             </text>

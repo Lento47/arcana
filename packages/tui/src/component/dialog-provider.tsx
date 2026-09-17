@@ -1,4 +1,5 @@
 import { createMemo, createSignal, onMount, Show } from "solid-js"
+import { Space } from "../ui/chrome"
 import { useSync } from "../context/sync"
 import { map, pipe, sortBy } from "remeda"
 import { DialogSelect } from "../ui/dialog-select"
@@ -418,7 +419,7 @@ function AutoMethod(props: AutoMethodProps) {
   return (
     <DialogColumn padBottom>
       <DialogTitleRow title={props.title} onClose={() => dialog.clear()} />
-      <box gap={1}>
+      <box gap={Space.gap}>
         <Link href={props.authorization.url} fg={theme.primary} />
         <text fg={theme.textMuted}>{props.authorization.instructions}</text>
       </box>
@@ -470,7 +471,7 @@ function CodeMethod(props: CodeMethodProps) {
         }
       }}
       description={() => (
-        <box gap={1}>
+        <box gap={Space.gap}>
           <text fg={theme.textMuted}>{props.authorization.instructions}</text>
           <Link href={props.authorization.url} fg={theme.primary} />
           <Show when={error()}>
@@ -571,7 +572,7 @@ function ApiMethod(props: ApiMethodProps) {
   const [phase, setPhase] = createSignal("Working…")
   const description = ({
     arcana: (
-      <box gap={1}>
+      <box gap={Space.gap}>
         <text fg={theme.textMuted}>
           Arcana Proxy gives you access to multiple LLM providers through a single API key — no per-provider setup required.
         </text>
@@ -582,7 +583,7 @@ function ApiMethod(props: ApiMethodProps) {
       </box>
     ),
     "opencode-go": (
-      <box gap={1}>
+      <box gap={Space.gap}>
         <text fg={theme.textMuted}>
           {BRAND_TIERS.go.longDescription}
         </text>

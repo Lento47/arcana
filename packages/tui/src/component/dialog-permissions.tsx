@@ -1,4 +1,5 @@
 import { TextAttributes } from "@opentui/core"
+import { Space } from "../ui/chrome"
 import { For, Show, createEffect, createMemo, createSignal } from "solid-js"
 import type { PermissionSavedInfo } from "@arcana/sdk/v2"
 import { createStore } from "solid-js/store"
@@ -204,7 +205,7 @@ export function DialogPermissions() {
           </text>
           <For each={status().pendingApprovals}>
             {(approval) => (
-              <box flexDirection="row" gap={1}>
+              <box flexDirection="row" gap={Space.gap}>
                 <text fg={theme.warning} flexShrink={0}>
                   ◤
                 </text>
@@ -273,7 +274,7 @@ export function DialogPermissions() {
               const hasGuard = flags.wholesale_replacement || flags.large_change || flags.destructive_patch ||
                 flags.permission_policy || flags.self_awareness || (flags.guard_rules && flags.guard_rules.length > 0)
               return (
-                <box flexDirection="row" gap={1}>
+                <box flexDirection="row" gap={Space.gap}>
                   <text fg={hasGuard ? theme.error : theme.warning} flexShrink={0}>
                     {hasGuard ? "⚑" : Glyph.attention}
                   </text>
@@ -339,7 +340,7 @@ export function DialogPermissions() {
             >
               <For each={remembered()}>
                 {(rule) => (
-                  <box flexDirection="row" gap={1}>
+                  <box flexDirection="row" gap={Space.gap}>
                     <text fg={theme.text} wrapMode="word">
                       {rule.agentID} · {rule.action} · {rule.resource}
                     </text>
@@ -377,7 +378,7 @@ export function DialogPermissions() {
         >
           <For each={status().recentActivity}>
             {(activity) => (
-              <box flexDirection="row" gap={1}>
+              <box flexDirection="row" gap={Space.gap}>
                 <text fg={theme.textMuted} flexShrink={0}>
                   {approvalStateMarker(activity.state)}
                 </text>

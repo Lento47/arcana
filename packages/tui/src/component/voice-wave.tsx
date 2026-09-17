@@ -1,4 +1,5 @@
 import { Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
+import { Space } from "../ui/chrome"
 import { useKV } from "../context/kv"
 import { useTheme } from "../context/theme"
 import { Lexicon } from "../branding"
@@ -47,7 +48,7 @@ export function VoiceWave(props: { status: () => string }) {
 
   return (
     <Show when={active()}>
-      <box width="100%" flexDirection="row" flexShrink={0} gap={1} alignItems="center">
+      <box width="100%" flexDirection="row" flexShrink={0} gap={Space.gap} alignItems="center">
         <text fg={recording() ? theme.error : theme.primary}>
           {animationsEnabled() ? voiceWaveFrame(frame()) : IDLE_WAVE} {voiceStatusLabel(props.status())}
         </text>

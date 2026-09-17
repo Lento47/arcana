@@ -1,4 +1,5 @@
 import { TextAttributes } from "@opentui/core"
+import { Space } from "./chrome"
 import { useTheme } from "../context/theme"
 import { useDialog } from "./dialog"
 import { useBindings, useCommandShortcut } from "../keymap"
@@ -41,19 +42,19 @@ export function DialogHelp() {
           the key is reserved. Unreserved, the first row's key — the longest, at
           `ctrl+p` next to 37 cells of description — decoded to `ctr`/`l+p` in the
           medium card's 34-cell column, which is a shortcut nobody can press. */}
-      <box flexDirection="row" gap={1}>
+      <box flexDirection="row" gap={Space.gap}>
         <text fg={theme.primary} flexShrink={0} wrapMode="none">{commandsCmd()}</text>
         <text fg={theme.textMuted}>Command palette — search all actions</text>
       </box>
-      <box flexDirection="row" gap={1}>
+      <box flexDirection="row" gap={Space.gap}>
         <text fg={theme.primary} flexShrink={0} wrapMode="none">{sessionNew()}</text>
         <text fg={theme.textMuted}>New session</text>
       </box>
-      <box flexDirection="row" gap={1}>
+      <box flexDirection="row" gap={Space.gap}>
         <text fg={theme.primary} flexShrink={0} wrapMode="none">{sessionList()}</text>
         <text fg={theme.textMuted}>Session list</text>
       </box>
-      <box flexDirection="row" gap={1}>
+      <box flexDirection="row" gap={Space.gap}>
         <text fg={theme.primary} flexShrink={0} wrapMode="none">{sessionInterrupt()}</text>
         <text fg={theme.textMuted}>Interrupt the current turn</text>
       </box>

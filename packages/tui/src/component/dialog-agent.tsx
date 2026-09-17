@@ -27,7 +27,7 @@ export function DialogAgent() {
       current={local.agent.current()?.name}
       options={options()}
       emptyView={
-        <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
+        <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={Space.padY}>
           <text fg={theme.textMuted}>No agents available.</text>
         </box>
       }

@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js"
+import { Space } from "../ui/chrome"
 import { useTheme } from "../context/theme"
 import { Spinner } from "./spinner"
 import { Scramble } from "./scramble"
@@ -61,7 +62,7 @@ export function StartupLoading(props: { ready: () => boolean }) {
     <Show when={show()}>
       <box position="absolute" zIndex={5000} left={0} right={0} bottom={1} justifyContent="center" alignItems="center">
         <Frame shape="heavy" padX={1}>
-          <box flexDirection="row" alignItems="center" gap={1}>
+          <box flexDirection="row" alignItems="center" gap={Space.gap}>
             <text fg={theme.primary}>{Glyph.sigil}</text>
             <Spinner color={theme.textMuted} />
             <Scramble text={text()} fg={theme.textMuted} />

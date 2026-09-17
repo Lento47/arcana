@@ -6,6 +6,7 @@
  * contract, actions, diff gate, verify, and sovereignty views.
  */
 import { Show, For } from "solid-js"
+import { Space } from "../ui/chrome"
 import { useTheme } from "../context/theme"
 import {
   ArcanaSurface,
@@ -350,7 +351,7 @@ export function DialogRunProofContract(props: {
     >
       <Show when={contract()} fallback={<text fg={theme.warning}>Active RunProof has no execution contract.</text>}>
         {(value) => (
-          <box gap={1}>
+          <box gap={Space.gap}>
             <ArcanaSection title="Execution Terms">
               <box gap={0}>
                 <text fg={theme.text}>Goal: {value().goal ?? props.proof.user_intent ?? "not recorded"}</text>
@@ -753,7 +754,7 @@ export function DialogRunProofSovereignty(props: { proof: RunProofView; path: st
         fallback={<text fg={theme.warning}>No provider/model route evidence recorded in this RunProof.</text>}
       >
         {(value) => (
-          <box gap={1}>
+          <box gap={Space.gap}>
             <ArcanaSection title="Provider Route">
               <text fg={theme.text}>Provider: {value().provider ?? "not recorded"}</text>
               <text fg={theme.text}>Model: {value().model ?? "not recorded"}</text>

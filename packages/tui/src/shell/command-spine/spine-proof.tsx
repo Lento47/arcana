@@ -1,4 +1,5 @@
 import { Show } from "solid-js"
+import { Space } from "../../ui/chrome"
 import { TextAttributes, type RGBA } from "@opentui/core"
 import { useTheme } from "../../context/theme"
 import type { Theme } from "../../theme"
@@ -42,7 +43,7 @@ export function SpineProof(props: {
   }
 
   return (
-    <box flexDirection="column" flexShrink={0} minWidth={0} gap={0} paddingTop={1}>
+    <box flexDirection="column" flexShrink={0} minWidth={0} gap={0} paddingTop={Space.padY}>
       <text fg={props.failed ? theme.spineFail : theme.spineOk} attributes={TextAttributes.BOLD}>
         {props.failed ? "× EFFECT FAILED" : "◎ VERIFIED EFFECT"}
       </text>

@@ -19,7 +19,7 @@
  */
 import { useTheme } from "../../context/theme"
 import { Glyph } from "../../branding"
-import { RoundBorder } from "../../ui/chrome"
+import { RoundBorder, Space } from "../../ui/chrome"
 import type { JSX } from "solid-js"
 
 export type PromptMode = "intent" | "command" | "seal"
@@ -58,9 +58,9 @@ export function PromptChrome(props: {
       customBorderChars={RoundBorder}
       borderColor={border()}
       backgroundColor={theme.background}
-      paddingLeft={1}
-      paddingRight={1}
-      paddingTop={1}
+      paddingLeft={Space.unit}
+      paddingRight={Space.unit}
+      paddingTop={Space.padY}
       paddingBottom={0}
       width="100%"
     >
@@ -70,7 +70,7 @@ export function PromptChrome(props: {
           {props.children}
         </box>
       </box>
-      <box flexDirection="row" justifyContent="space-between" gap={1}>
+      <box flexDirection="row" justifyContent="space-between" gap={Space.gap}>
         <text fg={theme.spineBrand}>
           {[props.agent, props.model].filter(Boolean).join(" · ") || "—"}
         </text>

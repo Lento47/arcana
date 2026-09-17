@@ -53,7 +53,7 @@ export function DialogTimeline(props: {
       title={`${Glyph.sigil} Chronicle`}
       options={options()}
       emptyView={
-        <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
+        <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={Space.padY}>
           <text fg={theme.textMuted}>No messages to jump to yet — send one first.</text>
         </box>
       }

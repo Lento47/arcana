@@ -73,7 +73,7 @@ export function DialogWorkspaceFileChanges(props: {
   })
 
   return (
-    <box gap={1}>
+    <box gap={Space.gap}>
       <box paddingLeft={Space.padX} paddingRight={Space.padX}>
         <DialogTitleRow title={props.title ?? "File Changes Found"} onClose={() => dialog.clear()} />
       </box>
@@ -111,7 +111,7 @@ export function DialogWorkspaceFileChanges(props: {
                     {Locale.truncateLeft(item.file, fileNameWidth())}
                   </text>
                 </box>
-                <box flexDirection="row" gap={1} minWidth={7} flexShrink={0} justifyContent="flex-end">
+                <box flexDirection="row" gap={Space.gap} minWidth={7} flexShrink={0} justifyContent="flex-end">
                   <text>
                     {" "}
                     {item.additions ? <span style={{ fg: theme.diffAdded }}>+{item.additions}</span> : null}

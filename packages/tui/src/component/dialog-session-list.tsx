@@ -285,14 +285,14 @@ export function DialogSessionList() {
             <Show
               when={searchError()}
               fallback={
-                <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
+                <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={Space.padY}>
                   <text fg={theme.textMuted}>
                     {search() ? COPY.noSessionsMatch : COPY.chronicleEmpty}
                   </text>
                 </box>
               }
             >
-              <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1}>
+              <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={Space.padY}>
                 <text fg={theme.error}>
                   Search failed — {errorMessage(searchError())}. Try another query.
                 </text>
@@ -300,7 +300,7 @@ export function DialogSessionList() {
             </Show>
           }
         >
-          <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={1} flexDirection="row" gap={1}>
+          <box paddingLeft={Space.insetWide} paddingRight={Space.insetWide} paddingTop={Space.padY} flexDirection="row" gap={Space.gap}>
             <Spinner />
             <text fg={theme.textMuted}>Searching…</text>
           </box>

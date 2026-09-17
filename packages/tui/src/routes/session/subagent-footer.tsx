@@ -1,4 +1,5 @@
 import { createMemo, createSignal, For, Show } from "solid-js"
+import { Space } from "../../ui/chrome"
 import { useRenderer } from "@opentui/solid"
 import { useRouteData } from "../../context/route"
 import { useSync } from "../../context/sync"
@@ -195,8 +196,8 @@ export function SubagentFooter() {
     return (
       <box
         flexDirection="row"
-        paddingLeft={1}
-        paddingRight={1}
+        paddingLeft={Space.unit}
+        paddingRight={Space.unit}
         backgroundColor={actionBg(props.name)}
         onMouseOver={() => setHoverZone(props.name)}
         onMouseOut={() => setHoverZone(null)}
@@ -212,7 +213,7 @@ export function SubagentFooter() {
     )
   }
   return (
-    <box flexDirection="column" flexShrink={0} paddingLeft={2} paddingRight={1}>
+    <box flexDirection="column" flexShrink={0} paddingLeft={Space.padX} paddingRight={Space.unit}>
       {/* No top border: the composer frame directly below (and the transcript
           above) already draw the separation; a second rule cost a row. */}
       {/*
@@ -280,7 +281,7 @@ export function SubagentFooter() {
         </Show>
       </box>
       <Show when={hover() && tailMessages().length > 0}>
-        <scrollbox maxHeight={3} flexShrink={0} paddingLeft={1} scrollbarOptions={{ visible: false }}>
+        <scrollbox maxHeight={3} flexShrink={0} paddingLeft={Space.unit} scrollbarOptions={{ visible: false }}>
           <For each={tailMessages()}>
             {(text) => (
               <text

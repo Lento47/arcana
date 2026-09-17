@@ -414,7 +414,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
   })
 
   return (
-    <box flexDirection="column" flexShrink={0} width="100%" paddingTop={1} paddingBottom={1}>
+    <box flexDirection="column" flexShrink={0} width="100%" paddingTop={Space.padY} paddingBottom={Space.padY}>
       <box flexDirection="row" width="100%" paddingLeft={metrics().pad} paddingRight={metrics().pad}>
         <SpineGutterSpacer layout={layout()} />
         <SpineRail layout={layout()} glyph="?" color={theme.spineInspect} kind="inspect" />
@@ -440,7 +440,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
         </box>
       </box>
 
-      <box flexDirection="row" width="100%" paddingLeft={metrics().pad} paddingRight={metrics().pad} marginTop={1}>
+      <box flexDirection="row" width="100%" paddingLeft={metrics().pad} paddingRight={metrics().pad} marginTop={Space.gap}>
         <SpineGutterSpacer layout={layout()} />
         <SpineRail layout={layout()} />
         <scrollbox
@@ -467,7 +467,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
                 <box
                   id={`question-${index()}`}
                   flexDirection="column"
-                  marginBottom={1}
+                  marginBottom={Space.gap}
                   minWidth={0}
                   backgroundColor={flashing() ? theme.backgroundElement : undefined}
                 >
@@ -500,7 +500,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
                         <box
                           flexDirection="column"
                           marginLeft={Space.gapWide}
-                          paddingLeft={1}
+                          paddingLeft={Space.unit}
                           backgroundColor={active(optionNumber()) ? theme.accent : undefined}
                           onMouseOver={() => setHover({ q: index(), o: optionNumber() })}
                           onMouseOut={() => setHover(undefined)}
@@ -525,7 +525,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
                   <Show when={question.custom !== false}>
                     <box
                       marginLeft={Space.gapWide}
-                      paddingLeft={1}
+                      paddingLeft={Space.unit}
                       backgroundColor={focused() && optionIndex() === options().length ? theme.accent : undefined}
                       onMouseOver={() => setHover({ q: index(), o: options().length })}
                       onMouseOut={() => setHover(undefined)}
@@ -559,7 +559,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
         </scrollbox>
       </box>
 
-      <box flexDirection="row" width="100%" paddingLeft={metrics().pad} paddingRight={metrics().pad} marginTop={1}>
+      <box flexDirection="row" width="100%" paddingLeft={metrics().pad} paddingRight={metrics().pad} marginTop={Space.gap}>
         <SpineGutterSpacer layout={layout()} />
         <SpineRail layout={layout()} />
         <box
@@ -579,8 +579,8 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
           <box
             alignSelf={stacks() ? "flex-end" : "stretch"}
             flexShrink={0}
-            paddingLeft={1}
-            paddingRight={1}
+            paddingLeft={Space.unit}
+            paddingRight={Space.unit}
             backgroundColor={submitFocused() ? theme.accent : complete() ? theme.backgroundElement : theme.backgroundMenu}
             onMouseOver={() => setSubmitFocused(true)}
             onMouseOut={() => setSubmitFocused(false)}

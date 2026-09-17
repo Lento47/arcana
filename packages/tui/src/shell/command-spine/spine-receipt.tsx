@@ -1,4 +1,5 @@
 import { For } from "solid-js"
+import { Space } from "../../ui/chrome"
 import { useTheme } from "../../context/theme"
 import type { Theme } from "../../theme"
 import type { SpineKind, SpineReceipt as SpineReceiptType, SpineLayout } from "./spine-types"
@@ -90,7 +91,7 @@ function renderPatchReceipt(r: SpineReceiptType, layout: SpineLayout, t: Theme) 
         </text>
         <For each={r.files}>
           {(file) => (
-            <box flexDirection="row" paddingLeft={2}>
+            <box flexDirection="row" paddingLeft={Space.padX}>
               {/* `wrapMode="none"`: the path is capped at 36 columns, and with the
                   default word wrap a longer one grew the row to two lines and
                   left the counts aligned to the first line only. */}

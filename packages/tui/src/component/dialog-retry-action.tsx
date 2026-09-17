@@ -146,16 +146,16 @@ export function DialogRetryAction(props: DialogRetryActionProps) {
         </box>
         {props.link ? (
           showGoTreatment() ? (
-            <box alignItems="center" justifyContent="flex-end" height={7} paddingBottom={1}>
+            <box alignItems="center" justifyContent="flex-end" height={7} paddingBottom={Space.padY}>
               <Link href={props.link} fg={theme.primary} bg={textBg()} wrapMode="none" />
             </box>
           ) : (
-            <box width="100%" flexDirection="row" justifyContent="center" paddingBottom={1}>
+            <box width="100%" flexDirection="row" justifyContent="center" paddingBottom={Space.padY}>
               <Link href={props.link} fg={theme.primary} wrapMode="none" />
             </box>
           )
         ) : (
-          <box paddingBottom={1} />
+          <box paddingBottom={Space.padY} />
         )}
         <box
           flexDirection={stacks() ? "column" : "row"}

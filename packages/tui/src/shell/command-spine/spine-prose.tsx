@@ -7,7 +7,7 @@ import { filetype } from "../../util/filetype"
 import type { SpineKind } from "./spine-types"
 import { looksLikeMarkdown, normalizeChatProse, stripMarkdownEmphasis } from "./chat-prose"
 import { codeBlockChrome, streamTextCue } from "./spine-chrome"
-import { RoundBorder } from "../../ui/chrome"
+import { RoundBorder, Space } from "../../ui/chrome"
 import { HairlineBorder } from "../../ui/border"
 import { useStreamFrameGate, type StreamFrameGate } from "../../util/stream-frame"
 
@@ -343,9 +343,9 @@ export function SpineProse(props: {
             border={["left"]}
             borderColor={theme.warning as any}
             customBorderChars={HairlineBorder}
-            paddingLeft={2}
-            paddingRight={1}
-            marginBottom={1}
+            paddingLeft={Space.padX}
+            paddingRight={Space.unit}
+            marginBottom={Space.gap}
           >
             <text fg={theme.warning as any}>system reminder</text>
             {/* Numeric width so wrap is correct at construct */}
@@ -380,7 +380,7 @@ export function SpineProse(props: {
         <Match when={mode() === "markdown"}>
           <Show when={streamCue().badge}>
             <box flexShrink={0} paddingBottom={0} flexDirection="row">
-              <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement} flexShrink={0}>
+              <box paddingLeft={Space.unit} paddingRight={Space.unit} backgroundColor={theme.backgroundElement} flexShrink={0}>
                 <text fg={theme.accent} wrapMode="none">
                   {streamCue().badge}
                 </text>
@@ -428,7 +428,7 @@ export function SpineProse(props: {
                 (bodyLabel() === "file" ? (theme.spineInspect ?? fg()) : (theme.borderSubtle ?? theme.textMuted)) as any
               }
             >
-              <box flexDirection="row" flexShrink={0} gap={1} paddingBottom={1}>
+              <box flexDirection="row" flexShrink={0} gap={Space.gap} paddingBottom={Space.padY}>
                 <text fg={theme.spineContext} wrapMode="none">
                   {codeChrome().header}
                 </text>

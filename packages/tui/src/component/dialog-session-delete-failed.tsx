@@ -1,4 +1,5 @@
 import { TextAttributes } from "@opentui/core"
+import { Space } from "../ui/chrome"
 import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
 import { createStore } from "solid-js/store"
@@ -129,15 +130,15 @@ export function DialogSessionDeleteFailed(props: {
       <text fg={theme.textMuted} wrapMode="word">
         Choose how you want to recover this broken workspace session.
       </text>
-      <box flexDirection="column" paddingBottom={1} gap={1}>
+      <box flexDirection="column" paddingBottom={Space.padY} gap={Space.gap}>
         <For each={options}>
           {(item) => (
             <box
               flexDirection="column"
-              paddingLeft={1}
-              paddingRight={1}
-              paddingTop={1}
-              paddingBottom={1}
+              paddingLeft={Space.unit}
+              paddingRight={Space.unit}
+              paddingTop={Space.padY}
+              paddingBottom={Space.padY}
               backgroundColor={
                 confirming() && item.id === store.active
                   ? theme.error

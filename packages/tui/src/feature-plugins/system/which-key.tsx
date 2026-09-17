@@ -192,7 +192,7 @@ function HomeHint(props: { api: TuiPluginApi }) {
   const look = createMemo(() => skin(props.api))
 
   return (
-    <box width="100%" maxWidth={Size.promptMaxWidth} alignItems="center" paddingTop={1} flexShrink={0}>
+    <box width="100%" maxWidth={Size.promptMaxWidth} alignItems="center" paddingTop={Space.padY} flexShrink={0}>
       <text fg={look().muted} wrapMode="none">
         Show keyboard shortcuts with <span style={{ fg: look().subtle }}>{trigger() || command.toggle}</span>
       </text>
@@ -432,9 +432,9 @@ function WhichKeyPanel(props: {
         width={dimensions().width}
         height={panelHeight()}
         backgroundColor={look().panel}
-        paddingLeft={1}
-        paddingRight={1}
-        paddingTop={1}
+        paddingLeft={Space.unit}
+        paddingRight={Space.unit}
+        paddingTop={Space.padY}
         flexShrink={0}
         flexDirection="column"
       >
@@ -446,7 +446,7 @@ function WhichKeyPanel(props: {
                   when={item.type === "tab" ? item.group : undefined}
                   fallback={
                     item.type === "more" ? (
-                      <box flexShrink={0} paddingLeft={1} paddingRight={1}>
+                      <box flexShrink={0} paddingLeft={Space.unit} paddingRight={Space.unit}>
                         <text fg={look().muted} wrapMode="none">⋯</text>
                       </box>
                     ) : (
@@ -464,8 +464,8 @@ function WhichKeyPanel(props: {
                     const selected = createMemo(() => currentGroup()?.label === group().label)
                     return (
                       <box
-                        paddingLeft={1}
-                        paddingRight={1}
+                        paddingLeft={Space.unit}
+                        paddingRight={Space.unit}
                         flexShrink={0}
                         backgroundColor={selected() ? look().tab : undefined}
                         onMouseDown={() => {
@@ -505,7 +505,7 @@ function WhichKeyPanel(props: {
                         return value
                       })
                       return (
-                        <box width={columnWidth()} flexDirection="row" gap={1} justifyContent="space-between">
+                        <box width={columnWidth()} flexDirection="row" gap={Space.gap} justifyContent="space-between">
                           <Show when={item()}>
                             {(value) => (
                               <Show

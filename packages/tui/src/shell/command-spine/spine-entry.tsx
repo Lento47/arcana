@@ -297,7 +297,7 @@ function ChildrenGroup(props: {
             <Show when={!!child.body?.trim()}>
               <box flexDirection="row" flexShrink={0} alignItems="flex-start">
                 <SpineRail layout={props.layout} glyph={"│"} active={false} />
-                <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={2}>
+                <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={Space.padX}>
                   <SpineProse
                     kind={child.kind}
                     text={child.body!}
@@ -717,13 +717,13 @@ export function SpineEntry(props: {
                 <Show when={(v().actions?.length ?? 0) > 0}>
                   <box flexDirection="row" flexShrink={0}>
                     <SpineRail layout={props.layout} active={props.focused} />
-                    <box flexDirection="row" gap={1} paddingLeft={1} paddingTop={1}>
+                    <box flexDirection="row" gap={Space.gap} paddingLeft={Space.unit} paddingTop={Space.padY}>
                       <For each={v().actions}>
                         {(action) => (
                           <box
                             flexShrink={0}
-                            paddingLeft={1}
-                            paddingRight={1}
+                            paddingLeft={Space.unit}
+                            paddingRight={Space.unit}
                             backgroundColor={theme.backgroundElement}
                             onMouseUp={(event) => {
                               event.stopPropagation?.()
@@ -859,7 +859,7 @@ export function SpineEntry(props: {
                 >
                   <box flexDirection="row" flexShrink={0} alignItems="flex-start">
                     <SpineRail layout={props.layout} active={props.focused} />
-                    <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={1}>
+                    <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={Space.unit}>
                       <text fg={theme.spineContext}>{v().receipt!.command}</text>
                     </box>
                   </box>
@@ -869,7 +869,7 @@ export function SpineEntry(props: {
                 <Show when={v().table && bodyExpanded()}>
                   <box flexDirection="row" flexShrink={0} alignItems="flex-start">
                     <SpineRail layout={props.layout} active={props.focused} />
-                    <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={1}>
+                    <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={Space.unit}>
                       <SpineListArtifact
                         headers={v().table!.headers}
                         rows={v().table!.rows}
@@ -900,7 +900,7 @@ export function SpineEntry(props: {
                     flexGrow={1}
                     minWidth={0}
                     flexShrink={1}
-                    paddingLeft={1}
+                    paddingLeft={Space.unit}
                     border={["left"]}
                     borderColor={theme.spineRail}
                     customBorderChars={HairlineBorder}
@@ -988,7 +988,7 @@ export function SpineEntry(props: {
                 <Show when={v().body?.trim() && bodyExpanded()}>
                   <box flexDirection="row" flexShrink={0} alignItems="flex-start">
                     <SpineRail layout={props.layout} active={props.focused} />
-                    <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={1}>
+                    <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={Space.unit}>
                       <SpineProse
                         kind={kind()}
                         text={v().body!}
@@ -1164,7 +1164,7 @@ export function SpineEntry(props: {
                       continuation rule through it. */}
                   <box flexDirection="row" flexShrink={0} alignItems="flex-start">
                     <SpineRail layout={props.layout} glyph=" " active={false} />
-                    <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={1}>
+                    <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={Space.unit}>
                       <box
                         flexDirection="column"
                         flexShrink={0}
@@ -1173,9 +1173,9 @@ export function SpineEntry(props: {
                         customBorderChars={RoundBorder}
                         borderColor={(v().streaming ? theme.accent : (theme.borderSubtle ?? theme.spineOk)) as any}
                         backgroundColor={theme.backgroundPanel}
-                        paddingLeft={1}
-                        paddingRight={1}
-                        paddingBottom={1}
+                        paddingLeft={Space.unit}
+                        paddingRight={Space.unit}
+                        paddingBottom={Space.padY}
                       >
                         {/* Title strip: state on the left, dive affordance right.
                             The state word and the step count are the two facts
@@ -1183,7 +1183,7 @@ export function SpineEntry(props: {
                             the spacer between them is the only elastic cell —
                             otherwise a narrow card clipped them to `dele…` and
                             `· 3 s` while the badge on the right stayed whole. */}
-                        <box flexDirection="row" flexShrink={0} alignItems="center" gap={1}>
+                        <box flexDirection="row" flexShrink={0} alignItems="center" gap={Space.gap}>
                           <text fg={v().streaming ? theme.accent : theme.spineOk} wrapMode="none" flexShrink={0}>
                             {chrome().cue}
                           </text>
@@ -1196,8 +1196,8 @@ export function SpineEntry(props: {
                           <Show when={childSessionID()}>
                             <box
                               flexShrink={0}
-                              paddingLeft={1}
-                              paddingRight={1}
+                              paddingLeft={Space.unit}
+                              paddingRight={Space.unit}
                               backgroundColor={theme.backgroundElement}
                             >
                               <text fg={theme.spineBrand} wrapMode="none">
@@ -1209,7 +1209,7 @@ export function SpineEntry(props: {
                         {/* Collapsed outcome preview — one line of the returned report
                             so the card is scannable without expanding it. */}
                         <Show when={!v().streaming && !bodyExpanded() && !!reportPreview()}>
-                          <box paddingTop={1}>
+                          <box paddingTop={Space.padY}>
                             <text fg={theme.spineContext} wrapMode="none">
                               {reportPreview()}
                             </text>
@@ -1218,7 +1218,7 @@ export function SpineEntry(props: {
                         {/* Completed step list — what the subagent actually did,
                             capped so a busy subagent cannot flood the spine. */}
                         <Show when={!v().streaming && bodyExpanded() && childSteps().length > 0}>
-                          <box flexDirection="column" paddingTop={1}>
+                          <box flexDirection="column" paddingTop={Space.padY}>
                             <For each={visibleSteps()}>
                               {(step) => (
                                 <text fg={step.status === "fail" ? theme.spineFail : theme.spineContext} wrapMode="word">
@@ -1238,7 +1238,7 @@ export function SpineEntry(props: {
                             the stream point is obvious, and an older-line ellipsis
                             marks the cut. */}
                         <Show when={v().streaming}>
-                          <box flexDirection="column" paddingTop={1}>
+                          <box flexDirection="column" paddingTop={Space.padY}>
                             <Show
                               when={liveLines().lines.length > 0}
                               fallback={
@@ -1262,7 +1262,7 @@ export function SpineEntry(props: {
                         </Show>
                         {/* Returned report/body when expanded. */}
                         <Show when={!v().streaming && bodyExpanded() && !!cardBody()?.trim()}>
-                          <box paddingTop={1}>
+                          <box paddingTop={Space.padY}>
                             <SpineProse
                               kind={kind()}
                               text={cardBody()!}
@@ -1320,7 +1320,7 @@ export function SpineEntry(props: {
                 <Show when={v().body?.trim() && bodyExpanded()}>
                   <box flexDirection="row" flexShrink={0} alignItems="flex-start">
                     <SpineRail layout={props.layout} active={props.focused} />
-                    <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={1}>
+                    <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={Space.unit}>
                       <SpineProse
                         kind={kind()}
                         text={v().body!}
@@ -1338,13 +1338,13 @@ export function SpineEntry(props: {
                 <Show when={(v().actions?.length ?? 0) > 0}>
                   <box flexDirection="row" flexShrink={0}>
                     <SpineRail layout={props.layout} active={props.focused} />
-                    <box flexDirection="row" gap={1} paddingLeft={1} paddingTop={1}>
+                    <box flexDirection="row" gap={Space.gap} paddingLeft={Space.unit} paddingTop={Space.padY}>
                       <For each={v().actions}>
                         {(action, actionIndex) => (
                           <box
                             flexShrink={0}
-                            paddingLeft={1}
-                            paddingRight={1}
+                            paddingLeft={Space.unit}
+                            paddingRight={Space.unit}
                             backgroundColor={props.focused && props.selectedAction === actionIndex() ? theme.accent : theme.backgroundElement}
                             onMouseUp={(event) => {
                               event.stopPropagation?.()
