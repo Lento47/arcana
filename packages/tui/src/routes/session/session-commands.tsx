@@ -24,6 +24,7 @@ import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import { getSessionGoal } from "@arcana/core/session/goal"
 import path from "node:path"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
+import { DialogSeal } from "../../ui/dialog-seal"
 import { DialogConfirm } from "../../ui/dialog-confirm"
 import { DialogTimeline } from "./dialog-timeline"
 import { DialogForkFromTimeline } from "./dialog-fork-from-timeline"
@@ -715,8 +716,19 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
             approvals,
             tokens,
           })
-          await clipboard.write?.(seal)
-          toast.show({ message: "Session seal copied to clipboard", variant: "success" })
+          // The seal dialog replaces the command palette and owns the copy
+          // action; do not clear after opening it.
+          dialog.replace(() => (
+            <DialogSeal
+              seal={seal}
+              digits={[
+                { label: "tools ok", value: String(outcomes.filter((o) => o === "ok").length) },
+                { label: "failed", value: String(outcomes.filter((o) => o === "failed").length) },
+                { label: "cost $", value: (sessionData.cost ?? 0).toFixed(2) },
+              ]}
+            />
+          ))
+          return
         } catch {
           toast.show({ message: "Failed to seal the session — try again", variant: "error" })
         }

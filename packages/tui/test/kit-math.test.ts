@@ -7,6 +7,7 @@ import { chunks, clamp01, extent, normalize } from "../src/ui/kit/scale"
 import { cellWidths, filterRows, fitCell, sortRows, type Column } from "../src/ui/kit/table"
 import { SparkMean, sparkline, SPARK_GLYPHS } from "../src/ui/kit/sparkline"
 import { burnSeries } from "../src/ui/kit/telemetry"
+import { bigDigits } from "../src/ui/kit/digits"
 import { timelineCells, timelineLanes } from "../src/ui/kit/timeline"
 import { ancestry, flattenTree } from "../src/ui/kit/tree"
 
@@ -371,5 +372,20 @@ describe("kit table", () => {
     expect(fitCell("ab", 4)).toBe("ab  ")
     expect(fitCell("a", 1)).toBe("a")
     expect(fitCell("a", 0)).toBe("")
+  })
+})
+
+describe("kit digits", () => {
+  test("figures render as three block rows", () => {
+    const rows = bigDigits("42")
+    expect(rows).toHaveLength(3)
+    expect(rows[0]).toContain("█")
+    expect(rows[2]).toContain("▀")
+  })
+
+  test("unknown characters render a placeholder, never nothing", () => {
+    const rows = bigDigits("!")
+    expect(rows).toHaveLength(3)
+    expect(rows[0]).toBe("▄▄▄")
   })
 })

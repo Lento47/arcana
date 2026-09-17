@@ -13,6 +13,7 @@ import { TestTuiProviders } from "./fixture/tui-providers"
 import { BrailleChart } from "../src/ui/kit/braille-chart"
 import { Breadcrumbs } from "../src/ui/kit/breadcrumbs"
 import { Card } from "../src/ui/kit/card"
+import { Digits } from "../src/ui/kit/digits-view"
 import { Collapsible } from "../src/ui/kit/collapsible"
 import { Gauge } from "../src/ui/kit/gauge-view"
 import { Histogram } from "../src/ui/kit/histogram-view"
@@ -280,6 +281,35 @@ test("table renders headers, cells, and the selected row", async () => {
     expect(frame).toContain("denied")
     expect(frame).toContain("approved")
     expect(frame).toContain("appr_0002")
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
+test("digits paint block figures", async () => {
+  const app = await testRender(
+    () => (
+      <TestTuiProviders>
+        <box flexDirection="column" width="100%" height="100%">
+          <Digits text="4.2" />
+        </box>
+      </TestTuiProviders>
+    ),
+    { width: 30, height: 10 },
+  )
+
+  try {
+    let frame = ""
+    for (let attempt = 0; attempt < 12; attempt++) {
+      await app.renderOnce()
+      await app.flush()
+      const next = app.captureCharFrame()
+      if (next.trim().length > 0 && next === frame) break
+      frame = next
+      await Bun.sleep(20)
+    }
+    expect(frame).toContain("█")
+    expect(frame).toContain("▀")
   } finally {
     app.renderer.destroy()
   }
