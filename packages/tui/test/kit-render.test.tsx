@@ -17,6 +17,8 @@ import { Gauge } from "../src/ui/kit/gauge-view"
 import { Histogram } from "../src/ui/kit/histogram-view"
 import { Progress } from "../src/ui/kit/progress-view"
 import { Sparkline } from "../src/ui/kit/sparkline-view"
+import { timelineCells } from "../src/ui/kit/timeline"
+import { Waterfall } from "../src/ui/kit/waterfall-view"
 
 test("kit components render their values, not placeholders", async () => {
   const app = await testRender(
@@ -101,6 +103,49 @@ test("histogram and braille chart render their series", async () => {
       .split("\n")
       .some((line) => [...line].some((char) => char >= "\u2801" && char <= "\u28FF"))
     expect(hasBrailleInk).toBe(true)
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
+test("waterfall paints spans and marks under lane labels", async () => {
+  const rows = timelineCells({
+    spans: [{ lane: "main", start: 0, end: 100, kind: "tool" }],
+    marks: [{ lane: "main", at: 50, kind: "fail", glyph: "✗" }],
+    lanes: ["main"],
+    start: 0,
+    end: 100,
+    width: 12,
+  })
+  const app = await testRender(
+    () => (
+      <TestTuiProviders>
+        <box flexDirection="column" width="100%" height="100%">
+          <Waterfall
+            rows={rows}
+            labels={["main"]}
+            labelWidth={6}
+            colors={{ tool: RGBA.fromHex("#888888"), fail: RGBA.fromHex("#FF0000") }}
+          />
+        </box>
+      </TestTuiProviders>
+    ),
+    { width: 40, height: 10 },
+  )
+
+  try {
+    let frame = ""
+    for (let attempt = 0; attempt < 12; attempt++) {
+      await app.renderOnce()
+      await app.flush()
+      const next = app.captureCharFrame()
+      if (next.trim().length > 0 && next === frame) break
+      frame = next
+      await Bun.sleep(20)
+    }
+    expect(frame).toContain("main")
+    expect(frame).toContain("─")
+    expect(frame).toContain("✗")
   } finally {
     app.renderer.destroy()
   }

@@ -34,6 +34,7 @@ import { DialogThemeList } from "./component/dialog-theme-list"
 import { DialogHelp } from "./ui/dialog-help"
 import { DialogNotices } from "./ui/dialog-notices"
 import { DialogPulse } from "./ui/dialog-pulse"
+import { DialogTimeline } from "./ui/dialog-timeline"
 import { DialogRunProofContract, DialogRunProofActions, DialogRunProofDiffGate, DialogRunProofVerify, DialogRunProofSovereignty, DialogRunProofMissing } from "./proof-view/run-proof-dialogs"
 import { loadActiveRunProof, stageActiveRunProofRollbackRestore, approveActiveRunProofRollbackRestore } from "./proof-io"
 import { displaySessionTitle } from "./util/session"
@@ -732,6 +733,15 @@ export function buildAppCommands(deps: {
       slashName: "pulse",
       run: () => {
         deps.dialog.replace(() => <DialogPulse />)
+      },
+      category: "System",
+    },
+    {
+      name: "timeline.show",
+      title: "Timeline",
+      slashName: "timeline",
+      run: () => {
+        deps.dialog.replace(() => <DialogTimeline />)
       },
       category: "System",
     },

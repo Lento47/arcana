@@ -5,6 +5,7 @@ import { gaugeCells, labeledGauge } from "../src/ui/kit/gauge"
 import { chunks, clamp01, extent, normalize } from "../src/ui/kit/scale"
 import { SparkMean, sparkline, SPARK_GLYPHS } from "../src/ui/kit/sparkline"
 import { burnSeries } from "../src/ui/kit/telemetry"
+import { timelineCells, timelineLanes } from "../src/ui/kit/timeline"
 
 describe("kit scale", () => {
   test("clamp01 bounds and forgives non-finite input", () => {
@@ -196,5 +197,43 @@ describe("kit telemetry", () => {
   test("limit keeps the newest turns", () => {
     const messages = [1, 2, 3, 4].map((n) => ({ role: "assistant", tokens: { input: n * 10 } }))
     expect(burnSeries(messages, 2)).toEqual([30, 40])
+  })
+})
+
+describe("kit timeline", () => {
+  test("lanes keep the explicit order, then first appearance", () => {
+    expect(
+      timelineLanes({
+        spans: [{ lane: "b", start: 0, end: 1, kind: "tool" }],
+        marks: [{ lane: "c", at: 0, kind: "fail", glyph: "✗" }],
+        order: ["a", "b"],
+      }),
+    ).toEqual(["a", "b", "c"])
+  })
+
+  test("spans paint cell runs and marks win over spans", () => {
+    const rows = timelineCells({
+      spans: [{ lane: "a", start: 0, end: 100, kind: "tool" }],
+      marks: [{ lane: "a", at: 50, kind: "denied", glyph: "✗" }],
+      lanes: ["a"],
+      start: 0,
+      end: 100,
+      width: 10,
+    })
+    expect(rows[0]!.map((cell) => cell?.glyph ?? " ")).toEqual(["─", "─", "─", "─", "─", "✗", "─", "─", "─", "─"])
+  })
+
+  test("out-of-range marks are dropped, and an empty range paints nothing", () => {
+    const dropped = timelineCells({
+      spans: [],
+      marks: [{ lane: "a", at: 500, kind: "fail", glyph: "✗" }],
+      lanes: ["a"],
+      start: 0,
+      end: 100,
+      width: 10,
+    })
+    expect(dropped[0]!.every((cell) => cell === null)).toBe(true)
+    const degenerate = timelineCells({ spans: [], marks: [], lanes: ["a"], start: 5, end: 5, width: 10 })
+    expect(degenerate[0]!.every((cell) => cell === null)).toBe(true)
   })
 })
