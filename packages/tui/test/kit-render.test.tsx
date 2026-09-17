@@ -8,10 +8,13 @@
  */
 import { expect, test } from "bun:test"
 import { testRender } from "@opentui/solid"
+import { RGBA } from "@opentui/core"
 import { TestTuiProviders } from "./fixture/tui-providers"
+import { BrailleChart } from "../src/ui/kit/braille-chart"
 import { Card } from "../src/ui/kit/card"
 import { Collapsible } from "../src/ui/kit/collapsible"
 import { Gauge } from "../src/ui/kit/gauge-view"
+import { Histogram } from "../src/ui/kit/histogram-view"
 import { Progress } from "../src/ui/kit/progress-view"
 import { Sparkline } from "../src/ui/kit/sparkline-view"
 
@@ -59,6 +62,45 @@ test("kit components render their values, not placeholders", async () => {
     expect(frame).toContain("denied fs.write")
     expect(frame).toContain("Hidden")
     expect(frame).not.toContain("never rendered")
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
+test("histogram and braille chart render their series", async () => {
+  const app = await testRender(
+    () => (
+      <TestTuiProviders>
+        <box flexDirection="column" width="100%" height="100%" gap={1}>
+          <Histogram
+            buckets={[new Map([["deny", 2]]), new Map([["deny", 1], ["allow", 1]])]}
+            height={4}
+            order={["deny", "allow"]}
+            colors={{ deny: RGBA.fromHex("#FF0000"), allow: RGBA.fromHex("#00FF00") }}
+          />
+          <BrailleChart values={[0, 1, 2, 3, 4, 5, 4, 3, 2, 1]} width={10} height={4} fill />
+        </box>
+      </TestTuiProviders>
+    ),
+    { width: 40, height: 20 },
+  )
+
+  try {
+    let frame = ""
+    for (let attempt = 0; attempt < 12; attempt++) {
+      await app.renderOnce()
+      await app.flush()
+      const next = app.captureCharFrame()
+      if (next.trim().length > 0 && next === frame) break
+      frame = next
+      await Bun.sleep(20)
+    }
+
+    expect(frame).toContain("█")
+    const hasBrailleInk = frame
+      .split("\n")
+      .some((line) => [...line].some((char) => char >= "\u2801" && char <= "\u28FF"))
+    expect(hasBrailleInk).toBe(true)
   } finally {
     app.renderer.destroy()
   }

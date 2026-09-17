@@ -33,6 +33,7 @@ import { DialogConsoleOrg } from "./component/dialog-console-org"
 import { DialogThemeList } from "./component/dialog-theme-list"
 import { DialogHelp } from "./ui/dialog-help"
 import { DialogNotices } from "./ui/dialog-notices"
+import { DialogPulse } from "./ui/dialog-pulse"
 import { DialogRunProofContract, DialogRunProofActions, DialogRunProofDiffGate, DialogRunProofVerify, DialogRunProofSovereignty, DialogRunProofMissing } from "./proof-view/run-proof-dialogs"
 import { loadActiveRunProof, stageActiveRunProofRollbackRestore, approveActiveRunProofRollbackRestore } from "./proof-io"
 import { displaySessionTitle } from "./util/session"
@@ -722,6 +723,15 @@ export function buildAppCommands(deps: {
       slashName: "notices",
       run: () => {
         deps.dialog.replace(() => <DialogNotices />)
+      },
+      category: "System",
+    },
+    {
+      name: "pulse.show",
+      title: "Pulse",
+      slashName: "pulse",
+      run: () => {
+        deps.dialog.replace(() => <DialogPulse />)
       },
       category: "System",
     },

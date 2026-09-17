@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { bucketEvents, bucketTotal, barCells, timeBuckets } from "../src/ui/kit/bars"
+import { bucketEvents, bucketTotal, barCells, stackCells, timeBuckets } from "../src/ui/kit/bars"
 import { BrailleGrid, brailleSeries, plotSeries } from "../src/ui/kit/braille"
 import { gaugeCells, labeledGauge } from "../src/ui/kit/gauge"
 import { chunks, clamp01, extent, normalize } from "../src/ui/kit/scale"
@@ -146,6 +146,23 @@ describe("kit bars", () => {
     expect(barCells(1, 2, 4)).toBe("██░░")
     expect(barCells(5, 0, 4)).toBe("░░░░")
     expect(barCells(1, 2, 0)).toBe("")
+  })
+
+  test("stackCells stacks bottom-up and scales to the tallest bucket", () => {
+    const buckets = [new Map([["deny", 2]]), new Map([["deny", 1], ["allow", 1]])]
+    expect(stackCells(buckets, 4, ["deny", "allow"])).toEqual([
+      ["deny", "allow"],
+      ["deny", "allow"],
+      ["deny", "deny"],
+      ["deny", "deny"],
+    ])
+  })
+
+  test("stackCells keeps a lone decision visible against a tall bucket", () => {
+    const rows = stackCells([new Map([["deny", 1]]), new Map([["deny", 10]])], 5, ["deny"])
+    expect(rows[4]).toEqual(["deny", "deny"])
+    expect(rows[0]).toEqual([null, "deny"])
+    expect(rows.filter((row) => row[0] === "deny")).toHaveLength(1)
   })
 })
 

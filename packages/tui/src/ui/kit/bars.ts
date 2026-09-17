@@ -56,3 +56,37 @@ export function bucketTotal(bucket: ReadonlyMap<string, number>): number {
   for (const count of bucket.values()) total += count
   return total
 }
+
+/**
+ * Stacked-bar cells for a histogram, one column per bucket.
+ *
+ * `order` reads bottom → top, so the most consequential kind sits highest.
+ * Bars scale against the tallest bucket total; a nonzero kind always gets at
+ * least one cell, so a single decision in a quiet period is still visible.
+ * Returns rows top → bottom of kind ids (or null for an empty cell).
+ */
+export function stackCells(
+  buckets: readonly (ReadonlyMap<string, number>)[],
+  height: number,
+  order: readonly string[],
+): Array<Array<string | null>> {
+  const rows = Array.from({ length: Math.max(0, height) }, () =>
+    Array.from({ length: buckets.length }, () => null as string | null),
+  )
+  if (height <= 0 || buckets.length === 0) return rows
+  let max = 1
+  for (const bucket of buckets) max = Math.max(max, bucketTotal(bucket))
+  for (let column = 0; column < buckets.length; column++) {
+    const bucket = buckets[column]!
+    let level = 0
+    for (const kind of order) {
+      const value = bucket.get(kind) ?? 0
+      if (value <= 0) continue
+      const cells = Math.max(1, Math.round((value / max) * height))
+      for (let i = 0; i < cells && level < height; i++, level++) {
+        rows[height - 1 - level]![column] = kind
+      }
+    }
+  }
+  return rows
+}
