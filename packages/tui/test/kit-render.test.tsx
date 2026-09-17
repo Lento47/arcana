@@ -20,6 +20,8 @@ import { minimapRows } from "../src/ui/kit/minimap"
 import { Minimap } from "../src/ui/kit/minimap-view"
 import { Progress } from "../src/ui/kit/progress-view"
 import { Sparkline } from "../src/ui/kit/sparkline-view"
+import { type Column } from "../src/ui/kit/table"
+import { Table } from "../src/ui/kit/table-view"
 import { timelineCells } from "../src/ui/kit/timeline"
 import { flattenTree } from "../src/ui/kit/tree"
 import { Tree } from "../src/ui/kit/tree-view"
@@ -236,6 +238,48 @@ test("tree and breadcrumbs render rails, marks and crumbs", async () => {
     expect(frame).toContain("└─")
     expect(frame).toContain("audit anti-slop")
     expect(frame).toContain("△")
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
+test("table renders headers, cells, and the selected row", async () => {
+  const columns: Array<Column<{ state: string; id: string }>> = [
+    { key: "state", label: "state", width: 10, value: (row) => row.state },
+    { key: "id", label: "id", width: 12, value: (row) => row.id },
+  ]
+  const app = await testRender(
+    () => (
+      <TestTuiProviders>
+        <box flexDirection="column" width="100%" height="100%">
+          <Table
+            columns={columns}
+            rows={[
+              { state: "denied", id: "appr_0001" },
+              { state: "approved", id: "appr_0002" },
+            ]}
+            selected={1}
+          />
+        </box>
+      </TestTuiProviders>
+    ),
+    { width: 40, height: 10 },
+  )
+
+  try {
+    let frame = ""
+    for (let attempt = 0; attempt < 12; attempt++) {
+      await app.renderOnce()
+      await app.flush()
+      const next = app.captureCharFrame()
+      if (next.trim().length > 0 && next === frame) break
+      frame = next
+      await Bun.sleep(20)
+    }
+    expect(frame).toContain("state")
+    expect(frame).toContain("denied")
+    expect(frame).toContain("approved")
+    expect(frame).toContain("appr_0002")
   } finally {
     app.renderer.destroy()
   }

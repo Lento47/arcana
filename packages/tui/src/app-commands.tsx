@@ -36,6 +36,8 @@ import { DialogNotices } from "./ui/dialog-notices"
 import { DialogPulse } from "./ui/dialog-pulse"
 import { DialogTimeline } from "./ui/dialog-timeline"
 import { DialogXray } from "./ui/dialog-xray"
+import { DialogDocket } from "./ui/dialog-docket"
+import { DialogFindings } from "./ui/dialog-findings"
 import { DialogRunProofContract, DialogRunProofActions, DialogRunProofDiffGate, DialogRunProofVerify, DialogRunProofSovereignty, DialogRunProofMissing } from "./proof-view/run-proof-dialogs"
 import { loadActiveRunProof, stageActiveRunProofRollbackRestore, approveActiveRunProofRollbackRestore } from "./proof-io"
 import { displaySessionTitle } from "./util/session"
@@ -752,6 +754,24 @@ export function buildAppCommands(deps: {
       slashName: "xray",
       run: () => {
         deps.dialog.replace(() => <DialogXray />)
+      },
+      category: "System",
+    },
+    {
+      name: "docket.show",
+      title: "Approvals docket",
+      slashName: "docket",
+      run: () => {
+        deps.dialog.replace(() => <DialogDocket />)
+      },
+      category: "System",
+    },
+    {
+      name: "findings.show",
+      title: "Findings",
+      slashName: "findings",
+      run: () => {
+        deps.dialog.replace(() => <DialogFindings />)
       },
       category: "System",
     },

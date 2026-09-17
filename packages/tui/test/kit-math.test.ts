@@ -4,6 +4,7 @@ import { BrailleGrid, brailleSeries, plotSeries } from "../src/ui/kit/braille"
 import { gaugeCells, labeledGauge } from "../src/ui/kit/gauge"
 import { jumpScrollTop, minimapRows, viewportBracket } from "../src/ui/kit/minimap"
 import { chunks, clamp01, extent, normalize } from "../src/ui/kit/scale"
+import { cellWidths, filterRows, fitCell, sortRows, type Column } from "../src/ui/kit/table"
 import { SparkMean, sparkline, SPARK_GLYPHS } from "../src/ui/kit/sparkline"
 import { burnSeries } from "../src/ui/kit/telemetry"
 import { timelineCells, timelineLanes } from "../src/ui/kit/timeline"
@@ -323,5 +324,52 @@ describe("kit tree", () => {
       "y",
       "x",
     ])
+  })
+})
+
+describe("kit table", () => {
+  type Row = { name: string; state: string; at: number }
+  const columns: Array<Column<Row>> = [
+    { key: "name", label: "name", value: (row) => row.name },
+    { key: "state", label: "state", value: (row) => row.state },
+  ]
+  const rows: Row[] = [
+    { name: "alpha", state: "approved", at: 3 },
+    { name: "beta", state: "denied", at: 1 },
+    { name: "gamma", state: "pending", at: 2 },
+  ]
+
+  test("sortRows sorts on the chosen column and direction", () => {
+    expect(sortRows(rows, columns, { key: "name", direction: 1 }).map((row) => row.name)).toEqual([
+      "alpha",
+      "beta",
+      "gamma",
+    ])
+    expect(sortRows(rows, columns, { key: "name", direction: -1 }).map((row) => row.name)).toEqual([
+      "gamma",
+      "beta",
+      "alpha",
+    ])
+    expect(sortRows(rows, columns).map((row) => row.name)).toEqual(["alpha", "beta", "gamma"])
+    expect(sortRows(rows, columns, { key: "missing", direction: 1 }).map((row) => row.name)).toEqual([
+      "alpha",
+      "beta",
+      "gamma",
+    ])
+  })
+
+  test("filterRows matches any column, case-insensitively", () => {
+    expect(filterRows(rows, columns, "DEN").map((row) => row.name)).toEqual(["beta"])
+    expect(filterRows(rows, columns, "a").map((row) => row.name)).toEqual(["alpha", "beta", "gamma"])
+    expect(filterRows(rows, columns, "  ").length).toBe(3)
+  })
+
+  test("cellWidths respects explicit widths and caps derived ones, fitCell elides", () => {
+    expect(cellWidths([{ key: "x", label: "x", width: 4, value: () => "long" }], [], 28)).toEqual([4])
+    expect(cellWidths(columns, rows, 3)).toEqual([3, 3])
+    expect(fitCell("abcdef", 4)).toBe("abc…")
+    expect(fitCell("ab", 4)).toBe("ab  ")
+    expect(fitCell("a", 1)).toBe("a")
+    expect(fitCell("a", 0)).toBe("")
   })
 })
