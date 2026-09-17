@@ -18,6 +18,9 @@ import { DialogExportOptions } from "../../ui/dialog-export-options"
 import { nextThinkingMode } from "../../context/thinking"
 import { promptTextFromPart } from "../../arcana/task"
 import { formatTranscript } from "../../util/transcript"
+import { contextTokenCount } from "../../util/context-pressure"
+import { Locale } from "../../util/locale"
+import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import { getSessionGoal } from "@arcana/core/session/goal"
 import path from "node:path"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
@@ -93,6 +96,39 @@ export type SessionCommandsDeps = {
     scroll: ScrollBoxRenderable
     prompt: any
   }
+}
+
+/**
+ * The seal: what the session *did*, not what it said. Tools by outcome,
+ * approvals by state, tokens and cost — what belongs in a PR, a chat message,
+ * or a notes file when the session is over. Pure so the wording and the tally
+ * order are pinned by tests, not by rereading the command.
+ */
+export function sessionSeal(input: {
+  title?: string
+  sessionID: string
+  cost: number
+  toolOutcomes: readonly ("ok" | "failed" | "live")[]
+  approvals: readonly ApprovalRecord[]
+  tokens: number
+}): string {
+  const tally = (kind: "ok" | "failed" | "live") => input.toolOutcomes.filter((o) => o === kind).length
+  const live = tally("live")
+  const byState = new Map<string, number>()
+  for (const record of input.approvals) byState.set(record.state, (byState.get(record.state) ?? 0) + 1)
+  const approvalLine =
+    (["APPROVED", "DENIED", "EXPIRED", "INVALIDATED", "PENDING"] as const)
+      .map((state) => ({ state, count: byState.get(state) ?? 0 }))
+      .filter((entry) => entry.count > 0)
+      .map((entry) => `${entry.count} ${entry.state.toLowerCase()}`)
+      .join(" · ") || "none"
+  return [
+    `SEAL · ${input.title ?? input.sessionID}`,
+    `tools · ${tally("ok")} ok · ${tally("failed")} failed${live > 0 ? ` · ${live} live` : ""}`,
+    `approvals · ${approvalLine}`,
+    `tokens · ${Locale.number(input.tokens)} · cost ${Locale.currency(input.cost)}`,
+    `session · ${input.sessionID}`,
+  ].join("\n")
 }
 
 export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandSpec[] {
@@ -644,6 +680,46 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
           .write?.(text)
           .then(() => toast.show({ message: "Message copied to clipboard!", variant: "success" }))
           .catch(() => toast.show({ message: "Failed to copy to clipboard — try again", variant: "error" }))
+        dialog.clear()
+      },
+    },
+    {
+      title: "Seal the session",
+      value: "session.seal",
+      category: "Session",
+      slash: {
+        name: "seal",
+      },
+      run: async () => {
+        try {
+          const sessionData = session()
+          if (!sessionData) return
+          const outcomes: ("ok" | "failed" | "live")[] = []
+          let tokens = 0
+          for (const msg of messages()) {
+            for (const part of sync.data.part[msg.id] ?? []) {
+              if (part.type !== "tool") continue
+              const status = part.state.status
+              outcomes.push(status === "completed" ? "ok" : status === "error" ? "failed" : "live")
+            }
+            if (msg.role === "assistant") tokens += contextTokenCount(msg.tokens)
+          }
+          const approvals = Object.values(sync.data.approvals as Record<string, ApprovalRecord>).filter(
+            (record) => record.sessionId === sessionData.id,
+          )
+          const seal = sessionSeal({
+            title: sessionData.title,
+            sessionID: sessionData.id,
+            cost: sessionData.cost ?? 0,
+            toolOutcomes: outcomes,
+            approvals,
+            tokens,
+          })
+          await clipboard.write?.(seal)
+          toast.show({ message: "Session seal copied to clipboard", variant: "success" })
+        } catch {
+          toast.show({ message: "Failed to seal the session — try again", variant: "error" })
+        }
         dialog.clear()
       },
     },
