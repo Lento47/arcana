@@ -60,6 +60,16 @@ async function pump() {
   }
 }
 
+/** First MarkdownRenderable in the tree — its `width` is the wrap budget. */
+function findMarkdown(node: any): any {
+  if (node?.constructor?.name === "MarkdownRenderable") return node
+  for (const child of node?.getChildren?.() ?? []) {
+    const found = findMarkdown(child)
+    if (found) return found
+  }
+  return undefined
+}
+
 async function renderChat(opts: { width: number; streaming?: boolean; contentWidth?: number }) {
   const [text, setText] = createSignal("")
   const [streaming, setStreaming] = createSignal(opts.streaming ?? false)
@@ -101,9 +111,14 @@ describe("chat wrap regression", () => {
     // " Arcana project work:..." as a separate paragraph — the first paragraph
     // rendered as two blocks ("I can help with" / " Arcana project work:").
     const { setText, setCw } = await renderChat({ width: 100 })
-    // First paint: contentWidth undefined -> wrapCols 1
+    // First paint: contentWidth undefined -> the card derives the terminal
+    // budget. It must never construct the markdown at one column and reflow the
+    // whole block when the measured width arrives a frame later.
     setText("I can help with")
     await pump()
+    const md = findMarkdown(app!.renderer.root)
+    expect(md).toBeDefined()
+    expect(md.width).toBeGreaterThan(1)
     // contentWidth becomes available
     setCw(90)
     await pump()

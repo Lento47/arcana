@@ -171,14 +171,20 @@ function normalizeProseRegion(region: string): string {
 }
 
 /**
- * Remove markdown emphasis/strikethrough markers (`***`, `**`, `~~`) from prose
- * so raw syntax never leaks into chat text. OpenTUI hides inline emphasis only
- * via the tree-sitter `markdown_inline` injection at idle; when that path is
- * unavailable (grammar not loaded, highlight failure) the `**` delimiters render
- * verbatim. Stripping the markers outside fenced code blocks and inline code
- * spans guarantees clean text regardless of highlight state. Single `*` is left
- * alone — it is common as arithmetic (`3 * 4`) and its italic markers are rarer
- * and less visually noisy than stray `**`.
+ * Remove markdown emphasis/strikethrough markers (`***`, `**`, `__`, `_`, `~~`)
+ * from prose so raw syntax never leaks into chat text. OpenTUI hides inline
+ * emphasis only via the tree-sitter `markdown_inline` injection at idle; when
+ * that path is unavailable (grammar not loaded, highlight failure) the `**`
+ * delimiters render verbatim. Stripping the markers outside fenced code blocks
+ * and inline code spans guarantees clean text regardless of highlight state.
+ * Single `*` is left alone — it is common as arithmetic (`3 * 4`) and its italic
+ * markers are rarer and less visually noisy than stray `**`.
+ *
+ * Underscore emphasis is stripped rather than backslash-escaped: OpenTUI prints
+ * `\_` verbatim, so escaping snake_case to defeat italics put a backslash in
+ * front of every identifier. Word-boundary guards keep `open_positions`,
+ * `ma_cross`, `max_open_positions`, and `_private` intact, and only strip a
+ * delimiter pair that could actually italicize.
  */
 export function stripMarkdownEmphasis(text: string): string {
   if (!text) return text
@@ -193,12 +199,52 @@ export function stripMarkdownEmphasis(text: string): string {
           return seg
             .replace(/\*\*\*([^*\n]+)\*\*\*/g, "$1")
             .replace(/\*\*([^*\n]+)\*\*/g, "$1")
+            .replace(/(?<![A-Za-z0-9_])___([^_\n]+)___(?![A-Za-z0-9_])/g, "$1")
+            .replace(/(?<![A-Za-z0-9_])__([^_\n]+)__(?![A-Za-z0-9_])/g, "$1")
+            .replace(/(?<![A-Za-z0-9_])_([^_\n]+)_(?![A-Za-z0-9_])/g, "$1")
             .replace(/~~([^~\n]+)~~/g, "$1")
             // Streaming: strip a lone opening marker that has no closer yet, so
             // raw `**`/`~~` never flashes while the model is mid-emphasis. Only
             // word-boundary openers (not arithmetic like "3 ** 4"); the lookahead
             // requires no `*`/`~` later in the segment, i.e. the marker is unpaired.
             .replace(/(^|\s)(\*\*\*|\*\*|~~)(?!\s)(?=[^*~]*$)/g, "$1")
+        })
+        .join("")
+    })
+    .join("")
+}
+
+/**
+ * Streaming guard for MARKDOWN sources (not plain text).
+ *
+ * Complete emphasis is left intact: the markdown renderable styles and conceals
+ * both the synchronous first frame (`markup.strong` / `markup.italic` /
+ * `markup.strikethrough`) and the Tree-sitter commit (`markdown_inline`
+ * injection, same groups plus `conceal` on the delimiters), so bold, italic and
+ * strikethrough render for real. Flattening them here (as
+ * {@link stripMarkdownEmphasis} does for plain-text surfaces) destroyed the
+ * semantics and made the source a synthetic document that no longer grew
+ * monotonically.
+ *
+ * The one thing this guard removes is a LONE opening delimiter that has no
+ * closer yet — the transient state while the model is mid-emphasis — so a raw
+ * `**`/`~~` never paints before its pair arrives. Fenced blocks and inline code
+ * spans are never touched. Single `*` stays: it is common as arithmetic.
+ */
+export function stripUnpairedEmphasis(text: string): string {
+  if (!text) return text
+  const parts = text.split(/(```[\s\S]*?(?:```|$))/)
+  return parts
+    .map((part, i) => {
+      if (i % 2 === 1 || part.startsWith("```")) return part
+      return part
+        .split(/(`[^`\n]+`)/)
+        .map((seg, j) => {
+          if (j % 2 === 1) return seg
+          // Word-boundary openers only (not arithmetic like "3 ** 4"); the
+          // lookahead requires no `*`/`~` later in the segment, i.e. the marker
+          // is unpaired.
+          return seg.replace(/(^|\s)(\*\*\*|\*\*|~~)(?!\s)(?=[^*~]*$)/g, "$1")
         })
         .join("")
     })

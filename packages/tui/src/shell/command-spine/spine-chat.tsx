@@ -1,8 +1,10 @@
 import { createMemo } from "solid-js"
+import { useRenderer } from "@opentui/solid"
 import { useTheme } from "../../context/theme"
 import { Glyph } from "../../branding"
 import {
   SPINE_CHAT_CARD_CHROME,
+  spineProseWidth,
   spineRailCell,
   spineRailWidth,
   type SpineKind,
@@ -11,6 +13,7 @@ import {
 import { SpineProse } from "./spine-prose"
 import { HairlineBorder } from "../../ui/border"
 import type { StreamFrameGate } from "../../util/stream-frame"
+import { useTerminalSize } from "../../util/terminal-size"
 
 /**
  * Conversation voice — one column, one accent line.
@@ -76,12 +79,18 @@ export function SpineChatCard(props: {
   // Explicit wrap width — never leave markdown to Yoga % guesswork.
   // Present-but-narrow width is a real budget: clamp to >= 1 rather than
   // returning "100%" (which would re-open the 80-fallback in SpineProse.wrapCols).
-  // Missing width (first paint) -> undefined: card sizes naturally, no floor.
+  // A missing width (first paint, direct caller) derives the same budget the
+  // shell would from the live terminal — an unmeasured caller must never
+  // construct the markdown at one column and reflow the block a frame later.
+  const renderer = useRenderer()
+  const size = useTerminalSize(renderer)
   const bodyWidth = createMemo(() => {
-    if (typeof props.contentWidth === "number" && Number.isFinite(props.contentWidth)) {
-      return Math.max(1, Math.floor(props.contentWidth) - markerWidth())
-    }
-    return undefined
+    const measured = props.contentWidth
+    const prose =
+      typeof measured === "number" && Number.isFinite(measured)
+        ? measured
+        : spineProseWidth(size().width, props.layout, "chat")
+    return Math.max(1, Math.floor(prose) - markerWidth())
   })
 
   return (
@@ -118,7 +127,7 @@ export function SpineChatCard(props: {
       <box
         flexShrink={0}
         minWidth={0}
-        width={bodyWidth() ?? ("100%" as any)}
+        width={bodyWidth()}
       >
         <SpineProse
           kind={kind()}

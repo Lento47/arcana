@@ -3,6 +3,7 @@ import {
   looksLikeMarkdown,
   normalizeChatProse,
   stripMarkdownEmphasis,
+  stripUnpairedEmphasis,
 } from "../src/shell/command-spine/chat-prose"
 
 describe("stripMarkdownEmphasis", () => {
@@ -18,6 +19,16 @@ describe("stripMarkdownEmphasis", () => {
 
   test("leaves single asterisks alone (arithmetic)", () => {
     expect(stripMarkdownEmphasis("3 * 4 = 12")).toBe("3 * 4 = 12")
+  })
+
+  test("strips underscore emphasis without touching snake_case", () => {
+    expect(stripMarkdownEmphasis("_italic_ stays plain")).toBe("italic stays plain")
+    expect(stripMarkdownEmphasis("__bold__ stays plain")).toBe("bold stays plain")
+    // Identifiers never gain a backslash escape and never lose an underscore.
+    expect(stripMarkdownEmphasis("ma_cross(3,10) · open_positions · _private")).toBe(
+      "ma_cross(3,10) · open_positions · _private",
+    )
+    expect(stripMarkdownEmphasis("2_000_000")).toBe("2_000_000")
   })
 
   test("preserves inline code spans", () => {
@@ -53,6 +64,36 @@ describe("stripMarkdownEmphasis", () => {
   test("does not strip an opener that already has a closer", () => {
     expect(stripMarkdownEmphasis("**Core cap**")).toBe("Core cap")
     expect(stripMarkdownEmphasis("**bold** and **more**")).toBe("bold and more")
+  })
+})
+
+describe("stripUnpairedEmphasis (markdown sources)", () => {
+  test("keeps complete emphasis so the parser can style and conceal it", () => {
+    expect(stripUnpairedEmphasis("**bold** stays")).toBe("**bold** stays")
+    expect(stripUnpairedEmphasis("*italic* stays")).toBe("*italic* stays")
+    expect(stripUnpairedEmphasis("~~gone~~ stays")).toBe("~~gone~~ stays")
+    expect(stripUnpairedEmphasis("__bold__ and _italic_ stay")).toBe("__bold__ and _italic_ stay")
+    expect(stripUnpairedEmphasis("***both*** stays")).toBe("***both*** stays")
+  })
+
+  test("strips only a lone trailing opener (mid-emphasis)", () => {
+    expect(stripUnpairedEmphasis("I can help with **Core cap")).toBe("I can help with Core cap")
+    expect(stripUnpairedEmphasis("**Core cap")).toBe("Core cap")
+    expect(stripUnpairedEmphasis("a **b** and **c")).toBe("a **b** and c")
+    expect(stripUnpairedEmphasis("~~strike")).toBe("strike")
+    expect(stripUnpairedEmphasis("***both")).toBe("both")
+  })
+
+  test("never touches code spans, fences, or arithmetic", () => {
+    expect(stripUnpairedEmphasis("use `a ** b` or **bold**")).toBe("use `a ** b` or **bold**")
+    const fenced = "before **bold**\n```\nconst x = 1 ** 2\n```\nafter"
+    expect(stripUnpairedEmphasis(fenced)).toBe(fenced)
+    expect(stripUnpairedEmphasis("3 ** 4")).toBe("3 ** 4")
+    expect(stripUnpairedEmphasis("use ** for bold")).toBe("use ** for bold")
+  })
+
+  test("empty passthrough", () => {
+    expect(stripUnpairedEmphasis("")).toBe("")
   })
 })
 

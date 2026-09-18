@@ -5,7 +5,7 @@ import { useKV } from "../../context/kv"
 import { createWidgetRenderNode } from "./widgets/registry"
 import { filetype } from "../../util/filetype"
 import type { SpineKind } from "./spine-types"
-import { looksLikeMarkdown, normalizeChatProse, stripMarkdownEmphasis } from "./chat-prose"
+import { looksLikeMarkdown, normalizeChatProse, stripMarkdownEmphasis, stripUnpairedEmphasis } from "./chat-prose"
 import { codeBlockChrome, streamTextCue } from "./spine-chrome"
 import { RoundBorder, Space } from "../../ui/chrome"
 import { HairlineBorder } from "../../ui/border"
@@ -19,7 +19,7 @@ let nextStreamContentKey = 0
 /** Blinking block caret shown at the end of live assistant prose. */
 const STREAM_CARET = "▌"
 
-export { looksLikeMarkdown, normalizeChatProse, stripMarkdownEmphasis } from "./chat-prose"
+export { looksLikeMarkdown, normalizeChatProse, stripMarkdownEmphasis, stripUnpairedEmphasis } from "./chat-prose"
 
 /**
  * True when `line` is a paragraph line that a `---` underline can turn into a
@@ -218,12 +218,15 @@ export function SpineProse(props: {
 
   const markdownContent = createMemo(() => {
     const raw = text()
-    // Strip emphasis/strikethrough markers (`**`, `~~`) so raw syntax never
-    // leaks into chat text (OpenTUI inline conceal depends on tree-sitter
-    // markdown_inline injection; strip guarantees clean text regardless).
-    const noEmphasis = mode() === "markdown" || kind() === "think" ? stripMarkdownEmphasis(raw) : raw
+    // Plain thought text has no parser to conceal markers: flatten them.
+    // Markdown sources keep complete emphasis — the renderable styles AND
+    // conceals it in both the synchronous first frame and the worker commit —
+    // and only drop a lone unpaired opener so a raw `**`/`~~` never paints
+    // while the model is mid-emphasis.
+    const prose = kind() === "think" ? stripMarkdownEmphasis(raw) : raw
+    const guarded = mode() === "markdown" ? stripUnpairedEmphasis(prose) : prose
     // Strip horizontal rules (full-width dash rows) only outside fenced code blocks
-    const stripped = mode() === "markdown" ? stripMarkdownHorizontalRules(noEmphasis) : noEmphasis
+    const stripped = mode() === "markdown" ? stripMarkdownHorizontalRules(guarded) : guarded
     if (mode() === "markdown" && props.streaming === true) {
       return stripped + (kv.get("animations_enabled", true) ? GRAIN_CARET[caretPhase()] : STREAM_CARET)
     }

@@ -662,6 +662,24 @@ const MD_QUOTE_CREATE2_TO = `    const arcanaQuoteText = this.getBlockquoteConte
     renderable.add(this.createMarkdownCodeRenderable(arcanaQuoteText, \`\${renderable.id}-content\`, 0, this._linkifyMarkdownChunks, "markup.quote", this.createInitialStyledText({ type: "paragraph", raw: arcanaQuoteText, text: arcanaQuoteText }, "markup.quote")));`
 
 /**
+ * Eleventh pass: build the synchronous styled frame for settled markdown too.
+ * `createInitialStyledText` used to return early when the renderable was not
+ * streaming, so a message mounted from history painted plain text — raw
+ * `**`/`~~` markers included — until the worker commit arrived. With complete
+ * emphasis now reaching the parser (no flattening), the sync frame must exist
+ * for every mount, streaming or not: it is what conceals the delimiters and
+ * applies the markup groups before the first paint.
+ */
+const SYNC_ALWAYS_MARKER = "// [arcana] always build the synchronous styled frame (patch-opentui.ts)"
+const MD_SYNC_ALWAYS_FROM = `  createInitialStyledText(token, baseGroup) {
+    if (!this._streaming)
+      return;
+    const chunks = [];`
+const MD_SYNC_ALWAYS_TO = `  createInitialStyledText(token, baseGroup) {
+    ${SYNC_ALWAYS_MARKER}
+    const chunks = [];`
+
+/**
  * Eighth pass: hold the first code paint for a WARM parser. A brand-new code
  * leaf painted plain, and the worker commit (2-6 ms warm) restyled it one frame
  * later — every code body flashed plain→coloured. Leaves whose filetype the
@@ -1432,6 +1450,37 @@ for (const bundle of collectEntryBundles()) {
   blockStylePatched++
 }
 
+let syncAlwaysTargets = 0
+let syncAlwaysReady = 0
+let syncAlwaysPatched = 0
+
+for (const bundle of collectEntryBundles()) {
+  const version = versionOf(bundle)
+  if (version !== TARGET_VERSION) {
+    skipped++
+    continue
+  }
+
+  syncAlwaysTargets++
+  const source = readFileSync(bundle, "utf-8")
+  if (source.includes(SYNC_ALWAYS_MARKER)) {
+    console.log(`[patch-opentui] markdown sync frame already patched ${bundle}`)
+    syncAlwaysReady++
+    skipped++
+    continue
+  }
+  if (!source.includes(MD_SYNC_ALWAYS_FROM)) {
+    console.error(`[patch-opentui] markdown sync-frame signature missing in ${bundle}`)
+    process.exitCode = 1
+    continue
+  }
+  const next = source.replace(MD_SYNC_ALWAYS_FROM, MD_SYNC_ALWAYS_TO)
+  writeFileSync(bundle, next, "utf-8")
+  console.log(`[patch-opentui] patched markdown sync frame always ${bundle}`)
+  syncAlwaysReady++
+  syncAlwaysPatched++
+}
+
 let diffTargets = 0
 let diffReady = 0
 let diffPatched = 0
@@ -1512,6 +1561,12 @@ if (blockStyleTargets === 0) {
   console.error(`[patch-opentui] patched ${blockStyleReady}/${blockStyleTargets} markdown block style bundle(s)`)
   process.exitCode = 1
 }
+if (syncAlwaysTargets === 0) {
+  console.log(`[patch-opentui] no @opentui/core ${TARGET_VERSION} entry bundles found for the markdown sync frame`)
+} else if (syncAlwaysReady !== syncAlwaysTargets) {
+  console.error(`[patch-opentui] patched ${syncAlwaysReady}/${syncAlwaysTargets} markdown sync-frame bundle(s)`)
+  process.exitCode = 1
+}
 if (diffTargets === 0) {
   console.log(`[patch-opentui] no @opentui/core ${TARGET_VERSION} entry bundles found for diff unstyled frames`)
 } else if (diffReady !== diffTargets) {
@@ -1519,5 +1574,5 @@ if (diffTargets === 0) {
   process.exitCode = 1
 }
 console.log(
-  `[patch-opentui] loader_patched=${patched} markdown_patched=${markdownPatched} code_patched=${codePatched} parse_patched=${parsePatched} tsclient_patched=${tsClientPatched} streaming_patched=${streamingPatched} diff_patched=${diffPatched} blockstyle_patched=${blockStylePatched} skipped=${skipped}`,
+  `[patch-opentui] loader_patched=${patched} markdown_patched=${markdownPatched} code_patched=${codePatched} parse_patched=${parsePatched} tsclient_patched=${tsClientPatched} streaming_patched=${streamingPatched} diff_patched=${diffPatched} blockstyle_patched=${blockStylePatched} syncframe_patched=${syncAlwaysPatched} skipped=${skipped}`,
 )

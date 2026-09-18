@@ -3,6 +3,8 @@ import { afterEach, expect, test } from "bun:test"
 import { RGBA, SyntaxStyle, getTreeSitterClient, type CapturedFrame, type TreeSitterClient } from "@opentui/core"
 import { testRender } from "@opentui/solid"
 import { createSignal } from "solid-js"
+import { SpineProse } from "../src/shell/command-spine/spine-prose"
+import { TestTuiProviders } from "./fixture/tui-providers"
 
 /**
  * Real-parser style stability. The audit that produced these tests measured the
@@ -221,4 +223,82 @@ test("a filetype without a parser keeps the plain first frame (no hold, no blank
   )
   const first = await firstFrameWith("fn main")
   expect(first).toBeDefined()
+})
+
+/**
+ * Emphasis is parser syntax, not Arcana's to flatten: the markdown source must
+ * reach the renderable with its `**`/`*`/`~~` pairs intact so bold, italic and
+ * strikethrough render for real. Both frames (synchronous first paint and the
+ * worker commit) conceal the delimiters and apply the same markup groups, so
+ * restoring the semantics must not reintroduce a style flip.
+ */
+const EMPHASIS = "plain **bold** and *italic* and ~~strike~~ tail"
+
+test("complete emphasis is styled and concealed on the first frame", async () => {
+  // A worker that never answers: the frame under test is exactly the
+  // synchronous one, so a missing emphasis style cannot be masked by a commit.
+  const bag = ((globalThis as any)[Symbol.for("@opentui/core/singleton")] ??= {})
+  bag["tree-sitter-client"] = {
+    highlightOnce: () => new Promise<never>(() => {}),
+    // The renderer's teardown destroys the singleton; the stub must survive it.
+    destroy: async () => {},
+    initialize: async () => {},
+  }
+  app = await testRender(
+    () => (
+      <TestTuiProviders>
+        <box width="100%" height="100%">
+          <SpineProse kind="ok" text={EMPHASIS} bodyLabel="arcana" contentWidth={110} />
+        </box>
+      </TestTuiProviders>
+    ),
+    { width: 120, height: 12 },
+  )
+
+  const first = await firstFrameWith("bold")
+  expect(first).toBeDefined()
+  const frame = app.captureCharFrame()
+  // Markers are concealed by the synchronous frame, never rendered as text.
+  expect(frame).not.toContain("**")
+  expect(frame).not.toContain("~~")
+  // And the styles are real: bold + italic attributes, strikethrough present.
+  expect(attrsOf(first!, "bold")).toBe(1)
+  expect(attrsOf(first!, "italic")).toBe(4)
+  expect(findSpan(first!, "strike")).toBeDefined()
+})
+
+test("emphasis styles are identical before and after the real worker commit", async () => {
+  await prepare(["markdown"])
+  app = await testRender(
+    () => (
+      <TestTuiProviders>
+        <box width="100%" height="100%">
+          <SpineProse kind="ok" text={EMPHASIS} bodyLabel="arcana" contentWidth={110} />
+        </box>
+      </TestTuiProviders>
+    ),
+    { width: 120, height: 12 },
+  )
+
+  const baselineFrame = await firstFrameWith("bold")
+  expect(baselineFrame).toBeDefined()
+  const sample = () => {
+    const frame = app!.captureSpans()
+    return [
+      `${colorOf(frame, "bold")}|${attrsOf(frame, "bold")}`,
+      `${colorOf(frame, "italic")}|${attrsOf(frame, "italic")}`,
+      `${colorOf(frame, "strike")}|${attrsOf(frame, "strike")}`,
+    ].join("~")
+  }
+  const baseline = sample()
+
+  // The commit must not restyle what the synchronous frame painted.
+  for (let i = 0; i < 25; i++) {
+    await app.renderOnce()
+    await Bun.sleep(15)
+    expect(sample(), `frame ${i}`).toBe(baseline)
+  }
+  const settled = app.captureCharFrame()
+  expect(settled).not.toContain("**")
+  expect(settled).not.toContain("~~")
 })
