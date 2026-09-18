@@ -408,6 +408,11 @@ export function resolveTheme(
     resolved.surfaceAlt = resolved.backgroundPanel
   }
 
+  // Explicit optional tokens above resolve straight from the palette JSON and
+  // bypass the first design pass; re-apply the ramp so none of them can
+  // reintroduce saturated chrome (backgroundMenu was the visible one).
+  if (designed) applyDesignedMonochrome(resolved, mode)
+
   // Spine command-spine tokens — fallback-safe.
   // Do NOT collapse multiple kinds onto the same role (ask/run/prompt all → accent
   // and plan/patch both → secondary made every theme feel identical on the spine).
@@ -712,14 +717,54 @@ const MONO_LIGHT_MAP: Partial<Record<ThemeColor, number>> = {
 }
 
 /**
- * The cast: the theme's own hue at a whisper of saturation. Warm palettes stay
- * faintly warm, cool ones faintly cool, and nothing reads as "colored".
+ * The cast: the theme's own hue at two strengths. Structural tokens (surfaces,
+ * borders, ink, markdown) take the quiet strength — they read as neutral grays.
+ * Identity tokens (accents, semantics, spine roles, code keywords) take the
+ * louder one, so switching themes visibly changes the mood while nothing
+ * approaches the original saturation.
  */
+const MONO_STRUCTURE_SAT = 0.05
+const MONO_STRUCTURE_SAT_LIGHT = 0.035
+const MONO_IDENTITY_SAT = 0.16
+const MONO_IDENTITY_SAT_LIGHT = 0.14
+
+/** Tokens that carry theme identity rather than structure. */
+const MONO_IDENTITY_TOKENS = new Set<ThemeColor>([
+  "primary",
+  "secondary",
+  "accent",
+  "highlight",
+  "info",
+  "success",
+  "warning",
+  "error",
+  "diffAdded",
+  "diffRemoved",
+  "diffHunkHeader",
+  "diffHighlightAdded",
+  "diffHighlightRemoved",
+  "markdownHeading",
+  "markdownLink",
+  "markdownLinkText",
+  "syntaxKeyword",
+  "syntaxString",
+  "syntaxNumber",
+  "syntaxType",
+  "syntaxOperator",
+])
+
 function monochromeCast(theme: Partial<Record<ThemeColor, RGBA>>, mode: "dark" | "light") {
-  const background = theme.background && theme.background.a > 0 ? theme.background : undefined
-  const hsl = background ? rgbaToHsl(background) : undefined
-  const source = hsl && hsl.s > 0.04 ? hsl : rgbaToHsl(theme.accent ?? theme.primary ?? RGBA.fromInts(128, 128, 128))
-  return { hue: source.h, sat: mode === "dark" ? 0.05 : 0.035 }
+  // The accent is the theme's declared identity; fall back to the primary and
+  // only then to the background, which is often nearly neutral.
+  const accent = theme.accent ? rgbaToHsl(theme.accent) : undefined
+  const primary = theme.primary ? rgbaToHsl(theme.primary) : undefined
+  const background = theme.background && theme.background.a > 0 ? rgbaToHsl(theme.background) : undefined
+  const source = [accent, primary, background].find((hsl) => hsl && hsl.s > 0.05) ?? accent ?? primary ?? background
+  return {
+    hue: source?.h ?? 0,
+    sat: mode === "dark" ? MONO_STRUCTURE_SAT : MONO_STRUCTURE_SAT_LIGHT,
+    identitySat: mode === "dark" ? MONO_IDENTITY_SAT : MONO_IDENTITY_SAT_LIGHT,
+  }
 }
 
 /** Re-draw every structural token on the designed ladder, cast-tinted. */
@@ -730,7 +775,8 @@ function applyDesignedMonochrome(theme: Partial<Record<ThemeColor, RGBA>>, mode:
   for (const [key, step] of Object.entries(map) as Array<[ThemeColor, number]>) {
     const current = theme[key]
     if (!current) continue
-    theme[key] = hslToRgba(cast.hue, cast.sat, steps[step]!, current.a)
+    const sat = MONO_IDENTITY_TOKENS.has(key) ? cast.identitySat : cast.sat
+    theme[key] = hslToRgba(cast.hue, sat, steps[step]!, current.a)
   }
 }
 
@@ -747,7 +793,7 @@ function clampToCast(theme: Partial<Record<ThemeColor, RGBA>>, mode: "dark" | "l
     const value = theme[key]
     if (!value || value.a === 0) continue
     const hsl = rgbaToHsl(value)
-    if (hsl.s > cast.sat) theme[key] = hslToRgba(hsl.h, cast.sat, hsl.l, value.a)
+    if (hsl.s > cast.identitySat) theme[key] = hslToRgba(hsl.h, cast.identitySat, hsl.l, value.a)
   }
 }
 
@@ -806,7 +852,7 @@ function spaceMonochromeRoles(theme: Partial<Record<ThemeColor, RGBA>>, mode: "d
   // their original prominence order.
   const brandGray = clamp01(lightBg ? band.lo : band.hi)
   const brand = theme.spineBrand
-  if (brand) theme.spineBrand = hslToRgba(cast.hue, cast.sat, brandGray, brand.a)
+  if (brand) theme.spineBrand = hslToRgba(cast.hue, cast.identitySat, brandGray, brand.a)
   const roles = MONO_LADDER_KEYS.map((key) => ({ key, lum: relativeLuminance(theme[key]!) })).sort((a, b) =>
     lightBg ? a.lum - b.lum : b.lum - a.lum,
   )
@@ -814,7 +860,7 @@ function spaceMonochromeRoles(theme: Partial<Record<ThemeColor, RGBA>>, mode: "d
     const offset = (index + 1) * gap
     const gray = clamp01(lightBg ? band.lo + offset : band.hi - offset)
     const current = theme[role.key]!
-    theme[role.key] = hslToRgba(cast.hue, cast.sat, gray, current.a)
+    theme[role.key] = hslToRgba(cast.hue, cast.identitySat, gray, current.a)
   })
 }
 
