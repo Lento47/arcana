@@ -138,8 +138,33 @@ type Variant = {
   light: HexColor | RefName
 }
 type ColorValue = HexColor | RefName | Variant | RGBA
+/**
+ * Global monochrome strength. `off` keeps the palette exactly as authored,
+ * `soft` desaturates it while keeping its own luminance structure, `full`
+ * re-draws it on the designed ramp.
+ */
+export type MonoMode = "off" | "soft" | "full"
+
+/**
+ * Per-theme monochrome character: the hue to cast with and the two saturation
+ * strengths. A theme can also declare `mono: false` to opt out entirely.
+ */
+export type MonoCharacter = {
+  hue?: number
+  structure?: number
+  identity?: number
+}
+
 export type ThemeJson = {
   $schema?: string
+  /**
+   * Inherit every token and `defs` entry this theme does not define from
+   * another theme (built-in, plugin or custom). Missing keys used to fall back
+   * to gray, which made a three-line tweak theme render as a broken app.
+   */
+  extends?: string
+  /** Monochrome declaration for this theme: false opts out, an object tunes it. */
+  mono?: boolean | MonoCharacter
   defs?: Record<string, HexColor | RefName>
   theme: Omit<
     Record<ThemeColor, ColorValue>,
@@ -224,10 +249,10 @@ export const DEFAULT_THEMES: Record<string, ThemeJson> = {
 }
 
 /**
- * Shipped palettes are re-drawn on the designed monochrome ramp; anything the
- * user or a plugin supplies keeps its own design (desaturated only).
+ * Shipped palettes take the designed monochrome ramp by default; `soft` and
+ * `off` are opt-outs (config or a theme's own `mono` declaration).
  */
-const BUILTIN_THEMES = new Set<ThemeJson>(Object.values(DEFAULT_THEMES))
+const DEFAULT_MONO_MODE: MonoMode = "full"
 
 const pluginThemes: Record<string, ThemeJson> = {}
 let customThemes: Record<string, ThemeJson> = {}
@@ -305,24 +330,39 @@ export function upsertTheme(name: string, theme: unknown) {
 }
 
 /**
- * True when a theme name still resolves to its shipped palette (custom files
- * and plugin installs may shadow a name; those keep their own design).
+ * Flatten an `extends` chain into one ThemeJson. `defs` and `theme` merge with
+ * the child winning; an unknown or cyclic base is ignored with a warning rather
+ * than crashing the resolver (a broken custom file must not take the TUI down).
  */
-export function isBuiltinThemeName(name: string | undefined): boolean {
-  if (!name) return false
-  return listThemes()[name] === DEFAULT_THEMES[name]
+function resolveInherited(theme: ThemeJson, seen = new Set<ThemeJson>()): ThemeJson {
+  const baseName = theme.extends
+  if (!baseName) return theme
+  const base = listThemes()[baseName]
+  if (!base || base === theme || seen.has(base)) {
+    if (!base) console.warn(`[theme] "${baseName}" extends an unknown theme; ignored`)
+    return theme
+  }
+  seen.add(theme)
+  const inherited = resolveInherited(base, seen)
+  return {
+    ...theme,
+    // A child that does not declare mono inherits the base's declaration.
+    mono: theme.mono ?? inherited.mono,
+    defs: { ...inherited.defs, ...theme.defs },
+    theme: { ...inherited.theme, ...theme.theme },
+  }
 }
 
 export function resolveTheme(
   theme: ThemeJson,
   mode: "dark" | "light",
-  options?: { designed?: boolean },
+  options?: { mono?: MonoMode },
 ) {
-  // OpenTUI 0.4.x may ship new theme keys not present in arcana's JSON.
-  // resolveColor is now null-guarded — missing keys return black instead
-  // of crashing with .startsWith(undefined).
-  const merged = { ...theme.theme }
-  const defs = theme.defs ?? {}
+  const source = resolveInherited(theme)
+  const merged = { ...source.theme }
+  const defs = source.defs ?? {}
+  const monoMode: MonoMode = source.mono === false ? "off" : (options?.mono ?? DEFAULT_MONO_MODE)
+  const character = typeof source.mono === "object" ? source.mono : undefined
   // Hard-fallback gray — never return undefined. OpenTUI 0.4.x renderer
   // calls .startsWith("#") directly on color values; undefined is a crash.
   const FALLBACK = RGBA.fromInts(127, 127, 127)
@@ -366,15 +406,12 @@ export function resolveTheme(
       }),
   ) as Partial<Record<ThemeColor, RGBA>>
 
-  // Near-monochrome design pass: shipped palettes are re-drawn on the designed
-  // ramp (cast-tinted); custom themes are desaturated but never redesigned.
-  // `options.designed` lets a caller that knows the theme's name keep the ramp
-  // for clones of a shipped palette (the provider resolves by name). This runs
-  // BEFORE the optional-token fallbacks so they follow the redrawn tokens
-  // instead of snapshotting the pre-design colors.
-  const designed = options?.designed ?? BUILTIN_THEMES.has(theme)
-  if (designed) applyDesignedMonochrome(resolved, mode)
-  else applyMonochrome(resolved, THEME_MONOCHROME)
+  // Monochrome layer. `full` re-draws the palette on the designed ramp (cast
+  // tinted); `soft` desaturates it while keeping its own structure; `off`
+  // leaves it exactly as authored. Runs BEFORE the optional-token fallbacks so
+  // they follow the transformed tokens instead of snapshotting the originals.
+  if (monoMode === "full") applyDesignedMonochrome(resolved, mode, character)
+  else if (monoMode === "soft") applyMonochrome(resolved, THEME_MONOCHROME)
 
   // Handle selectedListItemText separately since it's optional
   const hasSelectedListItemText = merged.selectedListItemText !== undefined
@@ -411,7 +448,7 @@ export function resolveTheme(
   // Explicit optional tokens above resolve straight from the palette JSON and
   // bypass the first design pass; re-apply the ramp so none of them can
   // reintroduce saturated chrome (backgroundMenu was the visible one).
-  if (designed) applyDesignedMonochrome(resolved, mode)
+  if (monoMode === "full") applyDesignedMonochrome(resolved, mode, character)
 
   // Spine command-spine tokens — fallback-safe.
   // Do NOT collapse multiple kinds onto the same role (ask/run/prompt all → accent
@@ -455,9 +492,13 @@ export function resolveTheme(
   resolved.spineGutterTimestamp = spineFB("spineGutterTimestamp", resolved.textMuted)
   resolved.spineSubagent = spineFB("spineSubagent", resolved.accent)
   // Monochrome: cap explicit tokens (palette-defined spine colors) at the cast,
-  // re-space the spine signal roles by lightness, then guard contrast.
-  if (designed) clampToCast(resolved, mode)
-  spaceMonochromeRoles(resolved, mode)
+  // re-space the spine signal roles by lightness, then guard contrast. The
+  // ladder only applies to the designed ramp; `soft` keeps the palette's own
+  // (hue-distinct) roles, and `off` leaves everything alone.
+  if (monoMode === "full") {
+    clampToCast(resolved, mode, character)
+    spaceMonochromeRoles(resolved, mode, character)
+  }
   applyReadabilityFloor(resolved)
 
   return {
@@ -753,7 +794,11 @@ const MONO_IDENTITY_TOKENS = new Set<ThemeColor>([
   "syntaxOperator",
 ])
 
-function monochromeCast(theme: Partial<Record<ThemeColor, RGBA>>, mode: "dark" | "light") {
+function monochromeCast(
+  theme: Partial<Record<ThemeColor, RGBA>>,
+  mode: "dark" | "light",
+  character?: MonoCharacter,
+) {
   // The accent is the theme's declared identity; fall back to the primary and
   // only then to the background, which is often nearly neutral.
   const accent = theme.accent ? rgbaToHsl(theme.accent) : undefined
@@ -761,17 +806,21 @@ function monochromeCast(theme: Partial<Record<ThemeColor, RGBA>>, mode: "dark" |
   const background = theme.background && theme.background.a > 0 ? rgbaToHsl(theme.background) : undefined
   const source = [accent, primary, background].find((hsl) => hsl && hsl.s > 0.05) ?? accent ?? primary ?? background
   return {
-    hue: source?.h ?? 0,
-    sat: mode === "dark" ? MONO_STRUCTURE_SAT : MONO_STRUCTURE_SAT_LIGHT,
-    identitySat: mode === "dark" ? MONO_IDENTITY_SAT : MONO_IDENTITY_SAT_LIGHT,
+    hue: character?.hue ?? source?.h ?? 0,
+    sat: character?.structure ?? (mode === "dark" ? MONO_STRUCTURE_SAT : MONO_STRUCTURE_SAT_LIGHT),
+    identitySat: character?.identity ?? (mode === "dark" ? MONO_IDENTITY_SAT : MONO_IDENTITY_SAT_LIGHT),
   }
 }
 
 /** Re-draw every structural token on the designed ladder, cast-tinted. */
-function applyDesignedMonochrome(theme: Partial<Record<ThemeColor, RGBA>>, mode: "dark" | "light") {
+function applyDesignedMonochrome(
+  theme: Partial<Record<ThemeColor, RGBA>>,
+  mode: "dark" | "light",
+  character?: MonoCharacter,
+) {
   const steps = mode === "dark" ? MONO_DARK_STEPS : MONO_LIGHT_STEPS
   const map = mode === "dark" ? MONO_DARK_MAP : MONO_LIGHT_MAP
-  const cast = monochromeCast(theme, mode)
+  const cast = monochromeCast(theme, mode, character)
   for (const [key, step] of Object.entries(map) as Array<[ThemeColor, number]>) {
     const current = theme[key]
     if (!current) continue
@@ -787,8 +836,12 @@ function applyDesignedMonochrome(theme: Partial<Record<ThemeColor, RGBA>>, mode:
  * rendered as a colored chip in an otherwise gray UI. Custom themes are exempt:
  * their desaturation is the 0.85 transform, not this cast.
  */
-function clampToCast(theme: Partial<Record<ThemeColor, RGBA>>, mode: "dark" | "light") {
-  const cast = monochromeCast(theme, mode)
+function clampToCast(
+  theme: Partial<Record<ThemeColor, RGBA>>,
+  mode: "dark" | "light",
+  character?: MonoCharacter,
+) {
+  const cast = monochromeCast(theme, mode, character)
   for (const key of Object.keys(theme) as ThemeColor[]) {
     const value = theme[key]
     if (!value || value.a === 0) continue
@@ -815,11 +868,15 @@ const MONO_LADDER_KEYS = [
 ] as const
 const MONO_ROLE_MAX_GAP = 0.09
 
-function spaceMonochromeRoles(theme: Partial<Record<ThemeColor, RGBA>>, mode: "dark" | "light") {
+function spaceMonochromeRoles(
+  theme: Partial<Record<ThemeColor, RGBA>>,
+  mode: "dark" | "light",
+  character?: MonoCharacter,
+) {
   const surface = theme.background && theme.background.a === 0 ? theme.backgroundPanel : theme.background
   const text = theme.text
   if (!surface || !text) return
-  const cast = monochromeCast(theme, mode)
+  const cast = monochromeCast(theme, mode, character)
   const lightBg = relativeLuminance(surface) > 0.5
   // The strictest surface these roles are checked against (menu/panel differ).
   const surfaces = [surface, theme.backgroundMenu, theme.backgroundPanel].filter(Boolean) as RGBA[]

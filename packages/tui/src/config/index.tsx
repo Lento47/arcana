@@ -170,6 +170,10 @@ export const Info = Schema.Struct({
   shell: Schema.optional(Shell).annotate({ description: "TUI shell layout" }),
   theme: Schema.optional(Schema.String),
   lexicon: Schema.optional(LexiconVoice).annotate({ description: "Interface voice (arcane | plain)" }),
+  theme_monochrome: Schema.optional(Schema.Literals(["off", "soft", "full"])).annotate({
+    description:
+      "Monochrome strength for every theme: off keeps palettes as authored, soft desaturates them, full re-draws them on the designed ramp (default: full)",
+  }),
   keybinds: Schema.optional(TuiKeybind.KeybindOverrides),
   plugin: Schema.optional(Schema.Array(PluginSpec)),
   plugin_enabled: Schema.optional(Schema.Record(Schema.String, Schema.Boolean)),
@@ -268,6 +272,7 @@ export function resolve(input: Info, options: ResolveOptions): Resolved {
     },
     shell: input.shell ?? "command-spine",
     lexicon: input.lexicon ?? "arcane",
+    theme_monochrome: input.theme_monochrome ?? "full",
     keybinds: createBindingLookup(TuiKeybind.toBindingConfig(TuiKeybind.parse(keybinds)), {
       commandMap: TuiKeybind.CommandMap,
       bindingDefaults: TuiKeybind.bindingDefaults(),

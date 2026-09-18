@@ -328,6 +328,89 @@ test.each(BRAND_THEME_MODES)(
   },
 )
 
+describe("theme inheritance and the monochrome layer", () => {
+  test("a partial theme inherits every missing token and defs entry", () => {
+    const child = { extends: "arcana", theme: { accent: "#ff0000" } } as unknown as (typeof DEFAULT_THEMES)[string]
+    const resolved = resolveTheme(child, "dark", { mono: "off" })
+    // The override wins…
+    expect(resolved.accent.toInts().slice(0, 3)).toEqual([255, 0, 0])
+    // …and nothing falls back to the gray FALLBACK: every token the child never
+    // declared equals the base theme's authored value.
+    const base = resolveTheme(DEFAULT_THEMES.arcana!, "dark", { mono: "off" })
+    expect(resolved.background.toInts()).toEqual(base.background.toInts())
+    expect(resolved.text.toInts()).toEqual(base.text.toInts())
+    expect(resolved.spineBrand.toInts()).toEqual(base.spineBrand.toInts())
+  })
+
+  test("defs are inherited so a child can reference the base palette", () => {
+    const child = { extends: "arcana", theme: { primary: "darkStep9" } } as unknown as (typeof DEFAULT_THEMES)[string]
+    const resolved = resolveTheme(child, "dark", { mono: "off" })
+    const base = resolveTheme(DEFAULT_THEMES.arcana!, "dark", { mono: "off" })
+    expect(resolved.primary.toInts()).toEqual(base.primary.toInts())
+  })
+
+  test("an unknown or cyclic base is ignored instead of crashing", () => {
+    const unknown = { extends: "definitely-not-a-theme", theme: { ...DEFAULT_THEMES.arcana!.theme } }
+    expect(() => resolveTheme(unknown as never, "dark")).not.toThrow()
+    const a = `cycle-a-${Date.now()}`
+    const b = `cycle-b-${Date.now()}`
+    expect(addTheme(a, { extends: b, theme: {} })).toBe(true)
+    expect(addTheme(b, { extends: a, theme: {} })).toBe(true)
+    expect(() => resolveTheme(allThemes()[a]!, "dark")).not.toThrow()
+  })
+
+  test("off keeps authored palettes, soft desaturates, full re-draws", () => {
+    const spread = (c: RGBA) => Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b)
+    const raw = DEFAULT_THEMES.arcana!
+    const off = resolveTheme(raw, "dark", { mono: "off" })
+    const soft = resolveTheme(raw, "dark", { mono: "soft" })
+    const full = resolveTheme(raw, "dark", { mono: "full" })
+    // `off` is the authored palette (its accent is genuinely saturated);
+    // `soft` cuts the saturation; `full` re-draws at the identity strength,
+    // which can sit above `soft` when a palette was never very saturated.
+    expect(spread(off.accent)).toBeGreaterThan(0.2)
+    expect(spread(soft.accent)).toBeLessThan(spread(off.accent))
+    expect(spread(full.accent)).toBeLessThan(0.2)
+  })
+
+  test("a theme opts out with mono: false, whatever the config says", () => {
+    const optOut = { ...DEFAULT_THEMES.arcana!, mono: false }
+    const resolved = resolveTheme(optOut, "dark", { mono: "full" })
+    const authored = resolveTheme(DEFAULT_THEMES.arcana!, "dark", { mono: "off" })
+    expect(resolved.accent.toInts()).toEqual(authored.accent.toInts())
+  })
+
+  test("a theme can declare its own cast character", () => {
+    const themed = { ...DEFAULT_THEMES.arcana!, mono: { hue: 120, identity: 0.4 } }
+    const resolved = resolveTheme(themed, "dark", { mono: "full" })
+    const hsl = rgbaToHsl(resolved.accent)
+    expect(hsl.h).toBeGreaterThan(100)
+    expect(hsl.h).toBeLessThan(140)
+  })
+
+  test("themes keep distinct hue identities rather than collapsing to one gray", () => {
+    const buckets = new Set<number>()
+    for (const name of Object.keys(DEFAULT_THEMES)) {
+      const hsl = rgbaToHsl(resolveTheme(DEFAULT_THEMES[name]!, "dark", { mono: "full" }).accent)
+      buckets.add(Math.round(hsl.h / 20))
+    }
+    expect(buckets.size).toBeGreaterThan(3)
+  })
+
+  test.each(Object.keys(DEFAULT_THEMES))("%s keeps its semantics on distinct rungs (dark)", (name: string) => {
+    const theme = resolveTheme(DEFAULT_THEMES[name]!, "dark", { mono: "full" })
+    const tokens = ["primary", "secondary", "accent", "info", "success", "warning", "error"] as const
+    const luminances = tokens.map((token) => relativeLuminance(theme[token]))
+    for (let i = 0; i < luminances.length; i++) {
+      for (let j = i + 1; j < luminances.length; j++) {
+        expect(Math.abs(luminances[i]! - luminances[j]!), `${name}: ${tokens[i]} vs ${tokens[j]}`).toBeGreaterThan(
+          0.01,
+        )
+      }
+    }
+  })
+})
+
 describe("monochrome palette", () => {
   test("monochromeColor scales HSL saturation, keeping lightness and alpha", () => {
     const color = RGBA.fromInts(0, 0, 255, 128)
