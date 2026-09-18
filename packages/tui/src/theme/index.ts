@@ -223,6 +223,12 @@ export const DEFAULT_THEMES: Record<string, ThemeJson> = {
   wraith,
 }
 
+/**
+ * Shipped palettes are re-drawn on the designed monochrome ramp; anything the
+ * user or a plugin supplies keeps its own design (desaturated only).
+ */
+const BUILTIN_THEMES = new Set<ThemeJson>(Object.values(DEFAULT_THEMES))
+
 const pluginThemes: Record<string, ThemeJson> = {}
 let customThemes: Record<string, ThemeJson> = {}
 let systemTheme: ThemeJson | undefined
@@ -298,7 +304,20 @@ export function upsertTheme(name: string, theme: unknown) {
   return true
 }
 
-export function resolveTheme(theme: ThemeJson, mode: "dark" | "light") {
+/**
+ * True when a theme name still resolves to its shipped palette (custom files
+ * and plugin installs may shadow a name; those keep their own design).
+ */
+export function isBuiltinThemeName(name: string | undefined): boolean {
+  if (!name) return false
+  return listThemes()[name] === DEFAULT_THEMES[name]
+}
+
+export function resolveTheme(
+  theme: ThemeJson,
+  mode: "dark" | "light",
+  options?: { designed?: boolean },
+) {
   // OpenTUI 0.4.x may ship new theme keys not present in arcana's JSON.
   // resolveColor is now null-guarded — missing keys return black instead
   // of crashing with .startsWith(undefined).
@@ -346,6 +365,16 @@ export function resolveTheme(theme: ThemeJson, mode: "dark" | "light") {
         return [key, resolveColor(value as ColorValue)]
       }),
   ) as Partial<Record<ThemeColor, RGBA>>
+
+  // Near-monochrome design pass: shipped palettes are re-drawn on the designed
+  // ramp (cast-tinted); custom themes are desaturated but never redesigned.
+  // `options.designed` lets a caller that knows the theme's name keep the ramp
+  // for clones of a shipped palette (the provider resolves by name). This runs
+  // BEFORE the optional-token fallbacks so they follow the redrawn tokens
+  // instead of snapshotting the pre-design colors.
+  const designed = options?.designed ?? BUILTIN_THEMES.has(theme)
+  if (designed) applyDesignedMonochrome(resolved, mode)
+  else applyMonochrome(resolved, THEME_MONOCHROME)
 
   // Handle selectedListItemText separately since it's optional
   const hasSelectedListItemText = merged.selectedListItemText !== undefined
@@ -420,14 +449,10 @@ export function resolveTheme(theme: ThemeJson, mode: "dark" | "light") {
   resolved.spineGutterElapsed = spineFB("spineGutterElapsed", resolved.textMuted)
   resolved.spineGutterTimestamp = spineFB("spineGutterTimestamp", resolved.textMuted)
   resolved.spineSubagent = spineFB("spineSubagent", resolved.accent)
-  // Near-monochrome: the floor runs first (contrast on the original palette),
-  // then every token is desaturated (luminance-preserving, so the guarantees
-  // hold), then the spine roles are re-spaced as pure grays. The final floor
-  // pass is a safety net; grays stay gray because the walk preserves hue and
-  // saturation (zero).
-  applyReadabilityFloor(resolved)
-  applyMonochrome(resolved, THEME_MONOCHROME)
-  spaceMonochromeRoles(resolved)
+  // Monochrome: cap explicit tokens (palette-defined spine colors) at the cast,
+  // re-space the spine signal roles by lightness, then guard contrast.
+  if (designed) clampToCast(resolved, mode)
+  spaceMonochromeRoles(resolved, mode)
   applyReadabilityFloor(resolved)
 
   return {
@@ -542,6 +567,191 @@ function applyMonochrome(theme: Partial<Record<ThemeColor, RGBA>>, amount: numbe
 }
 
 /**
+ * Designed monochrome ramp for the built-in themes.
+ *
+ * A mechanical desaturation keeps each palette's arbitrary luminance
+ * relationships, which reads as muddy: surfaces a few percent apart, ink levels
+ * that wander. This pass re-draws the structural tokens — surfaces, borders,
+ * ink, semantics, markdown and syntax — on fixed lightness ladders, so the
+ * hierarchy is deliberate, while a whisper of the theme's own cast hue (from
+ * its background) keeps warm themes warm and cool themes cool. Custom themes
+ * keep the plain desaturation: a user's palette is never redesigned.
+ *
+ * Every step was chosen against the readability floor: surfaces separate
+ * visibly, ink clears its ratio (text 7:1, muted 4.7:1, semantic 4.5:1), and
+ * borders clear their 2.2/2.8 floors before the final floor pass validates.
+ */
+const MONO_DARK_STEPS = [
+  0.05, 0.075, 0.1, 0.13, 0.16, 0.2, 0.26, 0.34, 0.44, 0.5, 0.56, 0.62, 0.68, 0.74, 0.8, 0.86, 0.92, 0.96,
+] as const
+const MONO_LIGHT_STEPS = [
+  0.03, 0.07, 0.12, 0.17, 0.21, 0.25, 0.29, 0.33, 0.38, 0.42, 0.46, 0.5, 0.54, 0.62, 0.7, 0.78, 0.86, 0.92, 0.96,
+] as const
+
+/** Token → step index on the dark ladder. */
+const MONO_DARK_MAP: Partial<Record<ThemeColor, number>> = {
+  // Surfaces: one visible step each, never mud.
+  background: 0,
+  backgroundPanel: 1,
+  surfaceAlt: 2,
+  backgroundElement: 2,
+  backgroundMenu: 3,
+  diffContextBg: 1,
+  diffRemovedBg: 1,
+  diffAddedBg: 2,
+  diffRemovedLineNumberBg: 1,
+  diffAddedLineNumberBg: 2,
+  // Borders: quiet but present (2.2 / 2.8 floors).
+  borderThinking: 7,
+  borderSubtle: 7,
+  border: 8,
+  borderActive: 12,
+  // Ink: body, muted, and the quiet end.
+  text: 17,
+  textMuted: 9,
+  // Semantics on distinct rungs (lightness is the only signal left).
+  primary: 15,
+  secondary: 10,
+  accent: 13,
+  highlight: 17,
+  info: 12,
+  success: 11,
+  warning: 16,
+  error: 14,
+  // Markdown.
+  markdownText: 17,
+  markdownHeading: 16,
+  markdownStrong: 17,
+  markdownEmph: 16,
+  markdownCode: 15,
+  markdownCodeBlock: 17,
+  markdownLink: 14,
+  markdownLinkText: 14,
+  markdownBlockQuote: 11,
+  markdownListItem: 14,
+  markdownListEnumeration: 14,
+  markdownImage: 14,
+  markdownImageText: 14,
+  markdownHorizontalRule: 8,
+  // Syntax.
+  syntaxKeyword: 15,
+  syntaxString: 11,
+  syntaxNumber: 13,
+  syntaxType: 15,
+  syntaxOperator: 9,
+  syntaxComment: 8,
+  syntaxVariable: 17,
+  syntaxPunctuation: 16,
+  syntaxFunction: 17,
+  // Diff.
+  diffAdded: 11,
+  diffRemoved: 11,
+  diffContext: 9,
+  diffHunkHeader: 11,
+  diffHighlightAdded: 15,
+  diffHighlightRemoved: 15,
+  diffLineNumber: 8,
+}
+
+/** Token → step index on the light ladder. */
+const MONO_LIGHT_MAP: Partial<Record<ThemeColor, number>> = {
+  background: 18,
+  backgroundPanel: 17,
+  surfaceAlt: 16,
+  backgroundElement: 16,
+  backgroundMenu: 15,
+  diffContextBg: 16,
+  diffRemovedBg: 16,
+  diffAddedBg: 15,
+  diffRemovedLineNumberBg: 16,
+  diffAddedLineNumberBg: 15,
+  borderThinking: 13,
+  borderSubtle: 13,
+  border: 12,
+  borderActive: 9,
+  text: 4,
+  textMuted: 9,
+  primary: 5,
+  secondary: 8,
+  accent: 6,
+  highlight: 3,
+  info: 6,
+  success: 9,
+  warning: 7,
+  error: 9,
+  markdownText: 4,
+  markdownHeading: 3,
+  markdownStrong: 3,
+  markdownEmph: 4,
+  markdownCode: 4,
+  markdownCodeBlock: 4,
+  markdownLink: 6,
+  markdownLinkText: 6,
+  markdownBlockQuote: 8,
+  markdownListItem: 6,
+  markdownListEnumeration: 6,
+  markdownImage: 6,
+  markdownImageText: 6,
+  markdownHorizontalRule: 12,
+  syntaxKeyword: 5,
+  syntaxString: 8,
+  syntaxNumber: 6,
+  syntaxType: 5,
+  syntaxOperator: 7,
+  syntaxComment: 11,
+  syntaxVariable: 4,
+  syntaxPunctuation: 5,
+  syntaxFunction: 4,
+  diffAdded: 6,
+  diffRemoved: 6,
+  diffContext: 7,
+  diffHunkHeader: 6,
+  diffHighlightAdded: 4,
+  diffHighlightRemoved: 4,
+  diffLineNumber: 11,
+}
+
+/**
+ * The cast: the theme's own hue at a whisper of saturation. Warm palettes stay
+ * faintly warm, cool ones faintly cool, and nothing reads as "colored".
+ */
+function monochromeCast(theme: Partial<Record<ThemeColor, RGBA>>, mode: "dark" | "light") {
+  const background = theme.background && theme.background.a > 0 ? theme.background : undefined
+  const hsl = background ? rgbaToHsl(background) : undefined
+  const source = hsl && hsl.s > 0.04 ? hsl : rgbaToHsl(theme.accent ?? theme.primary ?? RGBA.fromInts(128, 128, 128))
+  return { hue: source.h, sat: mode === "dark" ? 0.05 : 0.035 }
+}
+
+/** Re-draw every structural token on the designed ladder, cast-tinted. */
+function applyDesignedMonochrome(theme: Partial<Record<ThemeColor, RGBA>>, mode: "dark" | "light") {
+  const steps = mode === "dark" ? MONO_DARK_STEPS : MONO_LIGHT_STEPS
+  const map = mode === "dark" ? MONO_DARK_MAP : MONO_LIGHT_MAP
+  const cast = monochromeCast(theme, mode)
+  for (const [key, step] of Object.entries(map) as Array<[ThemeColor, number]>) {
+    const current = theme[key]
+    if (!current) continue
+    theme[key] = hslToRgba(cast.hue, cast.sat, steps[step]!, current.a)
+  }
+}
+
+/**
+ * Cap every remaining token at the cast's saturation, keeping its lightness.
+ * The design pass only re-draws the tokens it maps; an explicit `spine*` key in
+ * the palette JSON (or any future token) otherwise stayed fully saturated and
+ * rendered as a colored chip in an otherwise gray UI. Custom themes are exempt:
+ * their desaturation is the 0.85 transform, not this cast.
+ */
+function clampToCast(theme: Partial<Record<ThemeColor, RGBA>>, mode: "dark" | "light") {
+  const cast = monochromeCast(theme, mode)
+  for (const key of Object.keys(theme) as ThemeColor[]) {
+    const value = theme[key]
+    if (!value || value.a === 0) continue
+    const hsl = rgbaToHsl(value)
+    if (hsl.s > cast.sat) theme[key] = hslToRgba(hsl.h, cast.sat, hsl.l, value.a)
+  }
+}
+
+/**
  * Monochrome roles differ by LIGHTNESS, not hue. The pairs that share a row
  * (ask/run/prompt, plan/patch, brand/ask, inspect/patch) are re-spaced onto a
  * uniform gray ladder inside the contrast-safe band, preserving each theme's
@@ -559,10 +769,11 @@ const MONO_LADDER_KEYS = [
 ] as const
 const MONO_ROLE_MAX_GAP = 0.09
 
-function spaceMonochromeRoles(theme: Partial<Record<ThemeColor, RGBA>>) {
+function spaceMonochromeRoles(theme: Partial<Record<ThemeColor, RGBA>>, mode: "dark" | "light") {
   const surface = theme.background && theme.background.a === 0 ? theme.backgroundPanel : theme.background
   const text = theme.text
   if (!surface || !text) return
+  const cast = monochromeCast(theme, mode)
   const lightBg = relativeLuminance(surface) > 0.5
   // The strictest surface these roles are checked against (menu/panel differ).
   const surfaces = [surface, theme.backgroundMenu, theme.backgroundPanel].filter(Boolean) as RGBA[]
@@ -576,18 +787,18 @@ function spaceMonochromeRoles(theme: Partial<Record<ThemeColor, RGBA>>) {
   const textGray = grayFromLuminance(relativeLuminance(text))
   const clamp01 = (value: number) => Math.max(0, Math.min(1, value))
   const margin = 0.07
-  // Two bands that both clear the bound and stay off the body-text ink; the
-  // roomier one wins, so a hue-less ladder gets the largest step it can.
-  const bands = lightBg
-    ? [
-        { lo: 0, hi: clamp01(Math.min(boundGray, textGray - margin)) },
-        { lo: clamp01(textGray + margin), hi: clamp01(boundGray) },
-      ]
-    : [
-        { lo: clamp01(boundGray), hi: clamp01(Math.min(1, textGray - margin)) },
-        { lo: clamp01(Math.max(boundGray, textGray + margin)), hi: 1 },
-      ]
-  const band = bands.sort((a, b) => b.hi - b.lo - (a.hi - a.lo))[0]!
+  // Dark surfaces put body text at the bright end, so the ladder keeps clear of
+  // it. Light surfaces put text in the middle of the usable band, so the ladder
+  // may span the whole band — that is what keeps its steps wide.
+  const band = lightBg
+    ? { lo: 0, hi: clamp01(boundGray) }
+    : (() => {
+        const bands = [
+          { lo: clamp01(boundGray), hi: clamp01(Math.min(1, textGray - margin)) },
+          { lo: clamp01(Math.max(boundGray, textGray + margin)), hi: 1 },
+        ]
+        return bands.sort((a, b) => b.hi - b.lo - (a.hi - a.lo))[0]!
+      })()
   const span = Math.max(0, band.hi - band.lo)
   const gap = Math.min(MONO_ROLE_MAX_GAP, span / MONO_LADDER_KEYS.length)
   // Prominent end of the band: brighter on a dark surface, darker on a light
@@ -595,7 +806,7 @@ function spaceMonochromeRoles(theme: Partial<Record<ThemeColor, RGBA>>) {
   // their original prominence order.
   const brandGray = clamp01(lightBg ? band.lo : band.hi)
   const brand = theme.spineBrand
-  if (brand) theme.spineBrand = RGBA.fromValues(brandGray, brandGray, brandGray, brand.a)
+  if (brand) theme.spineBrand = hslToRgba(cast.hue, cast.sat, brandGray, brand.a)
   const roles = MONO_LADDER_KEYS.map((key) => ({ key, lum: relativeLuminance(theme[key]!) })).sort((a, b) =>
     lightBg ? a.lum - b.lum : b.lum - a.lum,
   )
@@ -603,7 +814,7 @@ function spaceMonochromeRoles(theme: Partial<Record<ThemeColor, RGBA>>) {
     const offset = (index + 1) * gap
     const gray = clamp01(lightBg ? band.lo + offset : band.hi - offset)
     const current = theme[role.key]!
-    theme[role.key] = RGBA.fromValues(gray, gray, gray, current.a)
+    theme[role.key] = hslToRgba(cast.hue, cast.sat, gray, current.a)
   })
 }
 

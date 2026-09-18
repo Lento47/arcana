@@ -8,6 +8,7 @@ import {
   generateSyntax,
   generateSystem,
   hasTheme,
+  isBuiltinThemeName,
   isTheme,
   resolveTheme,
   selectedForeground,
@@ -74,6 +75,7 @@ export {
   generateSyntax,
   generateSystem,
   hasTheme,
+  isBuiltinThemeName,
   isTheme,
   resolveTheme,
   selectedForeground,
@@ -270,15 +272,17 @@ export const { use: useTheme, provider: ThemeProvider, context: ThemeContext } =
 
     const values = createMemo(() => {
       const active = store.themes[store.active]
-      if (active) return resolveTheme(active, store.mode)
+      if (active) return resolveTheme(active, store.mode, { designed: isBuiltinThemeName(store.active) })
 
       const saved = kv.get("theme")
       if (typeof saved === "string") {
         const theme = store.themes[saved]
-        if (theme) return resolveTheme(theme, store.mode)
+        if (theme) return resolveTheme(theme, store.mode, { designed: isBuiltinThemeName(saved) })
       }
 
-      return resolveTheme(store.themes.arcana ?? store.themes.opencode ?? store.themes.arcana, store.mode)
+      return resolveTheme(store.themes.arcana ?? store.themes.opencode ?? store.themes.arcana, store.mode, {
+        designed: isBuiltinThemeName("arcana"),
+      })
     })
 
     createEffect(() => renderer.setBackgroundColor(values().background))
