@@ -47,7 +47,7 @@ import {
   VerifyObligationPayload,
   VerifyObligationResult,
 } from "../groups/session"
-import { ApiNotFoundError, ConflictError, PermissionNotFoundError, notFound } from "../errors"
+import { ApiNotFoundError, ConflictError, ForbiddenError, PermissionNotFoundError, ServiceUnavailableError, notFound } from "../errors"
 import * as SessionError from "./session-errors"
 
 const tryParseJson = (text: string) =>
@@ -55,6 +55,23 @@ const tryParseJson = (text: string) =>
     try: () => JSON.parse(text) as unknown,
     catch: () => new HttpApiError.BadRequest({}),
   })
+
+/**
+ * Share failures must reach the operator with their reason: the license and
+ * configuration refusals are 403s, everything else is the share service being
+ * unreachable (503). Both carry a message; an empty 500 is what made the
+ * command look broken in the first place.
+ */
+const shareError = (error: unknown) => {
+  if (error instanceof SessionShare.SharePolicyError) return new ForbiddenError({ message: error.message })
+  return new ServiceUnavailableError({
+    message:
+      error instanceof Error && error.message.length > 0
+        ? error.message
+        : "Failed to reach the share service — try again.",
+    service: "share",
+  })
+}
 
 export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", (handlers) =>
   Effect.gen(function* () {
@@ -401,14 +418,13 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       return true
     })
 
-    // share/unshare errors aren't all client-induced — storage and network
-    // failures from SessionShare are real possibilities. Map to a typed 500
-    // (matches the legacy route behavior which routed any failure through
-    // ErrorMiddleware → NamedError.Unknown 500) instead of blanket-mapping
-    // every failure to a 400 BadRequest.
+    // share/unshare failures carry their reason: policy refusals are 403s,
+    // anything else is the share service being unreachable (503). The message
+    // is what the TUI shows; the old blanket 500 had an empty body, which is
+    // how a license refusal surfaced as a client-side TypeError.
     const share = Effect.fn("SessionHttpApi.share")(function* (ctx: { params: { sessionID: SessionID } }) {
       yield* requireSession(ctx.params.sessionID)
-      yield* shareSvc.share(ctx.params.sessionID).pipe(Effect.mapError(() => new HttpApiError.InternalServerError({})))
+      yield* shareSvc.share(ctx.params.sessionID).pipe(Effect.mapError(shareError))
       return yield* requireSession(ctx.params.sessionID)
     })
 
@@ -416,7 +432,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       yield* requireSession(ctx.params.sessionID)
       yield* shareSvc
         .unshare(ctx.params.sessionID)
-        .pipe(Effect.mapError(() => new HttpApiError.InternalServerError({})))
+        .pipe(Effect.mapError(shareError))
       return yield* requireSession(ctx.params.sessionID)
     })
 

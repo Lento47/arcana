@@ -15004,6 +15004,10 @@ export type SessionUnshareErrors = {
    * InternalServerError
    */
   500: EffectHttpApiErrorInternalServerError
+  /**
+   * ServiceUnavailableError
+   */
+  503: ServiceUnavailableError
 }
 
 export type SessionUnshareError = SessionUnshareErrors[keyof SessionUnshareErrors]
@@ -15035,6 +15039,10 @@ export type SessionShareErrors = {
    */
   400: BadRequestError
   /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
+  /**
    * NotFoundError
    */
   404: NotFoundError
@@ -15042,6 +15050,10 @@ export type SessionShareErrors = {
    * InternalServerError
    */
   500: EffectHttpApiErrorInternalServerError
+  /**
+   * ServiceUnavailableError
+   */
+  503: ServiceUnavailableError
 }
 
 export type SessionShareError = SessionShareErrors[keyof SessionShareErrors]

@@ -198,11 +198,16 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
         name: "share",
       },
       run: async () => {
-        const copy = (url: string) =>
-          clipboard
-            .write?.(url)
+        const copy = (url: string) => {
+          const written = clipboard.write?.(url)
+          if (!written) {
+            toast.show({ message: "Clipboard is unavailable — copy the link manually.", variant: "error" })
+            return Promise.resolve()
+          }
+          return written
             .then(() => toast.show({ message: "Share URL copied to clipboard!", variant: "success" }))
             .catch(() => toast.show({ message: "Failed to copy URL to clipboard — try again", variant: "error" }))
+        }
         const url = session()?.share?.url
         if (url) {
           await copy(url)
@@ -221,14 +226,29 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
           if (ok !== true) return
           kv.set("share_consent", true)
         }
+        // `throwOnError` is the SDK contract for surfacing a non-2xx body:
+        // without it a denied share resolves as `{ error }`, and the old
+        // `res.data!.share!.url` read turned the server's message (license,
+        // configuration, unreachable share host) into a client TypeError.
         await sdk.client.session
-          .share({
-            sessionID: route.sessionID,
+          .share({ sessionID: route.sessionID }, { throwOnError: true })
+          .then((res: { data?: { share?: { url?: string } } }) => {
+            const sharedUrl = res.data?.share?.url
+            if (!sharedUrl) {
+              toast.show({
+                message: "The share link is missing from the server response — try again.",
+                variant: "error",
+              })
+              return
+            }
+            return copy(sharedUrl)
           })
-          .then((res: any) => copy(res.data!.share!.url))
-          .catch((error: any) => {
+          .catch((error: unknown) => {
             toast.show({
-              message: error instanceof Error ? `${error.message} — try again.` : "Failed to share session — try again.",
+              message:
+                error instanceof Error && error.message.length > 0
+                  ? error.message
+                  : "Failed to share session — try again.",
               variant: "error",
             })
           })
@@ -352,13 +372,14 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
         )
         if (ok !== true) return
         await sdk.client.session
-          .unshare({
-            sessionID: route.sessionID,
-          })
+          .unshare({ sessionID: route.sessionID }, { throwOnError: true })
           .then(() => toast.show({ message: "Session unshared successfully", variant: "success" }))
-          .catch((error: any) => {
+          .catch((error: unknown) => {
             toast.show({
-              message: error instanceof Error ? error.message : "Failed to unshare session — try again",
+              message:
+                error instanceof Error && error.message.length > 0
+                  ? error.message
+                  : "Failed to unshare session — try again",
               variant: "error",
             })
           })

@@ -1,10 +1,20 @@
 import { LayerNode } from "@arcana/core/effect/layer-node"
 import { Session } from "@/session/session"
 import { SessionID } from "@/session/schema"
-import { Effect, Layer, Scope, Context } from "effect"
+import { Effect, Layer, Scope, Context, Schema } from "effect"
 import { Config } from "@/config/config"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ShareNext } from "./share-next"
+
+/**
+ * A policy refusal, not an outage: sharing is off by configuration or the
+ * license does not cover it. The HTTP layer maps this to a 403 whose message
+ * reaches the operator verbatim — an empty 500 was how "share is broken"
+ * started.
+ */
+export class SharePolicyError extends Schema.TaggedErrorClass<SharePolicyError>()("SharePolicyError", {
+  message: Schema.String,
+}) {}
 
 export interface Interface {
   readonly create: (input?: Session.CreateInput) => Effect.Effect<Session.Info>
@@ -25,8 +35,14 @@ export const layer = Layer.effect(
 
     const share = Effect.fn("SessionShare.share")(function* (sessionID: SessionID) {
       const conf = yield* cfg.get()
-      if (conf.share === "disabled") throw new Error("Sharing is disabled in configuration")
-      if (!flags.premiumFeatures) throw new Error("Session sharing requires a Pro or Enterprise license. Run: arcana license status")
+      if (conf.share === "disabled") {
+        yield* new SharePolicyError({ message: "Session sharing is disabled in configuration (share = \"disabled\")." })
+      }
+      if (!flags.premiumFeatures) {
+        yield* new SharePolicyError({
+          message: "Session sharing requires a Pro or Enterprise license. Run: arcana license status",
+        })
+      }
       const result = yield* shareNext.create(sessionID)
       yield* session.setShare({ sessionID, share: { url: result.url } })
       return result
