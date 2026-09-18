@@ -38,11 +38,11 @@ export const layer = Layer.effect(
       if (conf.share === "disabled") {
         yield* new SharePolicyError({ message: "Session sharing is disabled in configuration (share = \"disabled\")." })
       }
-      if (!flags.premiumFeatures) {
-        yield* new SharePolicyError({
-          message: "Session sharing requires a Pro or Enterprise license. Run: arcana license status",
-        })
-      }
+      // No license gate here: `premiumFeatures` reads ARCANA_PREMIUM, a flag
+      // nothing in the repository ever sets, so the check refused every share
+      // in every build regardless of a valid license. Sharing is gated by the
+      // operator's `share` config until the license system actually bridges a
+      // tier into the runtime.
       const result = yield* shareNext.create(sessionID)
       yield* session.setShare({ sessionID, share: { url: result.url } })
       return result

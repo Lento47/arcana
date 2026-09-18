@@ -10,18 +10,20 @@ import { ShareNext } from "@/share/share-next"
 import { testEffect } from "../lib/effect"
 
 /**
- * The share gate must fail with a *typed* policy error.
+ * The share gate must fail with a *typed* policy error and it must not invent
+ * refusals.
  *
  * It used to `throw new Error(...)`: a defect, not a typed failure, so the
  * HTTP layer's `Effect.mapError` never saw it and answered every refusal with
- * an empty 500. The TUI then read `res.data!.share!.url` off that empty body
- * and showed a TypeError — "share session is broken" started here.
+ * an empty 500 — the TUI then turned that into a TypeError. It also refused
+ * every share on an `ARCANA_PREMIUM` flag that nothing in the repository ever
+ * sets; the operator's `share` config is the only gate that remains.
  */
-const shareLayer = (input: { premiumFeatures: boolean; share?: "manual" | "auto" | "disabled" }) =>
+const shareLayer = (share?: "manual" | "auto" | "disabled") =>
   LayerNode.buildLayer(LayerNode.group([SessionShare.node]), {
     replacements: [
-      LayerNode.replace(RuntimeFlags.node, RuntimeFlags.layer({ premiumFeatures: input.premiumFeatures })),
-      LayerNode.replace(Config.node, Layer.mock(Config.Service, { get: () => Effect.succeed({ share: input.share } as never) })),
+      LayerNode.replace(RuntimeFlags.node, RuntimeFlags.layer()),
+      LayerNode.replace(Config.node, Layer.mock(Config.Service, { get: () => Effect.succeed({ share } as never) })),
       LayerNode.replace(
         Session.node,
         Layer.mock(Session.Service, { setShare: () => Effect.void }),
@@ -35,25 +37,13 @@ const shareLayer = (input: { premiumFeatures: boolean; share?: "manual" | "auto"
     ],
   })
 
-const itUnlicensed = testEffect(shareLayer({ premiumFeatures: false }))
-const itLicensed = testEffect(shareLayer({ premiumFeatures: true }))
-const itDisabled = testEffect(shareLayer({ premiumFeatures: true, share: "disabled" }))
+const itManual = testEffect(shareLayer("manual"))
+const itDisabled = testEffect(shareLayer("disabled"))
 
 const sessionID = SessionID.make("ses_share_policy")
 
 describe("SessionShare policy", () => {
-  itUnlicensed.live("a license refusal is a typed SharePolicyError, not a defect", () =>
-    SessionShare.Service.use((svc) =>
-      Effect.gen(function* () {
-        const error = yield* svc.share(sessionID).pipe(Effect.flip)
-
-        expect(error).toBeInstanceOf(SessionShare.SharePolicyError)
-        expect((error as SessionShare.SharePolicyError).message).toContain("requires a Pro or Enterprise license")
-      }),
-    ),
-  )
-
-  itDisabled.live("a configuration refusal names the setting", () =>
+  itDisabled.live("a configuration refusal is a typed SharePolicyError naming the setting", () =>
     SessionShare.Service.use((svc) =>
       Effect.gen(function* () {
         const error = yield* svc.share(sessionID).pipe(Effect.flip)
@@ -64,7 +54,7 @@ describe("SessionShare policy", () => {
     ),
   )
 
-  itLicensed.live("an entitled share reaches the share service and returns its URL", () =>
+  itManual.live("a configured share reaches the share service and returns its URL", () =>
     SessionShare.Service.use((svc) =>
       Effect.gen(function* () {
         const result = yield* svc.share(sessionID)
