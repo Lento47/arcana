@@ -253,7 +253,7 @@ export function SubagentFooter() {
             <text wrapMode="none" fg={(t.spineBrand ?? theme.text) as any}> {subagentInfo().label}</text>
             <text wrapMode="none" fg={statusColor()}> {status().glyph}</text>
           </box>
-          <Show when={shows("run")}>
+          <Show when={shows("run") && subagentInfo().total > 1}>
             <text flexShrink={0} wrapMode="none" fg={(t.spineDiffMuted ?? theme.textMuted) as any}>
               · run {subagentInfo().index}/{subagentInfo().total}
             </text>

@@ -153,7 +153,8 @@ test("running card: one compact strip, bounded live ticker, elapsed only in the 
   // Collapsed: no frame. The strip carries state and the dive affordance; the
   // stream is content under it. Five framed one-liners are five empty boxes.
   expect(frame).not.toContain("╭")
-  expect(frame).toContain("delegated")
+  // State is a glyph now, not the word: "delegated" was a label for waiting.
+  expect(frame).not.toContain("delegated")
   expect(frame).toContain("↵ open")
 
   // Elapsed lives in the header only — exactly one occurrence on the row.
@@ -175,7 +176,7 @@ test("quiet running card is a single strip — no placeholder, no empty box", as
     }),
   ])
   const frame = harness.app.captureCharFrame()
-  expect(frame).toContain("delegated")
+  expect(frame).not.toContain("delegated")
   expect(frame).toContain("↵ open")
   expect(frame).not.toContain("Working in the")
   expect(frame).not.toContain("╭")
@@ -190,7 +191,7 @@ test("collapsed returned card previews the report; expanding drops the preview",
   })
   harness = await renderCards([entry])
   let frame = harness.app.captureCharFrame()
-  expect(frame).toContain("returned")
+  expect(frame).not.toContain("returned")
   expect(frame).toContain("Verdict")
   // Collapsed returned rows are compact too: the preview line replaces the box.
   expect(frame).not.toContain("╭")

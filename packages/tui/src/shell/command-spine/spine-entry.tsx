@@ -3,6 +3,7 @@ import { useRenderer } from "@opentui/solid"
 import { For, Show, createEffect, createMemo, createSignal } from "solid-js"
 import type { Message, Part, ToolPart } from "@arcana/sdk/v2"
 import { displayWidth, titlecase, truncate } from "../../util/locale"
+import { collapseToolCalls } from "../../util/tool-call-text"
 import type {
   SpineEntry as SpineEntryType,
   SpineEntryAction,
@@ -12,6 +13,7 @@ import type {
 import { spineOuterPadding, spineRailWidth } from "./spine-types"
 import { selectedForeground, tint, useTheme } from "../../context/theme"
 import { Alpha } from "../../theme/emphasis"
+import { StatusGlyph } from "../../branding"
 import { createEase } from "../../util/motion"
 import { useSync } from "../../context/sync"
 import { SpineGutter } from "./spine-gutter"
@@ -57,6 +59,8 @@ import {
  */
 const LIVE_OUTPUT_LINES = 2
 const MAX_CARD_STEPS = 6
+/** Lead-in between a compact strip's content and its affordance. */
+const LEADER = "· · · "
 
 /**
  * S7: single source of truth for a row's expand/toggle affordances.
@@ -456,7 +460,13 @@ export function SpineEntry(props: {
     }
   })
   // Full prose blob for the AI/user row - already joined by the view model.
-  const proseText = createMemo(() => (chatView() ? chatView()!.text : ""))
+  const proseText = createMemo(() => {
+    const text = chatView() ? chatView()!.text : ""
+    // Assistant prose may carry text-protocol tool calls (harnesses without
+    // native tool parts); collapse the markup to one readable line per call
+    // instead of dumping raw XML into the transcript.
+    return isUserVoice() ? text : collapseToolCalls(text)
+  })
   const hasProse = createMemo(() => !!proseText().trim())
   const hasDiff = createMemo(() => !!toolView()?.diff)
   const hasListing = createMemo(() => !!(toolView()?.listing?.length || subagentView()?.listing?.length))
@@ -1109,6 +1119,12 @@ export function SpineEntry(props: {
                 if (index < 0 || siblings.length < 2) return ""
                 return `${index + 1}/${siblings.length}`
               })
+              // The last concrete action, not a state word: a step label is
+              // evidence of work, "delegated" is a label for waiting.
+              const activity = createMemo(() => {
+                const steps = childSteps()
+                return steps.length > 0 ? steps[steps.length - 1]!.label : ""
+              })
               const visibleSteps = createMemo(() => childSteps().slice(0, MAX_CARD_STEPS))
               const hiddenStepCount = createMemo(() => Math.max(0, childSteps().length - MAX_CARD_STEPS))
               // The card is a full block: border (2) + horizontal padding (2), on
@@ -1183,24 +1199,40 @@ export function SpineEntry(props: {
                     <box flexDirection="row" flexShrink={0} alignItems="flex-start">
                       <SpineRail layout={props.layout} glyph=" " active={false} />
                       <box flexDirection="column" flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={Space.unit}>
-                        <box flexDirection="row" minWidth={0}>
-                          <text fg={v().streaming ? theme.accent : theme.spineOk} wrapMode="none" flexShrink={0}>
-                            {chrome().cue}
+                        <box flexDirection="row" minWidth={0} alignItems="center">
+                          {/* State is a glyph, not a word: the header chip has
+                              already named the actor and its liveness, so the
+                              strip carries *progress* — the step count, the
+                              wave position, and the last concrete action. */}
+                          <text
+                            fg={v().streaming ? theme.accent : theme.spineOk}
+                            wrapMode="none"
+                            flexShrink={0}
+                          >
+                            {v().streaming ? StatusGlyph.running : StatusGlyph.done}
                           </text>
                           <Show when={stepSummary()}>
                             <text fg={theme.spineContext} wrapMode="none" flexShrink={0}>
-                              · {stepSummary()}
+                              {`  ${stepSummary()}`}
                             </text>
                           </Show>
                           <Show when={siblingPosition()}>
                             <text fg={theme.spineContext} wrapMode="none" flexShrink={0}>
-                              {" · "}
-                              {siblingPosition()}
+                              {` · ${siblingPosition()}`}
                             </text>
                           </Show>
+                          <Show when={activity()}>
+                            <text fg={theme.spineContext} wrapMode="none" flexShrink={1} overflow="hidden">
+                              {` · ${activity()}`}
+                            </text>
+                          </Show>
+                          {/* The badge keeps the row's right edge, but a dim
+                              lead-in makes it read as the end of the line
+                              rather than a stranded island. */}
                           <box flexGrow={1} minWidth={1} />
                           <Show when={childSessionID()}>
                             <box
+                              flexDirection="row"
                               flexShrink={0}
                               paddingLeft={Space.unit}
                               paddingRight={Space.unit}
@@ -1209,6 +1241,9 @@ export function SpineEntry(props: {
                               onMouseOver={() => setDiveHovered(true)}
                               onMouseOut={() => setDiveHovered(false)}
                             >
+                              <text fg={theme.borderSubtle} wrapMode="none">
+                                {LEADER}
+                              </text>
                               <text fg={theme.spineBrand} wrapMode="none">
                                 ↵ open
                               </text>
