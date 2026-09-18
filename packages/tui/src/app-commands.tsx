@@ -36,6 +36,7 @@ import { DialogNotices } from "./ui/dialog-notices"
 import { DialogPulse } from "./ui/dialog-pulse"
 import { DialogTimeline } from "./ui/dialog-timeline"
 import { DialogXray } from "./ui/dialog-xray"
+import { DialogFleet } from "./ui/dialog-fleet"
 import { DialogDocket } from "./ui/dialog-docket"
 import { DialogFindings } from "./ui/dialog-findings"
 import { DialogRunProofContract, DialogRunProofActions, DialogRunProofDiffGate, DialogRunProofVerify, DialogRunProofSovereignty, DialogRunProofMissing } from "./proof-view/run-proof-dialogs"
@@ -754,6 +755,15 @@ export function buildAppCommands(deps: {
       slashName: "xray",
       run: () => {
         deps.dialog.replace(() => <DialogXray />)
+      },
+      category: "System",
+    },
+    {
+      name: "fleet.show",
+      title: "Fleet",
+      slashName: "fleet",
+      run: () => {
+        deps.dialog.replace(() => <DialogFleet />)
       },
       category: "System",
     },

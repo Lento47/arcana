@@ -20,6 +20,7 @@ import { Histogram } from "../src/ui/kit/histogram-view"
 import { minimapRows } from "../src/ui/kit/minimap"
 import { Minimap } from "../src/ui/kit/minimap-view"
 import { Progress } from "../src/ui/kit/progress-view"
+import { RadarView } from "../src/ui/kit/radar-view"
 import { Sparkline } from "../src/ui/kit/sparkline-view"
 import { type Column } from "../src/ui/kit/table"
 import { Table } from "../src/ui/kit/table-view"
@@ -310,6 +311,48 @@ test("digits paint block figures", async () => {
     }
     expect(frame).toContain("█")
     expect(frame).toContain("▀")
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
+test("radar view paints rings, core, sweep and status blips", async () => {
+  const app = await testRender(
+    () => (
+      <TestTuiProviders>
+        <box flexDirection="column" width="100%" height="100%">
+          <RadarView
+            agents={[
+              { id: "run", index: 1, state: "running", progress: 0.4 },
+              { id: "ok", index: 2, state: "done", progress: 1 },
+              { id: "bad", index: 3, state: "failed", progress: 1 },
+            ]}
+            width={41}
+            height={21}
+            sweep={Math.PI / 4}
+          />
+        </box>
+      </TestTuiProviders>
+    ),
+    { width: 60, height: 26 },
+  )
+
+  try {
+    let frame = ""
+    for (let attempt = 0; attempt < 12; attempt++) {
+      await app.renderOnce()
+      await app.flush()
+      const next = app.captureCharFrame()
+      if (next.trim().length > 0 && next === frame) break
+      frame = next
+      await Bun.sleep(20)
+    }
+    expect(frame).toContain("◆")
+    expect(frame).toContain("●")
+    expect(frame).toContain("✓")
+    expect(frame).toContain("✗")
+    expect(frame).toContain("01")
+    expect(frame).toContain("·")
   } finally {
     app.renderer.destroy()
   }
