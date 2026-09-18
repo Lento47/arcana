@@ -1,5 +1,5 @@
 import { SyntaxStyle, RGBA, type TerminalColors } from "@opentui/core"
-import { contrastingInk, ensureMinContrast } from "./contrast"
+import { contrastingInk, ensureMinContrast, hslToRgba, relativeLuminance, rgbaToHsl } from "./contrast"
 import { bgLuminance, isLightBg, tint } from "./emphasis"
 export { tint } from "./emphasis"
 import arcana from "./assets/arcana.json" with { type: "json" }
@@ -420,6 +420,14 @@ export function resolveTheme(theme: ThemeJson, mode: "dark" | "light") {
   resolved.spineGutterElapsed = spineFB("spineGutterElapsed", resolved.textMuted)
   resolved.spineGutterTimestamp = spineFB("spineGutterTimestamp", resolved.textMuted)
   resolved.spineSubagent = spineFB("spineSubagent", resolved.accent)
+  // Near-monochrome: the floor runs first (contrast on the original palette),
+  // then every token is desaturated (luminance-preserving, so the guarantees
+  // hold), then the spine roles are re-spaced as pure grays. The final floor
+  // pass is a safety net; grays stay gray because the walk preserves hue and
+  // saturation (zero).
+  applyReadabilityFloor(resolved)
+  applyMonochrome(resolved, THEME_MONOCHROME)
+  spaceMonochromeRoles(resolved)
   applyReadabilityFloor(resolved)
 
   return {
@@ -495,6 +503,108 @@ function ansiToRgba(code: number): RGBA {
 
   // Fallback for invalid codes
   return RGBA.fromInts(0, 0, 0)
+}
+
+/**
+ * Global desaturation for every theme (0 = original palette, 1 = pure gray).
+ * The user-facing look: near-monochrome — hue is gone from backgrounds, text,
+ * syntax, statuses and chrome, while a whisper of the original tint survives.
+ * HSL saturation is scaled by `1 - amount` at constant lightness, so each
+ * color keeps its place in the hierarchy; the readability floor runs afterwards
+ * and restores any contrast the chroma loss costs.
+ */
+export const THEME_MONOCHROME = 0.85
+
+/** Linear light → sRGB channel (used by the role ladder's band math). */
+function linearToSrgb(value: number) {
+  return value <= 0.0031308 ? value * 12.92 : 1.055 * value ** (1 / 2.4) - 0.055
+}
+
+/** The sRGB gray whose WCAG relative luminance is `luminance`. */
+function grayFromLuminance(luminance: number) {
+  return linearToSrgb(Math.max(0, Math.min(1, luminance)))
+}
+
+/** Desaturate toward gray, keeping HSL lightness and alpha. */
+export function monochromeColor(color: RGBA, amount: number): RGBA {
+  if (amount <= 0 || color.a === 0) return color
+  const { h, s, l } = rgbaToHsl(color)
+  return hslToRgba(h, s * (1 - amount), l, color.a)
+}
+
+/** Apply the monochrome transform to every resolved color token. */
+function applyMonochrome(theme: Partial<Record<ThemeColor, RGBA>>, amount: number) {
+  if (amount <= 0) return
+  for (const key of Object.keys(theme) as ThemeColor[]) {
+    const value = theme[key]
+    if (value) theme[key] = monochromeColor(value, amount)
+  }
+}
+
+/**
+ * Monochrome roles differ by LIGHTNESS, not hue. The pairs that share a row
+ * (ask/run/prompt, plan/patch, brand/ask, inspect/patch) are re-spaced onto a
+ * uniform gray ladder inside the contrast-safe band, preserving each theme's
+ * relative prominence order, so a hue-less palette cannot collapse two chips
+ * into one shade. The readability floor runs after this and is the final
+ * contrast guard.
+ */
+const MONO_LADDER_KEYS = [
+  "spineAsk",
+  "spineRun",
+  "spinePrompt",
+  "spinePlan",
+  "spinePatch",
+  "spineInspect",
+] as const
+const MONO_ROLE_MAX_GAP = 0.09
+
+function spaceMonochromeRoles(theme: Partial<Record<ThemeColor, RGBA>>) {
+  const surface = theme.background && theme.background.a === 0 ? theme.backgroundPanel : theme.background
+  const text = theme.text
+  if (!surface || !text) return
+  const lightBg = relativeLuminance(surface) > 0.5
+  // The strictest surface these roles are checked against (menu/panel differ).
+  const surfaces = [surface, theme.backgroundMenu, theme.backgroundPanel].filter(Boolean) as RGBA[]
+  const surfaceLum = lightBg
+    ? Math.max(...surfaces.map(relativeLuminance))
+    : Math.min(...surfaces.map(relativeLuminance))
+  // 4.5:1 bound for the ladder; spineBrand carries the stricter 7:1 floor and
+  // therefore takes the band's prominent end, where it cannot collide with it.
+  const boundLum = lightBg ? (surfaceLum + 0.05) / 4.5 - 0.05 : 4.5 * (surfaceLum + 0.05) - 0.05
+  const boundGray = grayFromLuminance(boundLum)
+  const textGray = grayFromLuminance(relativeLuminance(text))
+  const clamp01 = (value: number) => Math.max(0, Math.min(1, value))
+  const margin = 0.07
+  // Two bands that both clear the bound and stay off the body-text ink; the
+  // roomier one wins, so a hue-less ladder gets the largest step it can.
+  const bands = lightBg
+    ? [
+        { lo: 0, hi: clamp01(Math.min(boundGray, textGray - margin)) },
+        { lo: clamp01(textGray + margin), hi: clamp01(boundGray) },
+      ]
+    : [
+        { lo: clamp01(boundGray), hi: clamp01(Math.min(1, textGray - margin)) },
+        { lo: clamp01(Math.max(boundGray, textGray + margin)), hi: 1 },
+      ]
+  const band = bands.sort((a, b) => b.hi - b.lo - (a.hi - a.lo))[0]!
+  const span = Math.max(0, band.hi - band.lo)
+  const gap = Math.min(MONO_ROLE_MAX_GAP, span / MONO_LADDER_KEYS.length)
+  // Prominent end of the band: brighter on a dark surface, darker on a light
+  // one. Brand is pinned there; the six signal roles ladder away from it in
+  // their original prominence order.
+  const brandGray = clamp01(lightBg ? band.lo : band.hi)
+  const brand = theme.spineBrand
+  if (brand) theme.spineBrand = RGBA.fromValues(brandGray, brandGray, brandGray, brand.a)
+  const roles = MONO_LADDER_KEYS.map((key) => ({ key, lum: relativeLuminance(theme[key]!) })).sort((a, b) =>
+    lightBg ? a.lum - b.lum : b.lum - a.lum,
+  )
+  roles.forEach((role, index) => {
+    const offset = (index + 1) * gap
+    const gray = clamp01(lightBg ? band.lo + offset : band.hi - offset)
+    const current = theme[role.key]!
+    theme[role.key] = RGBA.fromValues(gray, gray, gray, current.a)
+  })
 }
 
 function applyReadabilityFloor(theme: Partial<Record<ThemeColor, RGBA>>) {

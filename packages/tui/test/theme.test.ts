@@ -1,17 +1,20 @@
-import { expect, test } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
-import type { TerminalColors } from "@opentui/core"
+import { RGBA, type TerminalColors } from "@opentui/core"
 import {
   DEFAULT_THEMES,
+  THEME_MONOCHROME,
   addTheme,
   allThemes,
   hasTheme,
+  monochromeColor,
   resolveTheme,
   selectedForeground,
   terminalMode,
   type Theme,
 } from "../src/theme"
+import { rgbaToHsl } from "../src/theme/contrast"
 import { discoverThemes } from "../src/context/theme"
 import { tmpdir } from "./fixture/fixture"
 
@@ -198,7 +201,15 @@ function assertContrast(
   const ratio = contrastRatio(value, surface)
   if (ratio < minRatio) throw new Error(`${String(token)} contrast ${ratio.toFixed(2)} < ${minRatio}`)
 }
-/** RGB distance so spine kinds don't all collapse to the same fallback color. */
+/**
+ * RGB distance so spine kinds don't all collapse to the same fallback color.
+ *
+ * Monochrome palettes differ by LIGHTNESS only: the hue that used to carry a
+ * 25+ distance is gone, and the role ladder guarantees ~17 at its tightest
+ * (the contrast-safe band bounds the step). The assertion still catches the
+ * real defect it was written for — several kinds collapsing onto one fallback
+ * shade — while accepting the monochrome step.
+ */
 function colorDistance(
   a: { r: number; g: number; b: number },
   b: { r: number; g: number; b: number },
@@ -208,6 +219,9 @@ function colorDistance(
   const db = (a.b - b.b) * 255
   return Math.sqrt(dr * dr + dg * dg + db * db)
 }
+
+/** Minimum sRGB step the monochrome role ladder must leave between paired kinds. */
+const MONO_ROLE_MIN_DISTANCE = 14
 
 test.each(BRAND_THEMES)("%s dark spine kinds stay visually distinct", (name: string) => {
   const theme = resolveTheme(DEFAULT_THEMES[name]!, "dark")
@@ -224,7 +238,9 @@ test.each(BRAND_THEMES)("%s dark spine kinds stay visually distinct", (name: str
     const a = theme[left] as { r: number; g: number; b: number }
     const b = theme[right] as { r: number; g: number; b: number }
     const d = colorDistance(a, b)
-    expect(d, `${name}: ${String(left)} vs ${String(right)} distance ${d.toFixed(1)}`).toBeGreaterThan(25)
+    expect(d, `${name}: ${String(left)} vs ${String(right)} distance ${d.toFixed(1)}`).toBeGreaterThan(
+      MONO_ROLE_MIN_DISTANCE,
+    )
   }
 })
 
@@ -235,8 +251,9 @@ test("spine fallbacks do not collapse ask/run/prompt when tokens omitted", () =>
     if (key.startsWith("spine")) delete (bare.theme as Record<string, unknown>)[key]
   }
   const theme = resolveTheme(bare, "dark")
-  expect(colorDistance(theme.spineAsk, theme.spineRun)).toBeGreaterThan(20)
-  expect(colorDistance(theme.spinePlan, theme.spinePatch)).toBeGreaterThan(20)
+  expect(colorDistance(theme.spineAsk, theme.spineRun)).toBeGreaterThan(MONO_ROLE_MIN_DISTANCE)
+  expect(colorDistance(theme.spinePlan, theme.spinePatch)).toBeGreaterThan(MONO_ROLE_MIN_DISTANCE)
+  // Brand sits a margin clear of the body text so it never reads as prose ink.
   expect(colorDistance(theme.spineBrand, theme.text)).toBeGreaterThan(15)
 })
 
@@ -310,3 +327,53 @@ test.each(BRAND_THEME_MODES)(
     expect(contrastRatio(resolved.diffLineNumber, resolved.diffContextBg)).toBeGreaterThanOrEqual(3.8)
   },
 )
+
+describe("monochrome palette", () => {
+  test("monochromeColor scales HSL saturation, keeping lightness and alpha", () => {
+    const color = RGBA.fromInts(0, 0, 255, 128)
+    const before = rgbaToHsl(color)
+    const after = rgbaToHsl(monochromeColor(color, THEME_MONOCHROME))
+    expect(after.s).toBeCloseTo(before.s * (1 - THEME_MONOCHROME), 2)
+    expect(after.l).toBeCloseTo(before.l, 2)
+    expect(monochromeColor(color, THEME_MONOCHROME).a).toBeCloseTo(color.a, 2)
+  })
+
+  test("amount 1 is pure gray, amount 0 is identity", () => {
+    const color = RGBA.fromInts(200, 60, 20)
+    const gray = monochromeColor(color, 1)
+    expect(gray.r).toBeCloseTo(gray.g, 5)
+    expect(gray.g).toBeCloseTo(gray.b, 5)
+    expect(monochromeColor(color, 0)).toBe(color)
+  })
+
+  test.each(Object.keys(DEFAULT_THEMES))("%s resolves near-monochrome in both modes", (name: string) => {
+    for (const mode of THEME_MODES) {
+      const theme = resolveTheme(DEFAULT_THEMES[name]!, mode)
+      for (const [token, value] of Object.entries(theme)) {
+        if (!value || typeof value !== "object" || typeof (value as RGBA).r !== "number") continue
+        const color = value as RGBA
+        if (color.a === 0) continue
+        const spread = Math.max(color.r, color.g, color.b) - Math.min(color.r, color.g, color.b)
+        expect(spread, `${name}/${mode}/${String(token)} spread ${spread.toFixed(3)}`).toBeLessThanOrEqual(0.17)
+      }
+    }
+  })
+
+  test.each(Object.keys(DEFAULT_THEMES))("%s keeps surfaces and prose ink neutral", (name: string) => {
+    for (const mode of THEME_MODES) {
+      const theme = resolveTheme(DEFAULT_THEMES[name]!, mode)
+      for (const token of [
+        "background",
+        "backgroundPanel",
+        "backgroundElement",
+        "backgroundMenu",
+        "text",
+        "textMuted",
+      ] as const) {
+        const color = theme[token]
+        const spread = Math.max(color.r, color.g, color.b) - Math.min(color.r, color.g, color.b)
+        expect(spread, `${name}/${mode}/${token} spread ${spread.toFixed(3)}`).toBeLessThanOrEqual(0.06)
+      }
+    }
+  })
+})
