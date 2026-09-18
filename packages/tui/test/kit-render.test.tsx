@@ -196,10 +196,10 @@ test("the minimap strip carries marks in ink, not in glyph confetti", async () =
       frame = next
       await Bun.sleep(20)
     }
-    // The shape is flat and thin: hairline ticks and a half-cell thumb, never
-    // the mark glyphs themselves.
+    // The shape is flat and thin: hairlines only, never the mark glyphs and
+    // never a wider thumb.
     expect(frame).toContain("▕")
-    expect(frame).toContain("▐")
+    expect(frame).not.toContain("▐")
     expect(frame).not.toContain("✗")
     expect(frame).not.toContain("┈")
 
@@ -213,7 +213,7 @@ test("the minimap strip carries marks in ink, not in glyph confetti", async () =
     expect(spanInk("▕", theme.spineFail)).toBe(true)
     expect(spanInk("▕", theme.spineBrand)).toBe(true)
     expect(spanInk("▕", theme.borderSubtle)).toBe(true)
-    expect(spanInk("▐", theme.primary)).toBe(true)
+    expect(spanInk("▕", theme.primary)).toBe(true)
   } finally {
     app.renderer.destroy()
   }
@@ -375,9 +375,10 @@ test("radar view paints rings, core, sweep and status blips", async () => {
   }
 })
 
-test("the minimap bracket is one bar over empty and inked rows", async () => {
+test("the minimap bracket is one hairline over empty and inked rows", async () => {
+  const theme = fallbackTheme("dark")
   // Two entries in six rows leave empty stretches between the inked cells;
-  // the visible slice must still read as one continuous scrollbar bar.
+  // the visible slice must still read as one continuous hairline.
   const cells = minimapRows([{ kind: "tool" }, { kind: "prose" }], 6)
   const app = await testRender(
     () => (
@@ -401,12 +402,22 @@ test("the minimap bracket is one bar over empty and inked rows", async () => {
       frame = next
       await Bun.sleep(20)
     }
-    const lines = frame.split("\n").map((line) => line.replace(/\s+$/, ""))
-    // The bracket spans rows 3..5 — two empty slices and one inked — and all
-    // three draw the same continuous bar.
-    expect(lines.filter((line) => line.endsWith("▐"))).toHaveLength(3)
-    // Density outside the slice still ticks with the hairline.
+    // One glyph everywhere; the slice is told apart by ink alone.
     expect(frame).toContain("▕")
+    expect(frame).not.toContain("▐")
+    // The bracket spans rows 3..5 — two empty slices and one inked — and all
+    // three draw the hairline in the primary ink.
+    const primary = app
+      .captureSpans()
+      .lines.flatMap((line) => line.spans)
+      .filter(
+        (span) => span.text.includes("▕") && (span.fg as RGBA).toInts().join() === theme.primary.toInts().join(),
+      )
+    expect(primary).toHaveLength(3)
+    // The tick outside the slice still draws, so the column has four inked
+    // rows: one content tick and three thumb rows.
+    const inked = frame.split("\n").map((line) => line.replace(/\s+$/, "")).filter((line) => line.endsWith("▕"))
+    expect(inked).toHaveLength(4)
   } finally {
     app.renderer.destroy()
   }

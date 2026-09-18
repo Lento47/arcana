@@ -2,20 +2,18 @@ import { For } from "solid-js"
 import { useTheme } from "../../context/theme"
 import type { MapCell } from "./minimap"
 
-/** Every content cell is one hairline tick hugging the screen edge. */
+/** Every cell is the same hairline tick; the visible slice is told apart by ink. */
 const TICK = "▕"
-/** The viewport's slice; still thin, but a readable bar against the ticks. */
-const THUMB = "▐"
 
 /**
  * The map strip: one hairline column beside the transcript.
  *
  * Everything is deliberately thin and flat — a right-eighth `▕` tick per row,
  * distinguished only by tone — because a one-column ramp of block glyphs reads
- * as confetti next to real content. Failures (`danger`), warnings, compactions
- * (`info`) and density are all the same hairline in different inks, and the
- * visible slice is a right-half `▐` bar: width says viewport, tone says what
- * the row is.
+ * as confetti next to real content. The visible slice is the *same* hairline in
+ * the primary ink (never a wider glyph: a thicker thumb reads as a second bar
+ * stacked beside the strip), and failures/warnings/compactions are the same
+ * hairline in their own inks.
  */
 export function Minimap(props: {
   cells: readonly MapCell[]
@@ -43,10 +41,10 @@ export function Minimap(props: {
         return theme.background
     }
   }
-  // The thumb is solid: the slice it marks is already visible in the
-  // transcript, so the map has nothing more to say about those rows.
+  // The slice draws the tick even where its row is empty, so the thumb is a
+  // continuous hairline; only ink separates it from the content ticks.
   const glyph = (cell: MapCell, row: number) =>
-    inBracket(row) ? THUMB : cell.tone === "empty" ? " " : TICK
+    cell.tone === "empty" && !inBracket(row) ? " " : TICK
   return (
     <box flexDirection="column" flexShrink={0} minWidth={1} width={1}>
       <For each={props.cells}>

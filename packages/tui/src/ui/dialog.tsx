@@ -11,10 +11,11 @@ import {
   type JSX,
   type ParentProps,
 } from "solid-js"
-import { useTheme } from "../context/theme"
+import { tint, useTheme } from "../context/theme"
 import { dialogContentMaxHeight, dialogMaxHeight, dialogMaxWidth, dialogWidth } from "../util/geometry"
 import { COPY } from "../branding"
-import { backdropScrim } from "../theme/emphasis"
+import { SCRIM_ALPHA, backdropScrim, withAlpha } from "../theme/emphasis"
+import { createEase } from "../util/motion"
 import { MouseButton, Renderable } from "@opentui/core"
 import { createStore } from "solid-js/store"
 import { useToast } from "./toast"
@@ -22,20 +23,33 @@ import { RoundBorder } from "./chrome"
 import { Flag } from "@arcana/core/flag/flag"
 import { useBindings, useOpencodeModeStack } from "../keymap"
 import { useClipboard } from "../context/clipboard"
+import { useKV } from "../context/kv"
 
 export function Dialog(
   props: ParentProps<{
     size?: "medium" | "large" | "xlarge"
     onClose: () => void
+    /**
+     * Dissolve wash 0..1. 1 = fully painted, 0 = dissolved. Color-only: the
+     * card's border/panel and the scrim fade, geometry never moves. Absent
+     * means fully painted (standalone use, tests).
+     */
+    wash?: () => number
+    /** Route a close through the dismiss wash. Absent = close immediately. */
+    requestClose?: (run: () => void) => void
   }>,
 ) {
   const dimensions = useTerminalDimensions()
   const { theme } = useTheme()
   const renderer = useRenderer()
 
+  const wash = () => props.wash?.() ?? 1
   // Shared scrim definition (`theme/emphasis`) so the dialog, the permission
   // gates and the diff viewer recede the app behind them by the same amount.
-  const dimmer = createMemo(() => backdropScrim(theme))
+  // The dissolve lifts from a 35% floor so a close never blinks to black.
+  const dimmer = createMemo(() =>
+    withAlpha(backdropScrim(theme), SCRIM_ALPHA * (0.35 + 0.65 * wash())),
+  )
 
   let dismiss = false
   const width = () => dialogWidth(dimensions().width, props.size ?? "medium")
@@ -66,7 +80,9 @@ export function Dialog(
           dismiss = false
           return
         }
-        props.onClose?.()
+        const run = () => props.onClose?.()
+        if (props.requestClose) props.requestClose(run)
+        else run()
       }}
       width={dimensions().width}
       height={dimensions().height}
@@ -94,10 +110,10 @@ export function Dialog(
         alignSelf="center"
         flexDirection="column"
         flexShrink={1}
-        backgroundColor={theme.backgroundPanel}
+        backgroundColor={tint(theme.background, theme.backgroundPanel, wash())}
         border={["top", "bottom", "left", "right"]}
         customBorderChars={RoundBorder}
-        borderColor={theme.borderActive}
+        borderColor={tint(theme.background, theme.borderActive, wash())}
         paddingTop={1}
         overflow="hidden"
       >
@@ -110,6 +126,14 @@ export function Dialog(
           flexShrink={1}
           contentOptions={{ minHeight: 0 }}
           viewportCulling={true}
+          // The body bar is themed like every other bar in the app; without
+          // this it painted OpenTUI's default grey `▀` blob over the card.
+          // The body is width-bounded (children wrap to the card), so the
+          // horizontal bar is off: its row would only steal a line.
+          verticalScrollbarOptions={{
+            trackOptions: { backgroundColor: theme.backgroundElement, foregroundColor: theme.border },
+          }}
+          horizontalScrollbarOptions={{ visible: false }}
         >
           <box width="100%" minWidth={0}>
             {props.children}
@@ -131,6 +155,41 @@ function init() {
 
   const renderer = useRenderer()
   const modeStack = useOpencodeModeStack()
+  const kv = useKV()
+
+  // Dismiss wash: 1 = painted, 0 = dissolved. One ease per provider so every
+  // operator close path (escape, ctrl+c, overlay click) fades the same way and
+  // the stack only pops once the wash has landed. Programmatic clear()/replace()
+  // stay synchronous — those are not operator-initiated closes.
+  const [dissolving, setDissolving] = createSignal(false)
+  const wash = createEase(() => (dissolving() ? 0 : 1), {
+    stepMs: 24,
+    riseRate: 0.55,
+    fallRate: 0.5,
+    epsilon: 0.05,
+    // Fresh dialogs fade up from a floor instead of blinking in at full paint.
+    initial: 0.25,
+  })
+  let pendingClose: (() => void) | undefined
+
+  const dismiss = (run: () => void) => {
+    if (dissolving()) return
+    if (kv.get("animations_enabled", true) !== true) {
+      run()
+      return
+    }
+    pendingClose = run
+    setDissolving(true)
+  }
+
+  createEffect(() => {
+    if (!dissolving()) return
+    if (wash() > 0.05) return
+    const run = pendingClose
+    pendingClose = undefined
+    setDissolving(false)
+    run?.()
+  })
 
   createEffect(() => {
     if (store.stack.length === 0) return
@@ -156,8 +215,28 @@ function init() {
     }, 1)
   }
 
+  // Operator-initiated close: dissolve first, then run the exact pop captured
+  // at request time (another dialog pushed during the wash must survive).
+  const requestDismiss = () => {
+    const current = store.stack.at(-1)
+    if (!current) return
+    dismiss(() => {
+      // Match the hardened pattern in clear()/replace(): a throwing onClose
+      // must not prevent stack update + refocus (torn state).
+      if (current.onClose) {
+        try {
+          current.onClose()
+        } catch (err) {
+          console.error("dialog.onClose threw during dismiss:", err)
+        }
+      }
+      setStore("stack", store.stack.filter((item) => item !== current))
+      refocus()
+    })
+  }
+
   useBindings(() => ({
-    enabled: store.stack.length > 0 && !renderer.getSelection()?.getSelectedText(),
+    enabled: store.stack.length > 0 && !dissolving() && !renderer.getSelection()?.getSelectedText(),
     bindings: [
       {
         key: "escape",
@@ -167,16 +246,7 @@ function init() {
           if (renderer.getSelection()) {
             renderer.clearSelection()
           }
-          const current = store.stack.at(-1)
-          // Match the hardened pattern in clear()/replace(): a throwing
-          // onClose must not prevent stack update + refocus (torn state).
-          if (current?.onClose) {
-            try { current.onClose() } catch (err) {
-              console.error("dialog.onClose threw during escape:", err)
-            }
-          }
-          setStore("stack", store.stack.slice(0, -1))
-          refocus()
+          requestDismiss()
         },
       },
       {
@@ -187,20 +257,16 @@ function init() {
           if (renderer.getSelection()) {
             renderer.clearSelection()
           }
-          const current = store.stack.at(-1)
-          if (current?.onClose) {
-            try { current.onClose() } catch (err) {
-              console.error("dialog.onClose threw during ctrl+c:", err)
-            }
-          }
-          setStore("stack", store.stack.slice(0, -1))
-          refocus()
+          requestDismiss()
         },
       },
     ],
   }))
 
   return {
+    wash,
+    dissolving,
+    dismiss,
     clear() {
       // Snapshot the existing stack so a throwing onClose cannot leave the
       // dialog stuck in a torn state. Each close runs independently — one
@@ -308,7 +374,12 @@ export function DialogProvider(props: ParentProps) {
         onMouseUp={Flag.ARCANA_EXPERIMENTAL_DISABLE_COPY_ON_SELECT ? undefined : copySelection}
       >
         <Show when={value.stack.length}>
-          <Dialog onClose={() => value.clear()} size={value.size}>
+          <Dialog
+            onClose={() => value.clear()}
+            size={value.size}
+            wash={value.wash}
+            requestClose={value.dismiss}
+          >
             {value.stack.at(-1)!.element}
           </Dialog>
         </Show>

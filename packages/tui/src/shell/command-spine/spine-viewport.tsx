@@ -134,6 +134,7 @@ export function SpineViewport(props: {
             foregroundColor: theme.border,
           },
         }}
+        horizontalScrollbarOptions={{ visible: false }}
         viewportCulling={true}
         stickyScroll={true}
         stickyStart="bottom"

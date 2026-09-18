@@ -15,6 +15,7 @@ import { TuiConfigProvider } from "../src/config"
 import { KVProvider } from "../src/context/kv"
 import { Dialog, DialogProvider, useDialog } from "../src/ui/dialog"
 import { DialogSelect } from "../src/ui/dialog-select"
+import { fallbackTheme } from "../src/theme"
 import { OpencodeKeymapProvider, registerOpencodeKeymap } from "../src/keymap"
 import { TestTuiContexts } from "./fixture/tui-environment"
 import { createTuiResolvedConfig } from "./fixture/tui-runtime"
@@ -197,6 +198,47 @@ test("provider host does not capture mouse input when no dialog is open", async 
     await app.mockMouse.scroll(scroll!.x + 2, scroll!.y + 2, "down")
     await app.renderOnce()
     expect(scroll!.scrollTop).toBeGreaterThan(before)
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
+test("the dialog body scrollbar is themed and has no horizontal bar", async () => {
+  const theme = fallbackTheme("dark")
+  const app = await testRender(
+    () => (
+      <TestTuiContexts>
+        <TuiConfigProvider config={createTuiResolvedConfig()}>
+          <KVProvider>
+            <ToastProvider>
+              <ThemeProvider mode="dark">
+                <Dialog size="medium" onClose={() => {}}>
+                  <box width="100%" minWidth={0} paddingLeft={2} paddingRight={2} paddingBottom={1} flexDirection="column">
+                    <For each={Array.from({ length: 60 }, (_, index) => index)}>
+                      {(index) => <text>{`scroll row ${index}`}</text>}
+                    </For>
+                  </box>
+                </Dialog>
+              </ThemeProvider>
+            </ToastProvider>
+          </KVProvider>
+        </TuiConfigProvider>
+      </TestTuiContexts>
+    ),
+    { width: 120, height: 40 },
+  )
+
+  try {
+    await settle(app, "scroll row 0")
+    const body = findById(app.renderer.root, "arcana-dialog-body") as ScrollBoxRenderable | undefined
+    expect(body).toBeDefined()
+    // The body bar used to paint OpenTUI's default grey; it must wear the same
+    // track/thumb pair as every other bar in the app.
+    expect(body!.verticalScrollBar.slider.backgroundColor.toInts()).toEqual(theme.backgroundElement.toInts())
+    expect(body!.verticalScrollBar.slider.foregroundColor.toInts()).toEqual(theme.border.toInts())
+    // Dialog content is width-bounded, so a horizontal bar row would only
+    // steal a line from the card.
+    expect(body!.horizontalScrollBar.visible).toBe(false)
   } finally {
     app.renderer.destroy()
   }

@@ -50,6 +50,7 @@ export function OpencodeShell(props: ShellProps) {
             foregroundColor: theme.border,
           },
         }}
+        horizontalScrollbarOptions={{ visible: false }}
         viewportCulling={false}
         stickyScroll={true}
         stickyStart="bottom"
