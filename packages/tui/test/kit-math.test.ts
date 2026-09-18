@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { bucketEvents, bucketTotal, barCells, stackCells, timeBuckets } from "../src/ui/kit/bars"
 import { BrailleGrid, brailleSeries, plotSeries } from "../src/ui/kit/braille"
 import { gaugeCells, labeledGauge } from "../src/ui/kit/gauge"
-import { jumpScrollTop, minimapRows, viewportBracket } from "../src/ui/kit/minimap"
+import { jumpScrollTop, minimapOverflows, minimapRows, viewportBracket } from "../src/ui/kit/minimap"
 import { chunks, clamp01, extent, normalize } from "../src/ui/kit/scale"
 import { cellWidths, filterRows, fitCell, sortRows, type Column } from "../src/ui/kit/table"
 import { SparkMean, sparkline, SPARK_GLYPHS } from "../src/ui/kit/sparkline"
@@ -281,6 +281,18 @@ describe("kit minimap", () => {
       from: 0,
       to: -1,
     })
+  })
+
+  test("the map is only shown when the transcript really overflows", () => {
+    expect(minimapOverflows({ scrollHeight: 100, viewportHeight: 20 })).toBe(true)
+    // One or two rows of slop (padding, rounding) do not summon the strip.
+    expect(minimapOverflows({ scrollHeight: 21, viewportHeight: 20 })).toBe(false)
+    expect(minimapOverflows({ scrollHeight: 22, viewportHeight: 20 })).toBe(false)
+    expect(minimapOverflows({ scrollHeight: 23, viewportHeight: 20 })).toBe(true)
+    expect(minimapOverflows({ scrollHeight: 100, viewportHeight: 20, margin: 0 })).toBe(true)
+    // Unmeasured scrollboxes report zeroes; that is "no map", never "map".
+    expect(minimapOverflows({ scrollHeight: 0, viewportHeight: 0 })).toBe(false)
+    expect(minimapOverflows({ scrollHeight: 100, viewportHeight: 0 })).toBe(false)
   })
 
   test("clicking a map row lands proportionally in the transcript", () => {

@@ -357,3 +357,41 @@ test("radar view paints rings, core, sweep and status blips", async () => {
     app.renderer.destroy()
   }
 })
+
+test("the minimap bracket draws a continuous thumb through empty cells", async () => {
+  // Two entries in six rows leave empty stretches between the inked cells;
+  // the visible-slice bracket must still read as a scrollbar thumb there.
+  const cells = minimapRows([{ kind: "tool" }, { kind: "prose" }], 6)
+  const app = await testRender(
+    () => (
+      <TestTuiProviders>
+        <box flexDirection="row" width="100%" height="100%">
+          <box flexGrow={1} />
+          <Minimap cells={cells} bracket={{ from: 3, to: 5 }} />
+        </box>
+      </TestTuiProviders>
+    ),
+    { width: 20, height: 8 },
+  )
+
+  try {
+    let frame = ""
+    for (let attempt = 0; attempt < 12; attempt++) {
+      await app.renderOnce()
+      await app.flush()
+      const next = app.captureCharFrame()
+      if (next.trim().length > 0 && next === frame) break
+      frame = next
+      await Bun.sleep(20)
+    }
+    const lines = frame.split("\n").map((line) => line.replace(/\s+$/, ""))
+    // Rows 3 and 4 of the map are empty slices; both draw the thumb rail.
+    expect(lines.filter((line) => line.endsWith("┃"))).toHaveLength(2)
+    // The inked bracket row keeps its density glyph, and outside-bracket
+    // empty rows stay blank.
+    expect(frame).toContain("█")
+    expect(lines.filter((line) => line.endsWith("┃")).length).toBeLessThan(cells.length)
+  } finally {
+    app.renderer.destroy()
+  }
+})

@@ -3,7 +3,7 @@ import type { Accessor } from "solid-js"
 import type { MouseEvent, ScrollAcceleration, ScrollBoxRenderable } from "@opentui/core"
 import { useTheme } from "../../context/theme"
 import { Minimap } from "../../ui/kit/minimap-view"
-import { jumpScrollTop, minimapRows, viewportBracket } from "../../ui/kit/minimap"
+import { jumpScrollTop, minimapOverflows, minimapRows, viewportBracket } from "../../ui/kit/minimap"
 import { Layer } from "../../ui/chrome"
 import { type SpineLayout, type SpineEntry, type SpineEntryAction } from "./spine-types"
 import { SpineEntryBinding } from "./spine-entry-binding"
@@ -73,8 +73,11 @@ export function SpineViewport(props: {
   let mapScrollBox: ScrollBoxRenderable | undefined
   const [mapRows, setMapRows] = createSignal(0)
   const [mapBracket, setMapBracket] = createSignal<{ from: number; to: number } | undefined>(undefined)
+  const [mapOverflows, setMapOverflows] = createSignal(false)
   const mapCells = createMemo(() => minimapRows(props.mapEntries ?? [], mapRows()))
-  const showMap = () => !props.showScrollbar && mapCells().length > 0
+  // No overflow, no map: a short transcript used to leave two lone density
+  // blocks in the gutter, which reads as a rendering fault, not a scrollbar.
+  const showMap = () => !props.showScrollbar && mapOverflows() && mapCells().length > 0
   let measure: ReturnType<typeof setInterval> | undefined
   createEffect(() => {
     const entries = props.mapEntries
@@ -83,19 +86,22 @@ export function SpineViewport(props: {
         clearInterval(measure)
         measure = undefined
       }
+      setMapOverflows(false)
       return
     }
     if (measure) return
     measure = setInterval(() => {
       const handle = mapScrollBox
       const viewportHeight = Math.max(8, Math.floor(handle?.viewport?.height ?? handle?.height ?? 24))
+      const scrollHeight = handle?.scrollHeight ?? 0
       setMapRows(viewportHeight)
+      setMapOverflows(minimapOverflows({ scrollHeight, viewportHeight }))
       if (handle) {
         setMapBracket(
           viewportBracket({
             rows: viewportHeight,
             scrollTop: handle.scrollTop ?? 0,
-            scrollHeight: handle.scrollHeight ?? 0,
+            scrollHeight,
             viewportHeight: handle.viewport?.height ?? viewportHeight,
           }),
         )

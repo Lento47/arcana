@@ -62,6 +62,24 @@ export function viewportBracket(input: {
   return { from, to: Math.max(from, to) }
 }
 
+/**
+ * Whether the transcript actually overflows its viewport.
+ *
+ * The map column only earns its cells when there is hidden content to map: a
+ * short transcript used to draw a couple of lone density blocks in the gutter,
+ * which reads as rendering noise, not a scrollbar. The margin keeps a one-row
+ * slop (padding, a rounding row) from summoning the strip.
+ */
+export function minimapOverflows(input: {
+  scrollHeight: number
+  viewportHeight: number
+  margin?: number
+}): boolean {
+  const margin = Math.max(0, input.margin ?? 2)
+  if (!(input.viewportHeight > 0) || !(input.scrollHeight > 0)) return false
+  return input.scrollHeight > input.viewportHeight + margin
+}
+
 /** Where clicking map row `row` should land the scrollbox. */
 export function jumpScrollTop(input: {
   row: number
