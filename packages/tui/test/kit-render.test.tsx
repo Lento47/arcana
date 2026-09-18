@@ -196,9 +196,10 @@ test("the minimap strip carries marks in ink, not in glyph confetti", async () =
       frame = next
       await Bun.sleep(20)
     }
-    // The shape is flat: ticks and a thumb, never the mark glyphs themselves.
+    // The shape is flat and thin: hairline ticks and a half-cell thumb, never
+    // the mark glyphs themselves.
+    expect(frame).toContain("▕")
     expect(frame).toContain("▐")
-    expect(frame).toContain("█")
     expect(frame).not.toContain("✗")
     expect(frame).not.toContain("┈")
 
@@ -209,10 +210,10 @@ test("the minimap strip carries marks in ink, not in glyph confetti", async () =
         .captureSpans()
         .lines.flatMap((line) => line.spans)
         .some((span) => span.text.includes(glyph) && (span.fg as RGBA).toInts().join() === color.toInts().join())
-    expect(spanInk("▐", theme.spineFail)).toBe(true)
-    expect(spanInk("▐", theme.spineBrand)).toBe(true)
-    expect(spanInk("▐", theme.borderSubtle)).toBe(true)
-    expect(spanInk("█", theme.primary)).toBe(true)
+    expect(spanInk("▕", theme.spineFail)).toBe(true)
+    expect(spanInk("▕", theme.spineBrand)).toBe(true)
+    expect(spanInk("▕", theme.borderSubtle)).toBe(true)
+    expect(spanInk("▐", theme.primary)).toBe(true)
   } finally {
     app.renderer.destroy()
   }
@@ -374,9 +375,9 @@ test("radar view paints rings, core, sweep and status blips", async () => {
   }
 })
 
-test("the minimap bracket is one solid thumb over empty and inked rows", async () => {
+test("the minimap bracket is one bar over empty and inked rows", async () => {
   // Two entries in six rows leave empty stretches between the inked cells;
-  // the visible slice must still read as one solid scrollbar thumb.
+  // the visible slice must still read as one continuous scrollbar bar.
   const cells = minimapRows([{ kind: "tool" }, { kind: "prose" }], 6)
   const app = await testRender(
     () => (
@@ -402,10 +403,10 @@ test("the minimap bracket is one solid thumb over empty and inked rows", async (
     }
     const lines = frame.split("\n").map((line) => line.replace(/\s+$/, ""))
     // The bracket spans rows 3..5 — two empty slices and one inked — and all
-    // three draw the same solid thumb.
-    expect(lines.filter((line) => line.endsWith("█"))).toHaveLength(3)
-    // Density outside the slice still ticks with the flat `▐`.
-    expect(frame).toContain("▐")
+    // three draw the same continuous bar.
+    expect(lines.filter((line) => line.endsWith("▐"))).toHaveLength(3)
+    // Density outside the slice still ticks with the hairline.
+    expect(frame).toContain("▕")
   } finally {
     app.renderer.destroy()
   }

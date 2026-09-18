@@ -2,20 +2,20 @@ import { For } from "solid-js"
 import { useTheme } from "../../context/theme"
 import type { MapCell } from "./minimap"
 
-/** Every content cell is one flat tick; the tone (colour) carries meaning. */
-const TICK = "▐"
-/** The viewport's slice, drawn solid so it reads as a scrollbar thumb. */
-const THUMB = "█"
+/** Every content cell is one hairline tick hugging the screen edge. */
+const TICK = "▕"
+/** The viewport's slice; still thin, but a readable bar against the ticks. */
+const THUMB = "▐"
 
 /**
- * The map strip: one narrow column of ticks beside the transcript.
+ * The map strip: one hairline column beside the transcript.
  *
- * The vocabulary is deliberately flat — density is one `▐` tick per row,
+ * Everything is deliberately thin and flat — a right-eighth `▕` tick per row,
  * distinguished only by tone — because a one-column ramp of block glyphs reads
  * as confetti next to real content. Failures (`danger`), warnings, compactions
- * (`info`) and density are all the same shape in different inks, and the
- * visible slice is a single solid thumb, so the strip reads as a scrollbar and
- * not as a second transcript.
+ * (`info`) and density are all the same hairline in different inks, and the
+ * visible slice is a right-half `▐` bar: width says viewport, tone says what
+ * the row is.
  */
 export function Minimap(props: {
   cells: readonly MapCell[]
