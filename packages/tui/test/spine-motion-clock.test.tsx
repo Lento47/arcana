@@ -31,6 +31,11 @@ type Probe = {
 async function mount(cue: string | undefined) {
   const [cueValue, setCue] = createSignal<string | undefined>(cue)
   let probe: Probe | undefined
+  // The preference lives in the real KV store on a shared test path, so this
+  // test must put it back: leaving `false` behind breaks every later test that
+  // expects the default (the dismiss wash snaps closed instead of dissolving).
+  let kv: ReturnType<typeof useKV> | undefined
+  let previous: boolean | undefined
   const app = await testRender(
     () => (
       <TestTuiProviders>
@@ -38,7 +43,9 @@ async function mount(cue: string | undefined) {
             value rather than its `true` default. */}
         <box>
           {(() => {
-            useKV().set("animations_enabled", false)
+            kv = useKV()
+            previous = kv.get("animations_enabled", true)
+            kv.set("animations_enabled", false)
             return null
           })()}
         </box>
@@ -66,11 +73,12 @@ async function mount(cue: string | undefined) {
     await app.renderOnce()
   }
   if (probe === undefined) throw new Error("the motion probe never mounted")
-  return { app, probe, setCue }
+  const restore = () => kv?.set("animations_enabled", previous ?? true)
+  return { app, probe, setCue, restore }
 }
 
 test("a live cue keeps the clock ticking while animations are disabled", async () => {
-  const { app, probe } = await mount("entry:work-1")
+  const { app, probe, restore } = await mount("entry:work-1")
   try {
     // The preference is off, and it stays off for the decorative consumers.
     expect(probe.enabled()).toBe(false)
@@ -82,21 +90,23 @@ test("a live cue keeps the clock ticking while animations are disabled", async (
     expect(probe.phase(), "the liveness clock stopped with animations disabled").toBeGreaterThan(before)
   } finally {
     app.renderer.destroy()
+    restore()
   }
 })
 
 test("an idle screen ticks nothing", async () => {
-  const { app, probe } = await mount(undefined)
+  const { app, probe, restore } = await mount(undefined)
   try {
     await Bun.sleep(900)
     expect(probe.phase(), "the clock ran with no cue active").toBe(0)
   } finally {
     app.renderer.destroy()
+    restore()
   }
 })
 
 test("a cue that clears stops the clock", async () => {
-  const { app, probe, setCue } = await mount("entry:work-1")
+  const { app, probe, setCue, restore } = await mount("entry:work-1")
   try {
     await Bun.sleep(600)
     expect(probe.phase()).toBeGreaterThan(0)
@@ -108,5 +118,6 @@ test("a cue that clears stops the clock", async () => {
     expect(probe.phase(), "the clock outlived its cue").toBe(settled)
   } finally {
     app.renderer.destroy()
+    restore()
   }
 })
