@@ -10,6 +10,7 @@ import { expect, test } from "bun:test"
 import { testRender } from "@opentui/solid"
 import { RGBA } from "@opentui/core"
 import { TestTuiProviders } from "./fixture/tui-providers"
+import { fallbackTheme } from "../src/theme"
 import { BrailleChart } from "../src/ui/kit/braille-chart"
 import { Breadcrumbs } from "../src/ui/kit/breadcrumbs"
 import { Card } from "../src/ui/kit/card"
@@ -160,7 +161,8 @@ test("waterfall paints spans and marks under lane labels", async () => {
   }
 })
 
-test("the minimap strip paints marks and density cells", async () => {
+test("the minimap strip carries marks in ink, not in glyph confetti", async () => {
+  const theme = fallbackTheme("dark")
   const cells = minimapRows(
     [
       { kind: "ask" },
@@ -177,7 +179,7 @@ test("the minimap strip paints marks and density cells", async () => {
       <TestTuiProviders>
         <box flexDirection="row" width="100%" height="100%">
           <box flexGrow={1} />
-          <Minimap cells={cells} bracket={{ from: 1, to: 2 }} />
+          <Minimap cells={cells} bracket={{ from: 2, to: 2 }} />
         </box>
       </TestTuiProviders>
     ),
@@ -194,9 +196,23 @@ test("the minimap strip paints marks and density cells", async () => {
       frame = next
       await Bun.sleep(20)
     }
-    expect(frame).toContain("✗")
-    expect(frame).toContain("┈")
-    expect(frame).toContain("▓")
+    // The shape is flat: ticks and a thumb, never the mark glyphs themselves.
+    expect(frame).toContain("▐")
+    expect(frame).toContain("█")
+    expect(frame).not.toContain("✗")
+    expect(frame).not.toContain("┈")
+
+    // Meaning is ink: the failure tick takes the fail colour, the compaction
+    // tick the brand colour, density the context ink, the slice the primary.
+    const spanInk = (glyph: string, color: RGBA) =>
+      app
+        .captureSpans()
+        .lines.flatMap((line) => line.spans)
+        .some((span) => span.text.includes(glyph) && (span.fg as RGBA).toInts().join() === color.toInts().join())
+    expect(spanInk("▐", theme.spineFail)).toBe(true)
+    expect(spanInk("▐", theme.spineBrand)).toBe(true)
+    expect(spanInk("▐", theme.borderSubtle)).toBe(true)
+    expect(spanInk("█", theme.primary)).toBe(true)
   } finally {
     app.renderer.destroy()
   }
@@ -358,9 +374,9 @@ test("radar view paints rings, core, sweep and status blips", async () => {
   }
 })
 
-test("the minimap bracket draws a continuous thumb through empty cells", async () => {
+test("the minimap bracket is one solid thumb over empty and inked rows", async () => {
   // Two entries in six rows leave empty stretches between the inked cells;
-  // the visible-slice bracket must still read as a scrollbar thumb there.
+  // the visible slice must still read as one solid scrollbar thumb.
   const cells = minimapRows([{ kind: "tool" }, { kind: "prose" }], 6)
   const app = await testRender(
     () => (
@@ -385,12 +401,11 @@ test("the minimap bracket draws a continuous thumb through empty cells", async (
       await Bun.sleep(20)
     }
     const lines = frame.split("\n").map((line) => line.replace(/\s+$/, ""))
-    // Rows 3 and 4 of the map are empty slices; both draw the thumb rail.
-    expect(lines.filter((line) => line.endsWith("┃"))).toHaveLength(2)
-    // The inked bracket row keeps its density glyph, and outside-bracket
-    // empty rows stay blank.
-    expect(frame).toContain("█")
-    expect(lines.filter((line) => line.endsWith("┃")).length).toBeLessThan(cells.length)
+    // The bracket spans rows 3..5 — two empty slices and one inked — and all
+    // three draw the same solid thumb.
+    expect(lines.filter((line) => line.endsWith("█"))).toHaveLength(3)
+    // Density outside the slice still ticks with the flat `▐`.
+    expect(frame).toContain("▐")
   } finally {
     app.renderer.destroy()
   }

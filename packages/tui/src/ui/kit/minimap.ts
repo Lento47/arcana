@@ -4,45 +4,59 @@
  * The transcript's real line height lives in yoga, so the map is built from
  * top-level entries instead: one cell per slice of entries. Marks always win
  * over density — a failure or a decision must survive the compression — and
- * the density ramp keeps the shape of long stretches readable.
+ * density is carried by the cell's *tone*, never by a glyph ramp: a one-column
+ * strip of █▓░ reads as confetti, so every density cell draws the same tick.
  */
 
 export type MapEntry = { kind: string; mark?: string }
-export type MapTone = "empty" | "ink" | "strong" | "mark"
-export type MapCell = { glyph: string; tone: MapTone }
+export type MapTone = "empty" | "ink" | "strong" | "danger" | "warn" | "info"
+/** Every tone draws the same tick; the tone alone carries the meaning. */
+export type MapCell = { tone: MapTone }
 
-/** Mark priority inside a slice: the gravest mark survives compression. */
-const MARK_PRIORITY = ["✗", "△", "┈", "✓", "◆"] as const
+/** Mark glyph → severity tone. Unknown marks keep the warning tier. */
+const MARK_TONE: Record<string, MapTone> = {
+  "✗": "danger",
+  "△": "warn",
+  "┈": "info",
+}
+const MARK_SEVERITY: Record<MapTone, number> = {
+  empty: 0,
+  ink: 0,
+  strong: 0,
+  info: 1,
+  warn: 2,
+  danger: 3,
+}
 
-function pickMark(marks: readonly string[]): string | undefined {
-  if (marks.length === 0) return undefined
-  for (const candidate of MARK_PRIORITY) if (marks.includes(candidate)) return candidate
-  return marks[0]
+function pickTone(marks: readonly string[]): MapTone | undefined {
+  let tone: MapTone | undefined
+  for (const mark of marks) {
+    const candidate = MARK_TONE[mark] ?? "warn"
+    if (!tone || MARK_SEVERITY[candidate] > MARK_SEVERITY[tone]) tone = candidate
+  }
+  return tone
 }
 
 /** One cell per slice of entries; slices are contiguous and equal-sized. */
 export function minimapRows(entries: readonly MapEntry[], rows: number): MapCell[] {
   if (rows <= 0) return []
-  if (entries.length === 0) return Array.from({ length: rows }, () => ({ glyph: " ", tone: "empty" as const }))
+  if (entries.length === 0) return Array.from({ length: rows }, () => ({ tone: "empty" as const }))
   const cells: MapCell[] = []
   for (let row = 0; row < rows; row++) {
     const from = Math.floor((row * entries.length) / rows)
     const to = row === rows - 1 ? entries.length : Math.floor(((row + 1) * entries.length) / rows)
     const slice = entries.slice(from, to)
     if (slice.length === 0) {
-      cells.push({ glyph: " ", tone: "empty" })
+      cells.push({ tone: "empty" })
       continue
     }
-    const mark = pickMark(slice.map((entry) => entry.mark).filter((value): value is string => Boolean(value)))
-    if (mark) {
-      cells.push({ glyph: mark, tone: "mark" })
+    const tone = pickTone(slice.map((entry) => entry.mark).filter((value): value is string => Boolean(value)))
+    if (tone) {
+      cells.push({ tone })
       continue
     }
     const density = slice.length / Math.max(1, Math.ceil(entries.length / rows))
-    cells.push({
-      glyph: density > 0.66 ? "█" : density > 0.33 ? "▓" : "░",
-      tone: density > 0.66 ? "strong" : "ink",
-    })
+    cells.push({ tone: density > 0.66 ? "strong" : "ink" })
   }
   return cells
 }

@@ -243,7 +243,7 @@ describe("kit timeline", () => {
 })
 
 describe("kit minimap", () => {
-  test("marks survive compression by priority", () => {
+  test("marks survive compression by severity", () => {
     const cells = minimapRows(
       [
         { kind: "ask" },
@@ -253,7 +253,11 @@ describe("kit minimap", () => {
       ],
       1,
     )
-    expect(cells).toEqual([{ glyph: "✗", tone: "mark" }])
+    expect(cells).toEqual([{ tone: "danger" }])
+    expect(minimapRows([{ kind: "tool", mark: "┈" }], 1)).toEqual([{ tone: "info" }])
+    expect(minimapRows([{ kind: "tool", mark: "△" }], 1)).toEqual([{ tone: "warn" }])
+    // Unknown marks fall back to the warning tier, never vanish silently.
+    expect(minimapRows([{ kind: "tool", mark: "◇" }], 1)).toEqual([{ tone: "warn" }])
   })
 
   test("fewer entries than rows leave empty cells, never fabricated fill", () => {
@@ -265,7 +269,7 @@ describe("kit minimap", () => {
 
   test("density cells are strong for packed slices", () => {
     const cells = minimapRows(Array.from({ length: 12 }, () => ({ kind: "tool" })), 4)
-    expect(cells.map((cell) => cell.glyph)).toEqual(["█", "█", "█", "█"])
+    expect(cells.every((cell) => cell.tone === "strong")).toBe(true)
   })
 
   test("the viewport bracket maps proportionally and clamps at the end", () => {
