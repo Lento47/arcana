@@ -3,9 +3,11 @@ import { contrastingInk, ensureMinContrast, hslToRgba, relativeLuminance, rgbaTo
 import { APCA_BAND_LC, apcaBandForRatio, apcaContrast, apcaPasses, apcaTargetLuminance, type ApcaBand } from "./apca"
 import { bgLuminance, isLightBg, tint } from "./emphasis"
 export { tint } from "./emphasis"
+import amber from "./assets/amber.json" with { type: "json" }
 import arcana from "./assets/arcana.json" with { type: "json" }
 import arctic from "./assets/arctic.json" with { type: "json" }
 import ayu from "./assets/ayu.json" with { type: "json" }
+import base16 from "./assets/base16.json" with { type: "json" }
 import bloodmoon from "./assets/bloodmoon.json" with { type: "json" }
 import catppuccin from "./assets/catppuccin.json" with { type: "json" }
 import coven from "./assets/coven.json" with { type: "json" }
@@ -22,7 +24,9 @@ import horizon from "./assets/horizon.json" with { type: "json" }
 import jade from "./assets/jade.json" with { type: "json" }
 import kanagawa from "./assets/kanagawa.json" with { type: "json" }
 import lich from "./assets/lich.json" with { type: "json" }
+import matrix from "./assets/matrix.json" with { type: "json" }
 import monokai from "./assets/monokai.json" with { type: "json" }
+import monokaiPro from "./assets/monokai-pro.json" with { type: "json" }
 import nightowl from "./assets/nightowl.json" with { type: "json" }
 import nord from "./assets/nord.json" with { type: "json" }
 import onedark from "./assets/onedark.json" with { type: "json" }
@@ -237,9 +241,11 @@ export type ThemeJson = {
 }
 
 export const DEFAULT_THEMES: Record<string, ThemeJson> = {
+  amber,
   arcana,
   arctic,
   ayu,
+  base16,
   bloodmoon,
   catppuccin,
   coven,
@@ -256,7 +262,9 @@ export const DEFAULT_THEMES: Record<string, ThemeJson> = {
   jade,
   kanagawa,
   lich,
+  matrix,
   monokai,
+  "monokai-pro": monokaiPro,
   nightowl,
   nord,
   onedark,
