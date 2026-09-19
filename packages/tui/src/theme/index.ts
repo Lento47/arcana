@@ -18,13 +18,17 @@ import flexoki from "./assets/flexoki.json" with { type: "json" }
 import github from "./assets/github.json" with { type: "json" }
 import grimoire from "./assets/grimoire.json" with { type: "json" }
 import gruvbox from "./assets/gruvbox.json" with { type: "json" }
+import horizon from "./assets/horizon.json" with { type: "json" }
 import jade from "./assets/jade.json" with { type: "json" }
 import kanagawa from "./assets/kanagawa.json" with { type: "json" }
 import lich from "./assets/lich.json" with { type: "json" }
 import monokai from "./assets/monokai.json" with { type: "json" }
+import nightowl from "./assets/nightowl.json" with { type: "json" }
 import nord from "./assets/nord.json" with { type: "json" }
+import onedark from "./assets/onedark.json" with { type: "json" }
 import oracle from "./assets/oracle.json" with { type: "json" }
 import phosphor from "./assets/phosphor.json" with { type: "json" }
+import poimandres from "./assets/poimandres.json" with { type: "json" }
 import rosepine from "./assets/rosepine.json" with { type: "json" }
 import sakura from "./assets/sakura.json" with { type: "json" }
 import solarized from "./assets/solarized.json" with { type: "json" }
@@ -248,13 +252,17 @@ export const DEFAULT_THEMES: Record<string, ThemeJson> = {
   github,
   grimoire,
   gruvbox,
+  horizon,
   jade,
   kanagawa,
   lich,
   monokai,
+  nightowl,
   nord,
+  onedark,
   oracle,
   phosphor,
+  poimandres,
   rosepine,
   sakura,
   solarized,
