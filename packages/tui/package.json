@@ -61,12 +61,12 @@
     "open": "10.1.2",
     "opentui-spinner": "catalog:",
     "remeda": "catalog:",
-    "strip-ansi": "7.1.2",
+    "strip-ansi": "7.2.0",
     "solid-js": "catalog:",
     "zod": "catalog:"
   },
   "optionalDependencies": {
-    "jimp": "1.6.0"
+    "jimp": "1.6.1"
   },
   "devDependencies": {
     "@tsconfig/bun": "catalog:",
