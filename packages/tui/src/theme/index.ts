@@ -331,6 +331,44 @@ export function upsertTheme(name: string, theme: unknown) {
 }
 
 /**
+ * CSS color names OpenTUI's renderer understands — its `parseColor` table.
+ * Theme JSON may use them anywhere a hex color is allowed (`"accent":
+ * "orange"`), which keeps quick custom themes readable. Refs and token names
+ * resolve first, so an explicit `defs` entry always wins over a same-named
+ * color. Keep in sync with @opentui/core's `CSS_COLOR_NAMES`.
+ */
+const CSS_COLOR_NAMES: Record<string, string> = {
+  black: "#000000",
+  white: "#ffffff",
+  red: "#ff0000",
+  green: "#008000",
+  blue: "#0000ff",
+  yellow: "#ffff00",
+  cyan: "#00ffff",
+  magenta: "#ff00ff",
+  silver: "#c0c0c0",
+  gray: "#808080",
+  grey: "#808080",
+  maroon: "#800000",
+  olive: "#808000",
+  lime: "#00ff00",
+  aqua: "#00ffff",
+  teal: "#008080",
+  navy: "#000080",
+  fuchsia: "#ff00ff",
+  purple: "#800080",
+  orange: "#ffa500",
+  brightblack: "#666666",
+  brightred: "#ff6666",
+  brightgreen: "#66ff66",
+  brightblue: "#6666ff",
+  brightyellow: "#ffff66",
+  brightcyan: "#66ffff",
+  brightmagenta: "#ff66ff",
+  brightwhite: "#ffffff",
+}
+
+/**
  * Flatten an `extends` chain into one ThemeJson. `defs` and `theme` merge with
  * the child winning; an unknown or cyclic base is ignored with a warning rather
  * than crashing the resolver (a broken custom file must not take the TUI down).
@@ -383,7 +421,13 @@ export function resolveTheme(
       }
 
       const next = defs[c] ?? merged[c as ThemeColor]
-      if (next == null) return FALLBACK
+      if (next == null) {
+        // CSS color names OpenTUI's renderer understands (its `parseColor`
+        // table). Refs and token names win over a same-named color, so an
+        // explicit `defs` entry always resolves first.
+        const named = CSS_COLOR_NAMES[c.toLowerCase()]
+        return named ? RGBA.fromHex(named) : FALLBACK
+      }
       return resolveColor(next, [...chain, c])
     }
     if (typeof c === "number") {
@@ -647,7 +691,7 @@ function checkColorValue(
       }
       return
     }
-    if (!defs.has(value) && !tokens.has(value)) {
+    if (!defs.has(value) && !tokens.has(value) && !CSS_COLOR_NAMES[value.toLowerCase()]) {
       issues.push({ level: "warning", message: `${label}: unknown reference "${value}" (renders as fallback gray)` })
     }
     return

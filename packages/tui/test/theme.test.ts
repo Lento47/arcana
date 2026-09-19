@@ -353,6 +353,27 @@ describe("theme inheritance and the monochrome layer", () => {
     expect(resolved.primary.toInts()).toEqual(base.primary.toInts())
   })
 
+  test("CSS color names resolve and lint clean", () => {
+    // OpenTUI's renderer knows a small CSS name table; theme JSON may use it.
+    const base = DEFAULT_THEMES.arcana!
+    const named = { ...base, theme: { ...base.theme, accent: "orange", background: "black" } } as unknown as ThemeJson
+    const resolved = resolveTheme(named, "dark", { mono: "off" })
+    expect(resolved.accent.toInts().slice(0, 3)).toEqual([255, 165, 0])
+    expect(resolved.background.toInts().slice(0, 3)).toEqual([0, 0, 0])
+    expect(lintTheme("named", named).some((issue) => issue.message.includes("orange"))).toBe(false)
+  })
+
+  test("an explicit def wins over a same-named CSS color", () => {
+    const base = DEFAULT_THEMES.arcana!
+    const themed = {
+      ...base,
+      defs: { ...base.defs, red: "#ff0000" },
+      theme: { ...base.theme, accent: "red" },
+    } as unknown as ThemeJson
+    const resolved = resolveTheme(themed, "dark", { mono: "off" })
+    expect(resolved.accent.toInts().slice(0, 3)).toEqual([255, 0, 0])
+  })
+
   test("an unknown or cyclic base is ignored instead of crashing", () => {
     const unknown = { extends: "definitely-not-a-theme", theme: { ...DEFAULT_THEMES.arcana!.theme } }
     expect(() => resolveTheme(unknown as never, "dark")).not.toThrow()
