@@ -6,19 +6,23 @@ export { tint } from "./emphasis"
 import arcana from "./assets/arcana.json" with { type: "json" }
 import arctic from "./assets/arctic.json" with { type: "json" }
 import bloodmoon from "./assets/bloodmoon.json" with { type: "json" }
+import catppuccin from "./assets/catppuccin.json" with { type: "json" }
 import coven from "./assets/coven.json" with { type: "json" }
 import crypt from "./assets/crypt.json" with { type: "json" }
 import dracula from "./assets/dracula.json" with { type: "json" }
 import dragon from "./assets/dragon.json" with { type: "json" }
 import ember from "./assets/ember.json" with { type: "json" }
+import everforest from "./assets/everforest.json" with { type: "json" }
 import grimoire from "./assets/grimoire.json" with { type: "json" }
 import gruvbox from "./assets/gruvbox.json" with { type: "json" }
 import jade from "./assets/jade.json" with { type: "json" }
+import kanagawa from "./assets/kanagawa.json" with { type: "json" }
 import lich from "./assets/lich.json" with { type: "json" }
 import monokai from "./assets/monokai.json" with { type: "json" }
 import nord from "./assets/nord.json" with { type: "json" }
 import oracle from "./assets/oracle.json" with { type: "json" }
 import phosphor from "./assets/phosphor.json" with { type: "json" }
+import rosepine from "./assets/rosepine.json" with { type: "json" }
 import sakura from "./assets/sakura.json" with { type: "json" }
 import synthwave from "./assets/synthwave.json" with { type: "json" }
 import tokyonight from "./assets/tokyonight.json" with { type: "json" }
@@ -228,19 +232,23 @@ export const DEFAULT_THEMES: Record<string, ThemeJson> = {
   arcana,
   arctic,
   bloodmoon,
+  catppuccin,
   coven,
   crypt,
   dracula,
   dragon,
   ember,
+  everforest,
   grimoire,
   gruvbox,
   jade,
+  kanagawa,
   lich,
   monokai,
   nord,
   oracle,
   phosphor,
+  rosepine,
   sakura,
   synthwave,
   tokyonight,
