@@ -1,5 +1,5 @@
 import { SyntaxStyle, RGBA, type TerminalColors } from "@opentui/core"
-import { contrastingInk, ensureMinContrast, hslToRgba, relativeLuminance, rgbaToHsl } from "./contrast"
+import { contrastingInk, ensureMinContrast, hslToRgba, relativeLuminance, rgbaToHsl, srgbToLinear } from "./contrast"
 import { bgLuminance, isLightBg, tint } from "./emphasis"
 export { tint } from "./emphasis"
 import arcana from "./assets/arcana.json" with { type: "json" }
@@ -356,7 +356,7 @@ function resolveInherited(theme: ThemeJson, seen = new Set<ThemeJson>()): ThemeJ
 export function resolveTheme(
   theme: ThemeJson,
   mode: "dark" | "light",
-  options?: { mono?: MonoMode },
+  options?: { mono?: MonoMode; report?: ThemeAdjustment[] },
 ) {
   const source = resolveInherited(theme)
   const merged = { ...source.theme }
@@ -496,16 +496,237 @@ export function resolveTheme(
   // ladder only applies to the designed ramp; `soft` keeps the palette's own
   // (hue-distinct) roles, and `off` leaves everything alone.
   if (monoMode === "full") {
+    // Explicit spine* colors in the palette JSON resolve through spineFB, after
+    // the design passes above; run the ramp once more so the whole spine sits
+    // on the designed ladder before the role ladder re-spaces its signal roles.
+    applyDesignedMonochrome(resolved, mode, character)
     clampToCast(resolved, mode, character)
     spaceMonochromeRoles(resolved, mode, character)
   }
-  applyReadabilityFloor(resolved)
+  applyReadabilityFloor(resolved, options?.report)
 
   return {
     ...resolved,
     _hasSelectedListItemText: hasSelectedListItemText,
     thinkingOpacity,
   } as Theme
+}
+
+/**
+ * Resolve a theme and report every token the readability floor had to lift.
+ * The designed ramp is authored inside the floors, so a built-in theme should
+ * report zero adjustments; an authored palette shows exactly which colors the
+ * contrast guarantee overrode, and against which ratio.
+ */
+export function inspectTheme(
+  theme: ThemeJson,
+  mode: "dark" | "light",
+  options?: { mono?: MonoMode },
+): { theme: Theme; adjustments: ThemeAdjustment[] } {
+  const adjustments: ThemeAdjustment[] = []
+  const resolved = resolveTheme(theme, mode, { mono: options?.mono, report: adjustments })
+  // A token can be lifted twice (diff highlights against two surfaces); keep
+  // the final adjustment per token.
+  const last = new Map<string, ThemeAdjustment>()
+  for (const adjustment of adjustments) last.set(adjustment.token, adjustment)
+  return { theme: resolved, adjustments: [...last.values()] }
+}
+
+/** Temperature family for a hue in degrees. */
+function hueFamily(hue: number) {
+  if (hue < 70 || hue >= 330) return "warm"
+  if (hue < 160) return "green"
+  if (hue < 260) return "cool"
+  return "violet"
+}
+
+/** Hue name for a hue in degrees. */
+function hueName(hue: number) {
+  if (hue < 15 || hue >= 345) return "red"
+  if (hue < 45) return "amber"
+  if (hue < 70) return "yellow"
+  if (hue < 160) return "green"
+  if (hue < 195) return "teal"
+  if (hue < 250) return "blue"
+  if (hue < 290) return "violet"
+  if (hue < 330) return "magenta"
+  return "red"
+}
+
+/**
+ * One-line character summary for the theme picker: the authored accent's hue
+ * family, plus the declarations that change what the user will actually see (a
+ * theme that opts out of the monochrome layer, a theme that is not built in).
+ */
+export function themeCharacter(name: string, theme: ThemeJson): string {
+  let accent: RGBA | undefined
+  try {
+    accent = resolveTheme(theme, "dark", { mono: "off" }).accent
+  } catch {
+    // A broken custom theme (circular refs) must not take the picker down.
+    accent = undefined
+  }
+  const parts: string[] = []
+  if (accent) {
+    const { h, s } = rgbaToHsl(accent)
+    const family = hueFamily(h)
+    const label = hueName(h)
+    parts.push(s < 0.08 ? "neutral" : family === label ? label : `${family} ${label}`)
+  } else {
+    parts.push("unresolved")
+  }
+  if (theme.mono === false) parts.push("keeps its palette")
+  if (!DEFAULT_THEMES[name]) parts.push("custom")
+  return parts.join(" · ")
+}
+
+export type ThemeIssue = { level: "error" | "warning"; message: string }
+
+/** Tokens every theme must resolve (after inheritance) or the UI breaks. */
+const REQUIRED_THEME_TOKENS = [
+  "background",
+  "backgroundPanel",
+  "backgroundElement",
+  "border",
+  "borderSubtle",
+  "text",
+  "textMuted",
+  "primary",
+  "accent",
+  "info",
+  "success",
+  "warning",
+  "error",
+] as const
+
+const HEX_COLOR = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i
+
+let knownThemeKeys: Set<string> | undefined
+
+/** Every token name any built-in declares, plus the optional ones. */
+function knownTokenKeys() {
+  if (!knownThemeKeys) {
+    knownThemeKeys = new Set(Object.values(DEFAULT_THEMES).flatMap((theme) => Object.keys(theme.theme)))
+    for (const key of ["backgroundMenu", "borderThinking", "surfaceAlt", "selectedListItemText", "thinkingOpacity"]) {
+      knownThemeKeys.add(key)
+    }
+  }
+  return knownThemeKeys
+}
+
+/** The `extends` chain from a theme up to a cycle or an unknown base. */
+function inheritanceChain(name: string, theme: ThemeJson): ThemeJson[] {
+  const chain = [theme]
+  const seen = new Set<string>([name])
+  let current = theme
+  while (current.extends) {
+    const baseName = current.extends
+    if (seen.has(baseName)) break
+    seen.add(baseName)
+    const base = allThemes()[baseName]
+    if (!base) break
+    chain.push(base)
+    current = base
+  }
+  return chain
+}
+
+function checkColorValue(
+  label: string,
+  value: unknown,
+  defs: Set<string>,
+  tokens: Set<string>,
+  issues: ThemeIssue[],
+) {
+  if (typeof value === "string") {
+    if (value === "transparent" || value === "none") return
+    if (value.startsWith("#")) {
+      if (!HEX_COLOR.test(value)) {
+        issues.push({ level: "warning", message: `${label}: "${value}" is not a valid hex color` })
+      }
+      return
+    }
+    if (!defs.has(value) && !tokens.has(value)) {
+      issues.push({ level: "warning", message: `${label}: unknown reference "${value}" (renders as fallback gray)` })
+    }
+    return
+  }
+  if (typeof value === "number") {
+    if (!Number.isInteger(value) || value < 0 || value > 255) {
+      issues.push({ level: "warning", message: `${label}: ANSI code must be an integer in [0, 255]` })
+    }
+    return
+  }
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const variant = value as Record<string, unknown>
+    const modes = (["dark", "light"] as const).filter((mode) => mode in variant)
+    if (modes.length === 0) {
+      issues.push({ level: "warning", message: `${label}: object values need dark/light keys` })
+      return
+    }
+    for (const mode of modes) checkColorValue(`${label}.${mode}`, variant[mode], defs, tokens, issues)
+    return
+  }
+  issues.push({ level: "warning", message: `${label}: unsupported value` })
+}
+
+/**
+ * Static checks for a theme file: unknown tokens, dangling references,
+ * malformed colors, an unresolvable `extends`, missing required tokens and an
+ * out-of-range `mono` declaration. Built-ins are lint-clean; the checks exist
+ * for custom themes (`arcana theme lint`).
+ */
+export function lintTheme(name: string, theme: ThemeJson): ThemeIssue[] {
+  const issues: ThemeIssue[] = []
+  const chain = inheritanceChain(name, theme)
+  if (theme.extends && chain.length === 1) {
+    issues.push({ level: "warning", message: `extends unknown theme "${theme.extends}"` })
+  }
+  const known = knownTokenKeys()
+  for (const key of Object.keys(theme.theme)) {
+    if (!known.has(key)) issues.push({ level: "warning", message: `unknown token "${key}"` })
+  }
+  const defs = new Set(chain.flatMap((entry) => Object.keys(entry.defs ?? {})))
+  const tokens = new Set(chain.flatMap((entry) => Object.keys(entry.theme)))
+  for (const [key, value] of Object.entries(theme.theme)) {
+    // `thinkingOpacity` is a number, not an ANSI color code.
+    if (key === "thinkingOpacity") continue
+    checkColorValue(key, value, defs, tokens, issues)
+  }
+  let resolved: Theme | undefined
+  try {
+    resolved = resolveTheme(theme, "dark", { mono: "off" })
+  } catch (error) {
+    issues.push({
+      level: "error",
+      message: `resolution failed: ${error instanceof Error ? error.message : String(error)}`,
+    })
+  }
+  if (resolved) {
+    for (const token of REQUIRED_THEME_TOKENS) {
+      if (!resolved[token]) issues.push({ level: "error", message: `missing token "${token}"` })
+    }
+  }
+  if (theme.mono && typeof theme.mono === "object") {
+    const { hue, structure, identity } = theme.mono
+    if (hue !== undefined && !(Number.isFinite(hue) && hue >= 0 && hue < 360)) {
+      issues.push({ level: "warning", message: "mono.hue must be in [0, 360)" })
+    }
+    if (structure !== undefined && !(Number.isFinite(structure) && structure >= 0 && structure <= 1)) {
+      issues.push({ level: "warning", message: "mono.structure must be in [0, 1]" })
+    }
+    if (identity !== undefined && !(Number.isFinite(identity) && identity >= 0 && identity <= 1)) {
+      issues.push({ level: "warning", message: "mono.identity must be in [0, 1]" })
+    }
+  }
+  return issues
+}
+
+/** Lint every known theme; only themes with issues are returned. */
+export function lintThemes(): Array<{ name: string; issues: ThemeIssue[] }> {
+  return Object.entries(allThemes())
+    .map(([name, theme]) => ({ name, issues: lintTheme(name, theme) }))
+    .filter((result) => result.issues.length > 0)
 }
 
 /**
@@ -696,7 +917,26 @@ const MONO_DARK_MAP: Partial<Record<ThemeColor, number>> = {
   diffHunkHeader: 11,
   diffHighlightAdded: 15,
   diffHighlightRemoved: 15,
-  diffLineNumber: 8,
+  // The 3.8:1 floor is also checked against the diff surface (step 1), so line
+  // numbers sit one rung above the comment level.
+  diffLineNumber: 9,
+  // Spine roles that do not participate in the ladder. Explicit spine* colors
+  // in a palette JSON bypassed the design pass entirely and were then lifted by
+  // the floor; mapping them here keeps the whole spine on the ramp.
+  spineActor: 10,
+  spineContext: 10,
+  spineThink: 12,
+  spineDiffMuted: 9,
+  spineGutterElapsed: 9,
+  spineGutterTimestamp: 9,
+  spineSubagent: 13,
+  spineFail: 14,
+  spineFix: 16,
+  spineOk: 11,
+  spineDiffAdd: 11,
+  spineDiffRemove: 11,
+  spineRail: 8,
+  spineRailActive: 12,
 }
 
 /** Token → step index on the light ladder. */
@@ -738,13 +978,13 @@ const MONO_LIGHT_MAP: Partial<Record<ThemeColor, number>> = {
   markdownListEnumeration: 6,
   markdownImage: 6,
   markdownImageText: 6,
-  markdownHorizontalRule: 12,
+  markdownHorizontalRule: 10,
   syntaxKeyword: 5,
   syntaxString: 8,
   syntaxNumber: 6,
   syntaxType: 5,
   syntaxOperator: 7,
-  syntaxComment: 11,
+  syntaxComment: 10,
   syntaxVariable: 4,
   syntaxPunctuation: 5,
   syntaxFunction: 4,
@@ -754,7 +994,22 @@ const MONO_LIGHT_MAP: Partial<Record<ThemeColor, number>> = {
   diffHunkHeader: 6,
   diffHighlightAdded: 4,
   diffHighlightRemoved: 4,
-  diffLineNumber: 11,
+  diffLineNumber: 9,
+  // Spine roles that do not participate in the ladder (see the dark map).
+  spineActor: 9,
+  spineContext: 9,
+  spineThink: 6,
+  spineDiffMuted: 9,
+  spineGutterElapsed: 9,
+  spineGutterTimestamp: 9,
+  spineSubagent: 6,
+  spineFail: 9,
+  spineFix: 7,
+  spineOk: 9,
+  spineDiffAdd: 6,
+  spineDiffRemove: 6,
+  spineRail: 12,
+  spineRailActive: 10,
 }
 
 /**
@@ -812,6 +1067,37 @@ function monochromeCast(
   }
 }
 
+/**
+ * A cast-tinted color carrying (approximately) the requested WCAG luminance.
+ *
+ * Tinting in HSL at constant lightness shifts luminance — a blue-tinted gray is
+ * darker than a neutral one at the same lightness — which silently pushed ramp
+ * steps below their contrast floors, so the floor "lifted" tokens the ramp had
+ * just designed. Scaling the linear channels preserves the tint direction and
+ * pins the luminance, so every step ships the contrast it was authored for.
+ * Falls back to the neutral gray when the tint cannot reach the target inside
+ * the sRGB gamut.
+ */
+function castColor(hue: number, sat: number, luminance: number, alpha: number): RGBA {
+  const neutral = grayFromLuminance(luminance)
+  const fallback = RGBA.fromValues(neutral, neutral, neutral, alpha)
+  if (sat <= 0) return fallback
+  let color = hslToRgba(hue, sat, neutral, alpha)
+  // Re-scale after quantization: each pass preserves the channel ratios (the
+  // tint) and moves the measured luminance toward the target.
+  for (let i = 0; i < 3; i++) {
+    const y = relativeLuminance(color)
+    if (!(y > 0)) return fallback
+    const k = luminance / y
+    const r = srgbToLinear(color.r) * k
+    const g = srgbToLinear(color.g) * k
+    const b = srgbToLinear(color.b) * k
+    if (r > 1 || g > 1 || b > 1) return fallback
+    color = RGBA.fromValues(linearToSrgb(r), linearToSrgb(g), linearToSrgb(b), alpha)
+  }
+  return color
+}
+
 /** Re-draw every structural token on the designed ladder, cast-tinted. */
 function applyDesignedMonochrome(
   theme: Partial<Record<ThemeColor, RGBA>>,
@@ -825,7 +1111,7 @@ function applyDesignedMonochrome(
     const current = theme[key]
     if (!current) continue
     const sat = MONO_IDENTITY_TOKENS.has(key) ? cast.identitySat : cast.sat
-    theme[key] = hslToRgba(cast.hue, sat, steps[step]!, current.a)
+    theme[key] = castColor(cast.hue, sat, srgbToLinear(steps[step]!), current.a)
   }
 }
 
@@ -878,14 +1164,19 @@ function spaceMonochromeRoles(
   if (!surface || !text) return
   const cast = monochromeCast(theme, mode, character)
   const lightBg = relativeLuminance(surface) > 0.5
-  // The strictest surface these roles are checked against (menu/panel differ).
+  // The strictest surface these roles are checked against. Dark ink gets
+  // brighter, so the strictest dark surface is the LIGHTEST (menu); light ink
+  // gets darker, so the strictest light surface is the DARKEST. Picking the
+  // opposite end let the floor lift roles the ladder had just placed.
   const surfaces = [surface, theme.backgroundMenu, theme.backgroundPanel].filter(Boolean) as RGBA[]
   const surfaceLum = lightBg
-    ? Math.max(...surfaces.map(relativeLuminance))
-    : Math.min(...surfaces.map(relativeLuminance))
-  // 4.5:1 bound for the ladder; spineBrand carries the stricter 7:1 floor and
-  // therefore takes the band's prominent end, where it cannot collide with it.
-  const boundLum = lightBg ? (surfaceLum + 0.05) / 4.5 - 0.05 : 4.5 * (surfaceLum + 0.05) - 0.05
+    ? Math.min(...surfaces.map(relativeLuminance))
+    : Math.max(...surfaces.map(relativeLuminance))
+  // The ladder's strictest floor is spinePrompt's 4.8:1. Bound at 4.9 so the
+  // floor's `>=` check can never re-lift a role on a rounding boundary;
+  // spineBrand carries the stricter 7:1 floor and takes the band's prominent
+  // end, where it cannot collide with the others.
+  const boundLum = lightBg ? (surfaceLum + 0.05) / 4.9 - 0.05 : 4.9 * (surfaceLum + 0.05) - 0.05
   const boundGray = grayFromLuminance(boundLum)
   const textGray = grayFromLuminance(relativeLuminance(text))
   const clamp01 = (value: number) => Math.max(0, Math.min(1, value))
@@ -909,7 +1200,7 @@ function spaceMonochromeRoles(
   // their original prominence order.
   const brandGray = clamp01(lightBg ? band.lo : band.hi)
   const brand = theme.spineBrand
-  if (brand) theme.spineBrand = hslToRgba(cast.hue, cast.identitySat, brandGray, brand.a)
+  if (brand) theme.spineBrand = castColor(cast.hue, cast.identitySat, srgbToLinear(brandGray), brand.a)
   const roles = MONO_LADDER_KEYS.map((key) => ({ key, lum: relativeLuminance(theme[key]!) })).sort((a, b) =>
     lightBg ? a.lum - b.lum : b.lum - a.lum,
   )
@@ -917,96 +1208,115 @@ function spaceMonochromeRoles(
     const offset = (index + 1) * gap
     const gray = clamp01(lightBg ? band.lo + offset : band.hi - offset)
     const current = theme[role.key]!
-    theme[role.key] = hslToRgba(cast.hue, cast.identitySat, gray, current.a)
+    theme[role.key] = castColor(cast.hue, cast.identitySat, srgbToLinear(gray), current.a)
   })
 }
 
-function applyReadabilityFloor(theme: Partial<Record<ThemeColor, RGBA>>) {
+/** A token the readability floor had to lift, and the ratio that forced it. */
+export type ThemeAdjustment = {
+  token: ThemeColor | "selectedListItemText"
+  before: RGBA
+  after: RGBA
+  required: number
+}
+
+function applyReadabilityFloor(theme: Partial<Record<ThemeColor, RGBA>>, report?: ThemeAdjustment[]) {
   const baseSurface =
     theme.background && theme.background.a === 0 ? (theme.backgroundPanel ?? theme.background) : theme.background
   if (!baseSurface) return
 
   const panel = theme.backgroundPanel ?? baseSurface
   const menu = theme.backgroundMenu ?? panel
-  const liftOn = (surface: RGBA, value: RGBA | undefined, minRatio: number) =>
-    value ? ensureMinContrast(value, surface, minRatio) : value
-  const lift = (value: RGBA | undefined, minRatio: number) => liftOn(baseSurface, value, minRatio)
+  const record = (token: ThemeColor | "selectedListItemText", before: RGBA | undefined, after: RGBA | undefined, required: number) => {
+    if (!report || !before || !after || before === after) return
+    report.push({ token, before, after, required })
+  }
+  const liftOn = (surface: RGBA, value: RGBA | undefined, minRatio: number, token: ThemeColor) => {
+    if (!value) return value
+    const adjusted = ensureMinContrast(value, surface, minRatio)
+    record(token, value, adjusted, minRatio)
+    return adjusted
+  }
+  const lift = (value: RGBA | undefined, minRatio: number, token: ThemeColor) =>
+    liftOn(baseSurface, value, minRatio, token)
 
-  theme.text = lift(theme.text, 7)
-  theme.textMuted = lift(theme.textMuted, 4.7)
-  theme.primary = lift(theme.primary, 4.5)
-  theme.secondary = lift(theme.secondary, 4.5)
-  theme.accent = lift(theme.accent, 4.5)
-  theme.highlight = lift(theme.highlight, 4.5)
-  theme.info = lift(theme.info, 4.5)
-  theme.success = lift(theme.success, 4.5)
-  theme.warning = lift(theme.warning, 4.5)
-  theme.error = lift(theme.error, 4.8)
-  theme.borderSubtle = lift(theme.borderSubtle, 2.2)
-  theme.border = lift(theme.border, 2.8)
+  theme.text = lift(theme.text, 7, "text")
+  theme.textMuted = lift(theme.textMuted, 4.7, "textMuted")
+  theme.primary = lift(theme.primary, 4.5, "primary")
+  theme.secondary = lift(theme.secondary, 4.5, "secondary")
+  theme.accent = lift(theme.accent, 4.5, "accent")
+  theme.highlight = lift(theme.highlight, 4.5, "highlight")
+  theme.info = lift(theme.info, 4.5, "info")
+  theme.success = lift(theme.success, 4.5, "success")
+  theme.warning = lift(theme.warning, 4.5, "warning")
+  theme.error = lift(theme.error, 4.8, "error")
+  theme.borderSubtle = lift(theme.borderSubtle, 2.2, "borderSubtle")
+  theme.border = lift(theme.border, 2.8, "border")
 
-  theme.diffAdded = lift(theme.diffAdded, 4.5)
-  theme.diffRemoved = lift(theme.diffRemoved, 4.5)
-  theme.diffContext = lift(theme.diffContext, 4.5)
-  theme.diffHunkHeader = lift(theme.diffHunkHeader, 4.5)
-  theme.diffHighlightAdded = lift(theme.diffHighlightAdded, 4.5)
-  theme.diffHighlightRemoved = lift(theme.diffHighlightRemoved, 4.5)
-  theme.diffLineNumber = lift(theme.diffLineNumber, 3.8)
-  theme.diffHighlightAdded = liftOn(theme.diffAddedBg ?? baseSurface, theme.diffHighlightAdded, 4.5)
-  theme.diffHighlightRemoved = liftOn(theme.diffRemovedBg ?? baseSurface, theme.diffHighlightRemoved, 4.5)
-  theme.diffLineNumber = liftOn(theme.diffContextBg ?? baseSurface, theme.diffLineNumber, 3.8)
+  theme.diffAdded = lift(theme.diffAdded, 4.5, "diffAdded")
+  theme.diffRemoved = lift(theme.diffRemoved, 4.5, "diffRemoved")
+  theme.diffContext = lift(theme.diffContext, 4.5, "diffContext")
+  theme.diffHunkHeader = lift(theme.diffHunkHeader, 4.5, "diffHunkHeader")
+  theme.diffHighlightAdded = lift(theme.diffHighlightAdded, 4.5, "diffHighlightAdded")
+  theme.diffHighlightRemoved = lift(theme.diffHighlightRemoved, 4.5, "diffHighlightRemoved")
+  theme.diffLineNumber = lift(theme.diffLineNumber, 3.8, "diffLineNumber")
+  theme.diffHighlightAdded = liftOn(theme.diffAddedBg ?? baseSurface, theme.diffHighlightAdded, 4.5, "diffHighlightAdded")
+  theme.diffHighlightRemoved = liftOn(theme.diffRemovedBg ?? baseSurface, theme.diffHighlightRemoved, 4.5, "diffHighlightRemoved")
+  theme.diffLineNumber = liftOn(theme.diffContextBg ?? baseSurface, theme.diffLineNumber, 3.8, "diffLineNumber")
 
-  theme.markdownText = lift(theme.markdownText, 7)
-  theme.markdownHeading = lift(theme.markdownHeading, 4.8)
-  theme.markdownLink = lift(theme.markdownLink, 4.5)
-  theme.markdownLinkText = lift(theme.markdownLinkText, 4.5)
-  theme.markdownCode = lift(theme.markdownCode, 4.5)
-  theme.markdownBlockQuote = lift(theme.markdownBlockQuote, 4.5)
-  theme.markdownEmph = lift(theme.markdownEmph, 4.5)
-  theme.markdownStrong = lift(theme.markdownStrong, 4.8)
-  theme.markdownHorizontalRule = lift(theme.markdownHorizontalRule, 3.8)
-  theme.markdownListItem = lift(theme.markdownListItem, 4.5)
-  theme.markdownListEnumeration = lift(theme.markdownListEnumeration, 4.5)
-  theme.markdownImage = lift(theme.markdownImage, 4.5)
-  theme.markdownImageText = lift(theme.markdownImageText, 4.5)
-  theme.markdownCodeBlock = lift(theme.markdownCodeBlock, 7)
+  theme.markdownText = lift(theme.markdownText, 7, "markdownText")
+  theme.markdownHeading = lift(theme.markdownHeading, 4.8, "markdownHeading")
+  theme.markdownLink = lift(theme.markdownLink, 4.5, "markdownLink")
+  theme.markdownLinkText = lift(theme.markdownLinkText, 4.5, "markdownLinkText")
+  theme.markdownCode = lift(theme.markdownCode, 4.5, "markdownCode")
+  theme.markdownBlockQuote = lift(theme.markdownBlockQuote, 4.5, "markdownBlockQuote")
+  theme.markdownEmph = lift(theme.markdownEmph, 4.5, "markdownEmph")
+  theme.markdownStrong = lift(theme.markdownStrong, 4.8, "markdownStrong")
+  theme.markdownHorizontalRule = lift(theme.markdownHorizontalRule, 3.8, "markdownHorizontalRule")
+  theme.markdownListItem = lift(theme.markdownListItem, 4.5, "markdownListItem")
+  theme.markdownListEnumeration = lift(theme.markdownListEnumeration, 4.5, "markdownListEnumeration")
+  theme.markdownImage = lift(theme.markdownImage, 4.5, "markdownImage")
+  theme.markdownImageText = lift(theme.markdownImageText, 4.5, "markdownImageText")
+  theme.markdownCodeBlock = lift(theme.markdownCodeBlock, 7, "markdownCodeBlock")
 
-  theme.syntaxComment = lift(theme.syntaxComment, 3.8)
-  theme.syntaxKeyword = lift(theme.syntaxKeyword, 4.5)
-  theme.syntaxFunction = lift(theme.syntaxFunction, 4.5)
-  theme.syntaxVariable = lift(theme.syntaxVariable, 7)
-  theme.syntaxString = lift(theme.syntaxString, 4.5)
-  theme.syntaxNumber = lift(theme.syntaxNumber, 4.5)
-  theme.syntaxType = lift(theme.syntaxType, 4.5)
-  theme.syntaxOperator = lift(theme.syntaxOperator, 4.5)
-  theme.syntaxPunctuation = lift(theme.syntaxPunctuation, 7)
+  theme.syntaxComment = lift(theme.syntaxComment, 3.8, "syntaxComment")
+  theme.syntaxKeyword = lift(theme.syntaxKeyword, 4.5, "syntaxKeyword")
+  theme.syntaxFunction = lift(theme.syntaxFunction, 4.5, "syntaxFunction")
+  theme.syntaxVariable = lift(theme.syntaxVariable, 7, "syntaxVariable")
+  theme.syntaxString = lift(theme.syntaxString, 4.5, "syntaxString")
+  theme.syntaxNumber = lift(theme.syntaxNumber, 4.5, "syntaxNumber")
+  theme.syntaxType = lift(theme.syntaxType, 4.5, "syntaxType")
+  theme.syntaxOperator = lift(theme.syntaxOperator, 4.5, "syntaxOperator")
+  theme.syntaxPunctuation = lift(theme.syntaxPunctuation, 7, "syntaxPunctuation")
 
-  theme.spineBrand = lift(theme.spineBrand, 7)
-  theme.spineContext = lift(theme.spineContext, 4.7)
-  theme.spineActor = lift(theme.spineActor, 4.5)
-  theme.spineThink = lift(theme.spineThink, 4.5)
-  theme.spineDiffMuted = lift(theme.spineDiffMuted, 4.5)
-  theme.spineGutterElapsed = lift(theme.spineGutterElapsed, 4.5)
-  theme.spineGutterTimestamp = lift(theme.spineGutterTimestamp, 4.5)
-  theme.spineSubagent = lift(theme.spineSubagent, 4.5)
-  theme.spineAsk = lift(theme.spineAsk, 4.5)
-  theme.spinePlan = lift(theme.spinePlan, 4.5)
-  theme.spineInspect = lift(theme.spineInspect, 4.5)
-  theme.spinePatch = lift(theme.spinePatch, 4.5)
-  theme.spineRun = lift(theme.spineRun, 4.5)
-  theme.spineFail = lift(theme.spineFail, 4.8)
-  theme.spineFix = lift(theme.spineFix, 4.5)
-  theme.spineOk = lift(theme.spineOk, 4.5)
-  theme.spinePrompt = lift(theme.spinePrompt, 4.8)
-  theme.spineDiffAdd = lift(theme.spineDiffAdd, 4.5)
-  theme.spineDiffRemove = lift(theme.spineDiffRemove, 4.5)
-  theme.spineRail = liftOn(panel, theme.spineRail, 2.4)
-  theme.spineRailActive = liftOn(panel, theme.spineRailActive, 3.2)
+  theme.spineBrand = lift(theme.spineBrand, 7, "spineBrand")
+  theme.spineContext = lift(theme.spineContext, 4.7, "spineContext")
+  theme.spineActor = lift(theme.spineActor, 4.5, "spineActor")
+  theme.spineThink = lift(theme.spineThink, 4.5, "spineThink")
+  theme.spineDiffMuted = lift(theme.spineDiffMuted, 4.5, "spineDiffMuted")
+  theme.spineGutterElapsed = lift(theme.spineGutterElapsed, 4.5, "spineGutterElapsed")
+  theme.spineGutterTimestamp = lift(theme.spineGutterTimestamp, 4.5, "spineGutterTimestamp")
+  theme.spineSubagent = lift(theme.spineSubagent, 4.5, "spineSubagent")
+  theme.spineAsk = lift(theme.spineAsk, 4.5, "spineAsk")
+  theme.spinePlan = lift(theme.spinePlan, 4.5, "spinePlan")
+  theme.spineInspect = lift(theme.spineInspect, 4.5, "spineInspect")
+  theme.spinePatch = lift(theme.spinePatch, 4.5, "spinePatch")
+  theme.spineRun = lift(theme.spineRun, 4.5, "spineRun")
+  theme.spineFail = lift(theme.spineFail, 4.8, "spineFail")
+  theme.spineFix = lift(theme.spineFix, 4.5, "spineFix")
+  theme.spineOk = lift(theme.spineOk, 4.5, "spineOk")
+  theme.spinePrompt = lift(theme.spinePrompt, 4.8, "spinePrompt")
+  theme.spineDiffAdd = lift(theme.spineDiffAdd, 4.5, "spineDiffAdd")
+  theme.spineDiffRemove = lift(theme.spineDiffRemove, 4.5, "spineDiffRemove")
+  theme.spineRail = liftOn(panel, theme.spineRail, 2.4, "spineRail")
+  theme.spineRailActive = liftOn(panel, theme.spineRailActive, 3.2, "spineRailActive")
 
   if (theme.selectedListItemText && theme.primary) {
-    theme.selectedListItemText = ensureMinContrast(theme.selectedListItemText, theme.primary, 4.5)
+    const adjusted = ensureMinContrast(theme.selectedListItemText, theme.primary, 4.5)
+    record("selectedListItemText", theme.selectedListItemText, adjusted, 4.5)
+    theme.selectedListItemText = adjusted
   }
-  theme.spinePrompt = liftOn(menu, theme.spinePrompt, 4.5)
+  theme.spinePrompt = liftOn(menu, theme.spinePrompt, 4.5, "spinePrompt")
 }
 
 export function terminalMode(colors: TerminalColors): "dark" | "light" | undefined {

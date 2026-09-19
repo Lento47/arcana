@@ -31,7 +31,14 @@
     "lightStep9": "#c01050",
     "lightStep10": "#a010a0",
     "lightStep11": "#505070",
-    "lightStep12": "#1a1a2e"
+    "lightStep12": "#1a1a2e",
+    "lightSecondary": "#c816ad",
+    "lightAccent": "#10798f",
+    "lightRed": "#d7185c",
+    "lightOrange": "#c44416",
+    "lightGreen": "#0e7f55",
+    "lightCyan": "#10798f",
+    "lightYellow": "#806f0e"
   },
   "theme": {
     "primary": { "dark": "darkStep9", "light": "lightStep9" },

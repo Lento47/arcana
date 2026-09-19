@@ -12,13 +12,13 @@
 import { RGBA } from "@opentui/core"
 
 /** sRGB channel → linear light (WCAG 2.x). */
-function linearChannel(value: number) {
+export function srgbToLinear(value: number) {
   return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
 }
 
 /** Relative luminance in [0, 1] — the WCAG 2.x luminance of a color. */
 export function relativeLuminance(color: RGBA) {
-  return 0.2126 * linearChannel(color.r) + 0.7152 * linearChannel(color.g) + 0.0722 * linearChannel(color.b)
+  return 0.2126 * srgbToLinear(color.r) + 0.7152 * srgbToLinear(color.g) + 0.0722 * srgbToLinear(color.b)
 }
 
 /** WCAG contrast ratio (≥ 1; 21 max). */

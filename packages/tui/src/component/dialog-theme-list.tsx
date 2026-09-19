@@ -1,6 +1,7 @@
 import { DialogSelect, type DialogSelectRef } from "../ui/dialog-select"
 import { useTheme } from "../context/theme"
 import { Glyph } from "../branding"
+import { themeCharacter } from "../theme"
 import { useDialog } from "../ui/dialog"
 import { onCleanup } from "solid-js"
 
@@ -9,11 +10,13 @@ export function DialogThemeList() {
   const mode = () => (theme.mode() === "dark" ? "Dark" : "Light")
   const modeAction = () => (theme.mode() === "dark" ? "Switch to Light" : "Switch to Dark")
   const lockAction = () => (theme.locked() ? "Unlock Mode" : "Lock Mode")
-  const options = Object.keys(theme.all())
+  const all = theme.all()
+  const options = Object.keys(all)
     .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
     .map((value) => ({
       title: value,
       value: value,
+      description: themeCharacter(value, all[value]!),
     }))
   const dialog = useDialog()
   let confirmed = false

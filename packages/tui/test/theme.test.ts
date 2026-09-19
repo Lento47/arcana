@@ -8,11 +8,15 @@ import {
   addTheme,
   allThemes,
   hasTheme,
+  inspectTheme,
+  lintTheme,
   monochromeColor,
   resolveTheme,
   selectedForeground,
   terminalMode,
+  themeCharacter,
   type Theme,
+  type ThemeJson,
 } from "../src/theme"
 import { rgbaToHsl } from "../src/theme/contrast"
 import { discoverThemes } from "../src/context/theme"
@@ -458,5 +462,98 @@ describe("monochrome palette", () => {
         expect(spread, `${name}/${mode}/${token} spread ${spread.toFixed(3)}`).toBeLessThanOrEqual(0.06)
       }
     }
+  })
+})
+
+describe("designed ramp and the readability floor", () => {
+  test.each(Object.keys(DEFAULT_THEMES))("%s ships its designed ramp without floor lifts", (name: string) => {
+    for (const mode of THEME_MODES) {
+      const { adjustments } = inspectTheme(DEFAULT_THEMES[name]!, mode, { mono: "full" })
+      expect(adjustments, `${name}/${mode}: ${adjustments.map((a) => a.token).join(", ")}`).toEqual([])
+    }
+  })
+
+  test("a strong custom cast still lands on floor-clean steps", () => {
+    // The cast tint is luminance-preserving, so even an aggressive hue/sat
+    // cannot push a designed step below its floor (out-of-gamut tints fall back
+    // to the neutral step instead of shipping a lower contrast).
+    const themed = { ...DEFAULT_THEMES.arcana!, mono: { hue: 220, structure: 0.4, identity: 0.5 } }
+    for (const mode of THEME_MODES) {
+      const { adjustments } = inspectTheme(themed, mode, { mono: "full" })
+      expect(adjustments, `${mode}: ${adjustments.map((a) => a.token).join(", ")}`).toEqual([])
+    }
+  })
+
+  test("the floor reports what it lifts from an authored palette", () => {
+    // `mono: "off"` keeps the palette exactly as authored, so the quiet end of
+    // arcana's borders needs the floor: the report names each lifted token and
+    // the ratio that forced it.
+    const { adjustments } = inspectTheme(DEFAULT_THEMES.arcana!, "dark", { mono: "off" })
+    const lifted = new Map(adjustments.map((a) => [a.token, a]))
+    expect(lifted.has("borderSubtle")).toBe(true)
+    for (const adjustment of adjustments) {
+      expect(adjustment.required).toBeGreaterThan(1)
+      expect(adjustment.after).not.toEqual(adjustment.before)
+      // Dark surface: every lift walks the token brighter.
+      expect(relativeLuminance(adjustment.after)).toBeGreaterThan(relativeLuminance(adjustment.before))
+    }
+  })
+})
+
+describe("theme lint and picker character", () => {
+  test.each(Object.keys(DEFAULT_THEMES))("%s lints clean", (name: string) => {
+    expect(lintTheme(name, DEFAULT_THEMES[name]!)).toEqual([])
+  })
+
+  test("lint names unknown tokens, dangling refs and malformed colors", () => {
+    const base = DEFAULT_THEMES.arcana!
+    const broken = {
+      ...base,
+      theme: {
+        ...base.theme,
+        sparkle: "#ffffff",
+        accent: "definitelyNotDefined",
+        primary: "#zzz",
+      },
+    } as unknown as ThemeJson
+    const messages = lintTheme("broken", broken).map((issue) => issue.message)
+    expect(messages.some((message) => message.includes('unknown token "sparkle"'))).toBe(true)
+    expect(messages.some((message) => message.includes('unknown reference "definitelyNotDefined"'))).toBe(true)
+    expect(messages.some((message) => message.includes("not a valid hex"))).toBe(true)
+  })
+
+  test("lint reports an unresolvable extends and missing required tokens", () => {
+    const orphan = { extends: "no-such-theme", theme: {} } as unknown as ThemeJson
+    const issues = lintTheme("orphan", orphan)
+    expect(issues.some((issue) => issue.level === "warning" && issue.message.includes("unknown theme"))).toBe(true)
+    expect(issues.some((issue) => issue.level === "error" && issue.message.includes('missing token "background"'))).toBe(
+      true,
+    )
+  })
+
+  test("lint survives a circular reference and reports it as an error", () => {
+    const base = DEFAULT_THEMES.arcana!
+    const cyclic = {
+      ...base,
+      theme: { ...base.theme, accent: "loopA", loopA: "loopB", loopB: "loopA" },
+    } as unknown as ThemeJson
+    const issues = lintTheme("cyclic", cyclic)
+    expect(issues.some((issue) => issue.level === "error" && issue.message.includes("resolution failed"))).toBe(true)
+  })
+
+  test("lint flags an out-of-range mono declaration", () => {
+    const themed = { ...DEFAULT_THEMES.arcana!, mono: { hue: 400, identity: 2 } }
+    const messages = lintTheme("themed", themed).map((issue) => issue.message)
+    expect(messages.some((message) => message.includes("mono.hue"))).toBe(true)
+    expect(messages.some((message) => message.includes("mono.identity"))).toBe(true)
+  })
+
+  test("theme character names the hue family and the declarations that matter", () => {
+    const base = DEFAULT_THEMES.arcana!
+    const warm = { ...base, mono: false, theme: { ...base.theme, accent: "#ff8800" } } as unknown as ThemeJson
+    expect(themeCharacter("arcana", warm)).toBe("warm amber · keeps its palette")
+    const gray = { ...base, theme: { ...base.theme, accent: "#808080" } } as unknown as ThemeJson
+    expect(themeCharacter("arcana", gray)).toBe("neutral")
+    expect(themeCharacter("my-custom", base)).toContain("custom")
   })
 })
