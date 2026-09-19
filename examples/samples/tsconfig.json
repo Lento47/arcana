@@ -8,6 +8,8 @@
     "skipLibCheck": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
+    "typeRoots": ["../../packages/engine/node_modules/@types"],
+    "types": ["bun"],
     "paths": {
       "@/*": ["../../packages/engine/src/*"],
       "@arcana/core/*": ["../../packages/core/src/*"],
@@ -16,5 +18,5 @@
       "@arcana/sdk/v2/*": ["../../packages/sdk/js/src/v2/*"]
     }
   },
-  "include": ["*.ts"]
+  "include": ["*.ts", "*.d.ts"]
 }
