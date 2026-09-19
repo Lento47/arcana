@@ -473,6 +473,19 @@ describe("designed ramp and the readability floor", () => {
     }
   })
 
+  test.each(Object.keys(DEFAULT_THEMES))("%s meets its APCA bands on the designed ramp", (name: string) => {
+    // WCAG ratios overestimate contrast on dark surfaces; APCA is the
+    // perceptual re-check. The designed ramp satisfies both gates.
+    for (const mode of THEME_MODES) {
+      const { apca } = inspectTheme(DEFAULT_THEMES[name]!, mode, { mono: "full" })
+      const failures = apca.filter((reading) => !reading.passes)
+      expect(
+        failures,
+        `${name}/${mode}: ${failures.map((f) => `${f.token} Lc ${f.lc.toFixed(1)} < ${f.threshold}`).join(", ")}`,
+      ).toEqual([])
+    }
+  })
+
   test("a strong custom cast still lands on floor-clean steps", () => {
     // The cast tint is luminance-preserving, so even an aggressive hue/sat
     // cannot push a designed step below its floor (out-of-gamut tints fall back

@@ -1,5 +1,6 @@
 import { SyntaxStyle, RGBA, type TerminalColors } from "@opentui/core"
 import { contrastingInk, ensureMinContrast, hslToRgba, relativeLuminance, rgbaToHsl, srgbToLinear } from "./contrast"
+import { APCA_BAND_LC, apcaBandForRatio, apcaContrast, apcaPasses, apcaTargetLuminance, type ApcaBand } from "./apca"
 import { bgLuminance, isLightBg, tint } from "./emphasis"
 export { tint } from "./emphasis"
 import arcana from "./assets/arcana.json" with { type: "json" }
@@ -522,14 +523,14 @@ export function inspectTheme(
   theme: ThemeJson,
   mode: "dark" | "light",
   options?: { mono?: MonoMode },
-): { theme: Theme; adjustments: ThemeAdjustment[] } {
+): { theme: Theme; adjustments: ThemeAdjustment[]; apca: ApcaReading[] } {
   const adjustments: ThemeAdjustment[] = []
   const resolved = resolveTheme(theme, mode, { mono: options?.mono, report: adjustments })
   // A token can be lifted twice (diff highlights against two surfaces); keep
   // the final adjustment per token.
   const last = new Map<string, ThemeAdjustment>()
   for (const adjustment of adjustments) last.set(adjustment.token, adjustment)
-  return { theme: resolved, adjustments: [...last.values()] }
+  return { theme: resolved, adjustments: [...last.values()], apca: apcaAudit(resolved) }
 }
 
 /** Temperature family for a hue in degrees. */
@@ -855,6 +856,35 @@ const MONO_LIGHT_STEPS = [
   0.03, 0.07, 0.12, 0.17, 0.21, 0.25, 0.29, 0.33, 0.38, 0.42, 0.46, 0.5, 0.54, 0.62, 0.7, 0.78, 0.86, 0.92, 0.96,
 ] as const
 
+/**
+ * Dark ink rungs are shaped by APCA, not HSL lightness.
+ *
+ * On near-black surfaces WCAG 2.x ratios overestimate perceived contrast: an
+ * HSL ladder that clears every WCAG floor still lands mid rungs at APCA |Lc|
+ * 30–50, where fluent text needs 60 (and body ink 75). The result was a dim
+ * perceptual valley between the near-black surfaces and the bright top rungs.
+ * These targets are the APCA |Lc| for each ink step; the luminance is solved
+ * against the designed background with `apcaLuminanceForLc` and pinned by
+ * `castColor`, so the ladder is perceptually even while the WCAG floor stays
+ * the hard gate.
+ *
+ * Steps 7/8 are rails and comments (non-text 30 / sub-fluent 45); 9–13 carry
+ * muted and semantic ink (fluent 60+); 14–17 carry body ink and headings.
+ */
+const MONO_DARK_LC: Partial<Record<number, number>> = {
+  7: 33,
+  8: 49,
+  9: 61,
+  10: 67,
+  11: 73,
+  12: 79,
+  13: 85,
+  14: 91,
+  15: 96,
+  16: 100,
+  17: 103,
+}
+
 /** Token → step index on the dark ladder. */
 const MONO_DARK_MAP: Partial<Record<ThemeColor, number>> = {
   // Surfaces: one visible step each, never mud.
@@ -1107,11 +1137,22 @@ function applyDesignedMonochrome(
   const steps = mode === "dark" ? MONO_DARK_STEPS : MONO_LIGHT_STEPS
   const map = mode === "dark" ? MONO_DARK_MAP : MONO_LIGHT_MAP
   const cast = monochromeCast(theme, mode, character)
+  // Ink rungs with an APCA target are solved against the designed surface so
+  // perception, not linear light, spaces the ladder. Surfaces are designed
+  // before ink in both maps, so the surface is already on the ramp here.
+  const surface = () =>
+    theme.background && theme.background.a === 0 ? (theme.backgroundPanel ?? theme.background) : theme.background
   for (const [key, step] of Object.entries(map) as Array<[ThemeColor, number]>) {
     const current = theme[key]
     if (!current) continue
     const sat = MONO_IDENTITY_TOKENS.has(key) ? cast.identitySat : cast.sat
-    theme[key] = castColor(cast.hue, sat, srgbToLinear(steps[step]!), current.a)
+    const lc = mode === "dark" ? MONO_DARK_LC[step] : undefined
+    const base = lc !== undefined ? surface() : undefined
+    const target =
+      lc !== undefined && base
+        ? (apcaTargetLuminance(base, -lc) ?? srgbToLinear(steps[step]!))
+        : srgbToLinear(steps[step]!)
+    theme[key] = castColor(cast.hue, sat, target, current.a)
   }
 }
 
@@ -1153,6 +1194,10 @@ const MONO_LADDER_KEYS = [
   "spineInspect",
 ] as const
 const MONO_ROLE_MAX_GAP = 0.09
+/** Ladder roles are sub-fluent chrome labels; ARC's floor for that is Lc 45. */
+const LADDER_LC = 45
+/** Keep the role ladder clear of body ink on dark surfaces. */
+const LADDER_INK_CLEARANCE = 0.05
 
 function spaceMonochromeRoles(
   theme: Partial<Record<ThemeColor, RGBA>>,
@@ -1169,30 +1214,31 @@ function spaceMonochromeRoles(
   // gets darker, so the strictest light surface is the DARKEST. Picking the
   // opposite end let the floor lift roles the ladder had just placed.
   const surfaces = [surface, theme.backgroundMenu, theme.backgroundPanel].filter(Boolean) as RGBA[]
-  const surfaceLum = lightBg
-    ? Math.min(...surfaces.map(relativeLuminance))
-    : Math.max(...surfaces.map(relativeLuminance))
-  // The ladder's strictest floor is spinePrompt's 4.8:1. Bound at 4.9 so the
-  // floor's `>=` check can never re-lift a role on a rounding boundary;
-  // spineBrand carries the stricter 7:1 floor and takes the band's prominent
-  // end, where it cannot collide with the others.
-  const boundLum = lightBg ? (surfaceLum + 0.05) / 4.9 - 0.05 : 4.9 * (surfaceLum + 0.05) - 0.05
+  const strictest = surfaces.reduce((a, b) => {
+    const la = relativeLuminance(a)
+    const lb = relativeLuminance(b)
+    return lightBg ? (la < lb ? a : b) : la > lb ? a : b
+  })
+  const surfaceLum = relativeLuminance(strictest)
+  // Compact chrome labels are sub-fluent text: ARC allows Lc 45 for those, and
+  // the wider band that buys is what keeps six roles visibly stepped apart.
+  // The bound must satisfy BOTH gates — the WCAG 4.5 floor (the hard
+  // invariant) and APCA 45 — and which one binds depends on polarity: on dark
+  // surfaces APCA is stricter, on light surfaces the WCAG ratio is. The floor
+  // side is bound at 4.6 so castColor rounding can never drop the least
+  // prominent role back under 4.5.
+  const floorLum = lightBg ? (surfaceLum + 0.05) / 4.6 - 0.05 : 4.6 * (surfaceLum + 0.05) - 0.05
+  const apcaLum = apcaTargetLuminance(strictest, lightBg ? LADDER_LC : -LADDER_LC)
+  const boundLum = apcaLum === undefined ? floorLum : lightBg ? Math.min(floorLum, apcaLum) : Math.max(floorLum, apcaLum)
   const boundGray = grayFromLuminance(boundLum)
   const textGray = grayFromLuminance(relativeLuminance(text))
   const clamp01 = (value: number) => Math.max(0, Math.min(1, value))
-  const margin = 0.07
   // Dark surfaces put body text at the bright end, so the ladder keeps clear of
   // it. Light surfaces put text in the middle of the usable band, so the ladder
   // may span the whole band — that is what keeps its steps wide.
   const band = lightBg
     ? { lo: 0, hi: clamp01(boundGray) }
-    : (() => {
-        const bands = [
-          { lo: clamp01(boundGray), hi: clamp01(Math.min(1, textGray - margin)) },
-          { lo: clamp01(Math.max(boundGray, textGray + margin)), hi: 1 },
-        ]
-        return bands.sort((a, b) => b.hi - b.lo - (a.hi - a.lo))[0]!
-      })()
+    : { lo: clamp01(boundGray), hi: clamp01(textGray - LADDER_INK_CLEARANCE) }
   const span = Math.max(0, band.hi - band.lo)
   const gap = Math.min(MONO_ROLE_MAX_GAP, span / MONO_LADDER_KEYS.length)
   // Prominent end of the band: brighter on a dark surface, darker on a light
@@ -1220,103 +1266,191 @@ export type ThemeAdjustment = {
   required: number
 }
 
+/** Surfaces the readability floor and the APCA audit measure a token against. */
+type FloorSurface = "background" | "panel" | "menu" | "diffAddedBg" | "diffRemovedBg" | "diffContextBg" | "primary"
+
+type FloorRule = {
+  token: ThemeColor
+  surface: FloorSurface
+  ratio: number
+  /**
+   * APCA band override. The floor ratio is the hard gate; the band says which
+   * perceptual level that guarantee corresponds to. Compact chrome labels
+   * (spine chips) are sub-fluent text — ARC allows Lc 45 for those — so they
+   * keep a wider, clearly stepped ladder than fluent content would allow.
+   */
+  band?: ApcaBand
+}
+
+/**
+ * Every readability guarantee in one table: which token must clear which ratio
+ * against which surface. The floor lifts violations; the APCA audit re-checks
+ * the same pairs with a perceptual metric, so a new token cannot be validated
+ * against a surface the floor never guaranteed.
+ *
+ * Order matters where a token appears twice (diff highlights sit on a tinted
+ * surface inside the diff block; spinePrompt also renders on the menu): the
+ * later, stricter lift wins.
+ */
+const READABILITY_FLOORS: FloorRule[] = [
+  { token: "text", surface: "background", ratio: 7 },
+  { token: "textMuted", surface: "background", ratio: 4.7 },
+  { token: "primary", surface: "background", ratio: 4.5 },
+  { token: "secondary", surface: "background", ratio: 4.5 },
+  { token: "accent", surface: "background", ratio: 4.5 },
+  { token: "highlight", surface: "background", ratio: 4.5 },
+  { token: "info", surface: "background", ratio: 4.5 },
+  { token: "success", surface: "background", ratio: 4.5 },
+  { token: "warning", surface: "background", ratio: 4.5 },
+  { token: "error", surface: "background", ratio: 4.8 },
+  { token: "borderSubtle", surface: "background", ratio: 2.2 },
+  { token: "border", surface: "background", ratio: 2.8 },
+  { token: "diffAdded", surface: "background", ratio: 4.5 },
+  { token: "diffRemoved", surface: "background", ratio: 4.5 },
+  { token: "diffContext", surface: "background", ratio: 4.5 },
+  { token: "diffHunkHeader", surface: "background", ratio: 4.5 },
+  { token: "diffHighlightAdded", surface: "background", ratio: 4.5 },
+  { token: "diffHighlightRemoved", surface: "background", ratio: 4.5 },
+  { token: "diffLineNumber", surface: "background", ratio: 3.8 },
+  { token: "diffHighlightAdded", surface: "diffAddedBg", ratio: 4.5 },
+  { token: "diffHighlightRemoved", surface: "diffRemovedBg", ratio: 4.5 },
+  { token: "diffLineNumber", surface: "diffContextBg", ratio: 3.8 },
+  { token: "markdownText", surface: "background", ratio: 7 },
+  { token: "markdownHeading", surface: "background", ratio: 4.8 },
+  { token: "markdownLink", surface: "background", ratio: 4.5 },
+  { token: "markdownLinkText", surface: "background", ratio: 4.5 },
+  { token: "markdownCode", surface: "background", ratio: 4.5 },
+  { token: "markdownBlockQuote", surface: "background", ratio: 4.5 },
+  { token: "markdownEmph", surface: "background", ratio: 4.5 },
+  { token: "markdownStrong", surface: "background", ratio: 4.8 },
+  { token: "markdownHorizontalRule", surface: "background", ratio: 3.8 },
+  { token: "markdownListItem", surface: "background", ratio: 4.5 },
+  { token: "markdownListEnumeration", surface: "background", ratio: 4.5 },
+  { token: "markdownImage", surface: "background", ratio: 4.5 },
+  { token: "markdownImageText", surface: "background", ratio: 4.5 },
+  { token: "markdownCodeBlock", surface: "background", ratio: 7 },
+  { token: "syntaxComment", surface: "background", ratio: 3.8 },
+  { token: "syntaxKeyword", surface: "background", ratio: 4.5 },
+  { token: "syntaxFunction", surface: "background", ratio: 4.5 },
+  { token: "syntaxVariable", surface: "background", ratio: 7 },
+  { token: "syntaxString", surface: "background", ratio: 4.5 },
+  { token: "syntaxNumber", surface: "background", ratio: 4.5 },
+  { token: "syntaxType", surface: "background", ratio: 4.5 },
+  { token: "syntaxOperator", surface: "background", ratio: 4.5 },
+  { token: "syntaxPunctuation", surface: "background", ratio: 7 },
+  { token: "spineBrand", surface: "background", ratio: 7 },
+  { token: "spineContext", surface: "background", ratio: 4.7 },
+  { token: "spineActor", surface: "background", ratio: 4.5 },
+  { token: "spineThink", surface: "background", ratio: 4.5 },
+  { token: "spineDiffMuted", surface: "background", ratio: 4.5 },
+  { token: "spineGutterElapsed", surface: "background", ratio: 4.5 },
+  { token: "spineGutterTimestamp", surface: "background", ratio: 4.5 },
+  { token: "spineSubagent", surface: "background", ratio: 4.5 },
+  { token: "spineAsk", surface: "background", ratio: 4.5, band: "subFluent" },
+  { token: "spinePlan", surface: "background", ratio: 4.5, band: "subFluent" },
+  { token: "spineInspect", surface: "background", ratio: 4.5, band: "subFluent" },
+  { token: "spinePatch", surface: "background", ratio: 4.5, band: "subFluent" },
+  { token: "spineRun", surface: "background", ratio: 4.5, band: "subFluent" },
+  { token: "spineFail", surface: "background", ratio: 4.8 },
+  { token: "spineFix", surface: "background", ratio: 4.5 },
+  { token: "spineOk", surface: "background", ratio: 4.5 },
+  { token: "spinePrompt", surface: "background", ratio: 4.8, band: "subFluent" },
+  { token: "spineDiffAdd", surface: "background", ratio: 4.5 },
+  { token: "spineDiffRemove", surface: "background", ratio: 4.5 },
+  { token: "spineRail", surface: "panel", ratio: 2.4 },
+  { token: "spineRailActive", surface: "panel", ratio: 3.2 },
+  { token: "selectedListItemText", surface: "primary", ratio: 4.5 },
+  { token: "spinePrompt", surface: "menu", ratio: 4.5, band: "subFluent" },
+]
+
+function floorSurface(
+  theme: Partial<Record<ThemeColor, RGBA>>,
+  surface: FloorSurface,
+  base: RGBA,
+  panel: RGBA,
+  menu: RGBA,
+): RGBA | undefined {
+  switch (surface) {
+    case "background":
+      return base
+    case "panel":
+      return panel
+    case "menu":
+      return menu
+    case "diffAddedBg":
+      return theme.diffAddedBg ?? base
+    case "diffRemovedBg":
+      return theme.diffRemovedBg ?? base
+    case "diffContextBg":
+      return theme.diffContextBg ?? base
+    case "primary":
+      return theme.primary
+  }
+}
+
 function applyReadabilityFloor(theme: Partial<Record<ThemeColor, RGBA>>, report?: ThemeAdjustment[]) {
   const baseSurface =
     theme.background && theme.background.a === 0 ? (theme.backgroundPanel ?? theme.background) : theme.background
   if (!baseSurface) return
-
   const panel = theme.backgroundPanel ?? baseSurface
   const menu = theme.backgroundMenu ?? panel
-  const record = (token: ThemeColor | "selectedListItemText", before: RGBA | undefined, after: RGBA | undefined, required: number) => {
-    if (!report || !before || !after || before === after) return
-    report.push({ token, before, after, required })
+  for (const rule of READABILITY_FLOORS) {
+    const value = theme[rule.token]
+    if (!value) continue
+    const surface = floorSurface(theme, rule.surface, baseSurface, panel, menu)
+    if (!surface) continue
+    const adjusted = ensureMinContrast(value, surface, rule.ratio)
+    if (adjusted !== value && report) {
+      report.push({ token: rule.token, before: value, after: adjusted, required: rule.ratio })
+    }
+    theme[rule.token] = adjusted
   }
-  const liftOn = (surface: RGBA, value: RGBA | undefined, minRatio: number, token: ThemeColor) => {
-    if (!value) return value
-    const adjusted = ensureMinContrast(value, surface, minRatio)
-    record(token, value, adjusted, minRatio)
-    return adjusted
+}
+
+/** One APCA reading: a text token measured against the surface it renders on. */
+export type ApcaReading = {
+  token: ThemeColor
+  surface: FloorSurface
+  lc: number
+  band: ApcaBand
+  threshold: number
+  passes: boolean
+}
+
+/**
+ * Perceptual re-check of every readability guarantee with APCA. WCAG 2.x
+ * ratios overestimate contrast on dark surfaces — APCA is polarity-aware and
+ * predicts what a reader actually sees. Advisory only: the WCAG floor above is
+ * the hard invariant, this reports where the two metrics disagree.
+ */
+export function apcaAudit(theme: Theme): ApcaReading[] {
+  const baseSurface =
+    theme.background && theme.background.a === 0 ? (theme.backgroundPanel ?? theme.background) : theme.background
+  if (!baseSurface) return []
+  const panel = theme.backgroundPanel ?? baseSurface
+  const menu = theme.backgroundMenu ?? panel
+  // A token can be checked against several surfaces; the worst reading is the
+  // one that matters.
+  const worst = new Map<ThemeColor, ApcaReading>()
+  for (const rule of READABILITY_FLOORS) {
+    const text = theme[rule.token]
+    if (!text) continue
+    const surface = floorSurface(theme, rule.surface, baseSurface, panel, menu)
+    if (!surface) continue
+    const band = rule.band ?? apcaBandForRatio(rule.ratio)
+    const lc = apcaContrast(text, surface)
+    const reading: ApcaReading = {
+      token: rule.token,
+      surface: rule.surface,
+      lc,
+      band,
+      threshold: APCA_BAND_LC[band],
+      passes: apcaPasses(lc, band),
+    }
+    const existing = worst.get(rule.token)
+    if (!existing || Math.abs(lc) < Math.abs(existing.lc)) worst.set(rule.token, reading)
   }
-  const lift = (value: RGBA | undefined, minRatio: number, token: ThemeColor) =>
-    liftOn(baseSurface, value, minRatio, token)
-
-  theme.text = lift(theme.text, 7, "text")
-  theme.textMuted = lift(theme.textMuted, 4.7, "textMuted")
-  theme.primary = lift(theme.primary, 4.5, "primary")
-  theme.secondary = lift(theme.secondary, 4.5, "secondary")
-  theme.accent = lift(theme.accent, 4.5, "accent")
-  theme.highlight = lift(theme.highlight, 4.5, "highlight")
-  theme.info = lift(theme.info, 4.5, "info")
-  theme.success = lift(theme.success, 4.5, "success")
-  theme.warning = lift(theme.warning, 4.5, "warning")
-  theme.error = lift(theme.error, 4.8, "error")
-  theme.borderSubtle = lift(theme.borderSubtle, 2.2, "borderSubtle")
-  theme.border = lift(theme.border, 2.8, "border")
-
-  theme.diffAdded = lift(theme.diffAdded, 4.5, "diffAdded")
-  theme.diffRemoved = lift(theme.diffRemoved, 4.5, "diffRemoved")
-  theme.diffContext = lift(theme.diffContext, 4.5, "diffContext")
-  theme.diffHunkHeader = lift(theme.diffHunkHeader, 4.5, "diffHunkHeader")
-  theme.diffHighlightAdded = lift(theme.diffHighlightAdded, 4.5, "diffHighlightAdded")
-  theme.diffHighlightRemoved = lift(theme.diffHighlightRemoved, 4.5, "diffHighlightRemoved")
-  theme.diffLineNumber = lift(theme.diffLineNumber, 3.8, "diffLineNumber")
-  theme.diffHighlightAdded = liftOn(theme.diffAddedBg ?? baseSurface, theme.diffHighlightAdded, 4.5, "diffHighlightAdded")
-  theme.diffHighlightRemoved = liftOn(theme.diffRemovedBg ?? baseSurface, theme.diffHighlightRemoved, 4.5, "diffHighlightRemoved")
-  theme.diffLineNumber = liftOn(theme.diffContextBg ?? baseSurface, theme.diffLineNumber, 3.8, "diffLineNumber")
-
-  theme.markdownText = lift(theme.markdownText, 7, "markdownText")
-  theme.markdownHeading = lift(theme.markdownHeading, 4.8, "markdownHeading")
-  theme.markdownLink = lift(theme.markdownLink, 4.5, "markdownLink")
-  theme.markdownLinkText = lift(theme.markdownLinkText, 4.5, "markdownLinkText")
-  theme.markdownCode = lift(theme.markdownCode, 4.5, "markdownCode")
-  theme.markdownBlockQuote = lift(theme.markdownBlockQuote, 4.5, "markdownBlockQuote")
-  theme.markdownEmph = lift(theme.markdownEmph, 4.5, "markdownEmph")
-  theme.markdownStrong = lift(theme.markdownStrong, 4.8, "markdownStrong")
-  theme.markdownHorizontalRule = lift(theme.markdownHorizontalRule, 3.8, "markdownHorizontalRule")
-  theme.markdownListItem = lift(theme.markdownListItem, 4.5, "markdownListItem")
-  theme.markdownListEnumeration = lift(theme.markdownListEnumeration, 4.5, "markdownListEnumeration")
-  theme.markdownImage = lift(theme.markdownImage, 4.5, "markdownImage")
-  theme.markdownImageText = lift(theme.markdownImageText, 4.5, "markdownImageText")
-  theme.markdownCodeBlock = lift(theme.markdownCodeBlock, 7, "markdownCodeBlock")
-
-  theme.syntaxComment = lift(theme.syntaxComment, 3.8, "syntaxComment")
-  theme.syntaxKeyword = lift(theme.syntaxKeyword, 4.5, "syntaxKeyword")
-  theme.syntaxFunction = lift(theme.syntaxFunction, 4.5, "syntaxFunction")
-  theme.syntaxVariable = lift(theme.syntaxVariable, 7, "syntaxVariable")
-  theme.syntaxString = lift(theme.syntaxString, 4.5, "syntaxString")
-  theme.syntaxNumber = lift(theme.syntaxNumber, 4.5, "syntaxNumber")
-  theme.syntaxType = lift(theme.syntaxType, 4.5, "syntaxType")
-  theme.syntaxOperator = lift(theme.syntaxOperator, 4.5, "syntaxOperator")
-  theme.syntaxPunctuation = lift(theme.syntaxPunctuation, 7, "syntaxPunctuation")
-
-  theme.spineBrand = lift(theme.spineBrand, 7, "spineBrand")
-  theme.spineContext = lift(theme.spineContext, 4.7, "spineContext")
-  theme.spineActor = lift(theme.spineActor, 4.5, "spineActor")
-  theme.spineThink = lift(theme.spineThink, 4.5, "spineThink")
-  theme.spineDiffMuted = lift(theme.spineDiffMuted, 4.5, "spineDiffMuted")
-  theme.spineGutterElapsed = lift(theme.spineGutterElapsed, 4.5, "spineGutterElapsed")
-  theme.spineGutterTimestamp = lift(theme.spineGutterTimestamp, 4.5, "spineGutterTimestamp")
-  theme.spineSubagent = lift(theme.spineSubagent, 4.5, "spineSubagent")
-  theme.spineAsk = lift(theme.spineAsk, 4.5, "spineAsk")
-  theme.spinePlan = lift(theme.spinePlan, 4.5, "spinePlan")
-  theme.spineInspect = lift(theme.spineInspect, 4.5, "spineInspect")
-  theme.spinePatch = lift(theme.spinePatch, 4.5, "spinePatch")
-  theme.spineRun = lift(theme.spineRun, 4.5, "spineRun")
-  theme.spineFail = lift(theme.spineFail, 4.8, "spineFail")
-  theme.spineFix = lift(theme.spineFix, 4.5, "spineFix")
-  theme.spineOk = lift(theme.spineOk, 4.5, "spineOk")
-  theme.spinePrompt = lift(theme.spinePrompt, 4.8, "spinePrompt")
-  theme.spineDiffAdd = lift(theme.spineDiffAdd, 4.5, "spineDiffAdd")
-  theme.spineDiffRemove = lift(theme.spineDiffRemove, 4.5, "spineDiffRemove")
-  theme.spineRail = liftOn(panel, theme.spineRail, 2.4, "spineRail")
-  theme.spineRailActive = liftOn(panel, theme.spineRailActive, 3.2, "spineRailActive")
-
-  if (theme.selectedListItemText && theme.primary) {
-    const adjusted = ensureMinContrast(theme.selectedListItemText, theme.primary, 4.5)
-    record("selectedListItemText", theme.selectedListItemText, adjusted, 4.5)
-    theme.selectedListItemText = adjusted
-  }
-  theme.spinePrompt = liftOn(menu, theme.spinePrompt, 4.5, "spinePrompt")
+  return [...worst.values()]
 }
 
 export function terminalMode(colors: TerminalColors): "dark" | "light" | undefined {

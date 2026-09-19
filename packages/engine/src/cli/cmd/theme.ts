@@ -125,9 +125,16 @@ export const ThemeCommand: CommandModule = {
         try {
           const full = inspectTheme(theme, mode, { mono: "full" })
           const authored = inspectTheme(theme, mode, { mono: "off" })
+          const belowBand = full.apca.filter((reading) => !reading.passes)
+          const apca = belowBand.length ? `${belowBand.length} below band` : "all bands met"
           console.log(
-            `${mode.padEnd(5)}  mono full: ${summarize(full.adjustments)} · authored: ${summarize(authored.adjustments)}`,
+            `${mode.padEnd(5)}  mono full: ${summarize(full.adjustments)} · APCA: ${apca} · authored: ${summarize(authored.adjustments)}`,
           )
+          for (const reading of belowBand) {
+            console.log(
+              `  ${mode.padEnd(5)} ${String(reading.token).padEnd(24)} Lc ${reading.lc.toFixed(1)} < ${reading.threshold} (${reading.band})`,
+            )
+          }
         } catch (error) {
           console.log(`${mode.padEnd(5)}  resolution failed: ${error instanceof Error ? error.message : String(error)}`)
         }
