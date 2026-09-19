@@ -5,6 +5,7 @@ import { bgLuminance, isLightBg, tint } from "./emphasis"
 export { tint } from "./emphasis"
 import arcana from "./assets/arcana.json" with { type: "json" }
 import arctic from "./assets/arctic.json" with { type: "json" }
+import ayu from "./assets/ayu.json" with { type: "json" }
 import bloodmoon from "./assets/bloodmoon.json" with { type: "json" }
 import catppuccin from "./assets/catppuccin.json" with { type: "json" }
 import coven from "./assets/coven.json" with { type: "json" }
@@ -13,6 +14,8 @@ import dracula from "./assets/dracula.json" with { type: "json" }
 import dragon from "./assets/dragon.json" with { type: "json" }
 import ember from "./assets/ember.json" with { type: "json" }
 import everforest from "./assets/everforest.json" with { type: "json" }
+import flexoki from "./assets/flexoki.json" with { type: "json" }
+import github from "./assets/github.json" with { type: "json" }
 import grimoire from "./assets/grimoire.json" with { type: "json" }
 import gruvbox from "./assets/gruvbox.json" with { type: "json" }
 import jade from "./assets/jade.json" with { type: "json" }
@@ -24,6 +27,7 @@ import oracle from "./assets/oracle.json" with { type: "json" }
 import phosphor from "./assets/phosphor.json" with { type: "json" }
 import rosepine from "./assets/rosepine.json" with { type: "json" }
 import sakura from "./assets/sakura.json" with { type: "json" }
+import solarized from "./assets/solarized.json" with { type: "json" }
 import synthwave from "./assets/synthwave.json" with { type: "json" }
 import tokyonight from "./assets/tokyonight.json" with { type: "json" }
 import vercel from "./assets/vercel.json" with { type: "json" }
@@ -231,6 +235,7 @@ export type ThemeJson = {
 export const DEFAULT_THEMES: Record<string, ThemeJson> = {
   arcana,
   arctic,
+  ayu,
   bloodmoon,
   catppuccin,
   coven,
@@ -239,6 +244,8 @@ export const DEFAULT_THEMES: Record<string, ThemeJson> = {
   dragon,
   ember,
   everforest,
+  flexoki,
+  github,
   grimoire,
   gruvbox,
   jade,
@@ -250,6 +257,7 @@ export const DEFAULT_THEMES: Record<string, ThemeJson> = {
   phosphor,
   rosepine,
   sakura,
+  solarized,
   synthwave,
   tokyonight,
   vercel,
