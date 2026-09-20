@@ -4,7 +4,6 @@ import type { CommandModule } from "yargs"
 import { UI } from "./cli/ui"
 import { InstallationVersion } from "@arcana/core/installation/version"
 import { FormatError, isUserError } from "./cli/error"
-import { TuiThreadCommand } from "./cli/cmd/tui"
 import { EOL } from "os"
 import { errorMessage } from "./util/error"
 import { Heap } from "./cli/heap"
@@ -212,6 +211,9 @@ async function runDirectTui() {
   await prepareRuntime({ tui: true })
   mark("zero-arg-tui-dispatch-end")
   measure("cli-import-start", "zero-arg-tui-dispatch-end", "zero-arg-tui-dispatch")
+  // Lazy: the TUI command pulls RPC, the daemon transport and terminal shims
+  // (~0.5s of module evaluation) that named subcommands must not pay for.
+  const { TuiThreadCommand } = await import("./cli/cmd/tui")
   await TuiThreadCommand.handler(defaultTuiArgs() as never)
 }
 
@@ -372,7 +374,6 @@ const cli = yargs(args)
   })
   .usage("")
   .completion("completion", "generate shell completion script")
-  .command(TuiThreadCommand)
   .fail((msg, err) => {
     if (
       msg?.startsWith("Unknown argument") ||
@@ -386,6 +387,20 @@ const cli = yargs(args)
     process.exit(1)
   })
   .strict()
+
+// Register the TUI command only for invocations that can actually run it:
+// the default command (flags / positional project) or an unknown verb that
+// yargs would resolve to the default. A named subcommand (`serve`, `run`, …)
+// loads just its own module, not the TUI's ~0.5s graph; `--help` prints that
+// subcommand's options without it, and `--version` short-circuits entirely.
+const firstArg = args[0]
+const versionRequested = args.includes("--version") || args.includes("-v")
+const needsTuiCommand =
+  !versionRequested && (firstArg === undefined || firstArg.startsWith("-") || !(firstArg in commandLoaders))
+if (needsTuiCommand) {
+  const { TuiThreadCommand } = await import("./cli/cmd/tui")
+  cli.command(TuiThreadCommand)
+}
 
 for (const cmd of cmds) cli.command(cmd)
 

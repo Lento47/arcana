@@ -17,6 +17,11 @@ function profileEmit(phase: string, ts_ms: number) {
 }
 profileEmit("arcana_entry", performance.now())
 const args = process.argv.slice(2)
+// The Bun executable running this launcher. Spawning the literal "bun" goes
+// through PATH → `bun.cmd` → cmd.exe on Windows, which is slower and gets
+// flagged by some AV products (spawn EPERM). `process.execPath` is the real
+// bun.exe.
+const BUN = process.execPath
 const HELP_FLAGS = new Set(["--help", "-h", "--version", "-v"])
 const ENGINE_BRIDGED = new Set([
   "console",
@@ -52,7 +57,7 @@ if (DAEMON_FLAG) {
   const engineDir = path.join(currentDir(import.meta), "../../engine")
   const engineEntry = path.join(engineDir, "src/index.ts")
   Bun.spawn({
-    cmd: ["bun", "--conditions=browser", engineEntry, ...args.filter(a => a !== "--daemon")],
+    cmd: [BUN, "--conditions=browser", engineEntry, ...args.filter(a => a !== "--daemon")],
     stdio: ["ignore", "inherit", "inherit"],
     cwd: engineDir,
     env: {
@@ -79,7 +84,7 @@ if (!isArcanaSubcommand) {
   const engineEntry = path.join(engineDir, "src/index.ts")
   const tSpawn = performance.now()
   const child = Bun.spawn({
-    cmd: ["bun", "--conditions=browser", engineEntry, ...args],
+    cmd: [BUN, "--conditions=browser", engineEntry, ...args],
     stdio: ["inherit", "inherit", "inherit"],
     cwd: engineDir,
     env: {
@@ -111,7 +116,7 @@ if (firstArg && ENGINE_BRIDGED.has(firstArg)) {
   const engineDir = path.join(currentDir(import.meta), "../../engine")
   const engineEntry = path.join(engineDir, "src/index.ts")
   const child = Bun.spawn({
-    cmd: ["bun", "--conditions=browser", engineEntry, ...args],
+    cmd: [BUN, "--conditions=browser", engineEntry, ...args],
     stdio: ["inherit", "inherit", "inherit"],
     cwd: process.cwd(),
     env: { ...process.env, PWD: process.cwd() },
