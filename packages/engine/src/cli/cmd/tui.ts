@@ -3,15 +3,18 @@ import { Rpc } from "@/util/rpc"
 import { type rpc } from "../tui/worker"
 import path from "path"
 import { fileURLToPath } from "url"
+import { readFileSync } from "node:fs"
 import { UI } from "@/cli/ui"
 import { errorMessage } from "@arcana/tui/util/error"
+import { Global } from "@arcana/core/global"
 import { withTimeout } from "@/util/timeout"
 import { withNetworkOptions, resolveNetworkOptionsNoConfig } from "@/cli/network"
 import { Filesystem } from "@/util/filesystem"
 import type { GlobalEvent } from "@arcana/sdk/v2"
 import type { EventSource } from "@arcana/tui/context/sdk"
 import { writeHeapSnapshot } from "node:v8"
-import { win32InstallCtrlCGuard, win32RestoreTerminal } from "@arcana/tui/terminal-win32"
+import { win32EnableUtf8Console, win32InstallCtrlCGuard, win32RestoreTerminal } from "@arcana/tui/terminal-win32"
+import { startStartupAnimation, type StartupAnimation } from "@arcana/tui/startup-animation"
 import { mark, measure } from "../../cli/profile"
 import { assertEngineHealthy, createDaemonTransport } from "../tui/daemon-transport"
 import { DAEMON_LOG, daemonLog } from "../../daemon/log"
@@ -103,6 +106,21 @@ function isInteractiveTerminal() {
   return !!process.stdin.isTTY && !!process.stdout.isTTY
 }
 
+/**
+ * The pre-render animation honors the same `animations_enabled` switch as the
+ * rest of the TUI. The KV provider is not mounted this early, so read its
+ * backing file directly (best effort — an unreadable store means "on").
+ */
+function startupAnimationsEnabled(): boolean {
+  if (process.env.ARCANA_NO_STARTUP_ANIMATION === "1") return false
+  try {
+    const raw = readFileSync(path.join(Global.Path.state, "kv.json"), "utf8")
+    return (JSON.parse(raw) as { animations_enabled?: unknown }).animations_enabled !== false
+  } catch {
+    return true
+  }
+}
+
 async function input(value?: string) {
   // Only drain stdin when it is clearly non-interactive. On some Windows hosts
   // `stdin.isTTY` is false even for an interactive console; calling
@@ -175,6 +193,7 @@ export const TuiThreadCommand = cmd({
     const { ensureSolidPreload } = await import("../tui/ensure-solid-preload")
     await ensureSolidPreload()
     const unguard = win32InstallCtrlCGuard()
+    let startupAnimation: StartupAnimation | undefined
     try {
       // TUI requires a real interactive terminal. OpenTUI's CliRenderer calls
       // process.stdin.setRawMode() during construction, which throws on a
@@ -189,8 +208,14 @@ export const TuiThreadCommand = cmd({
         process.exitCode = 1
         return
       }
+      // From here to the first TUI frame the terminal would otherwise be
+      // silent: engine boot, the daemon wait, and renderer setup. The
+      // animation covers that gap and is erased before OpenTUI takes over.
+      win32EnableUtf8Console()
+      startupAnimation = startStartupAnimation({ enabled: startupAnimationsEnabled() })
       const { TuiConfig } = await import("@/config/tui")
       if (args.fork && !args.continue && !args.session) {
+        startupAnimation.stop()
         UI.error("--fork requires --continue or --session")
         process.exitCode = 1
         return
@@ -206,6 +231,7 @@ export const TuiThreadCommand = cmd({
       try {
         process.chdir(next)
       } catch {
+        startupAnimation.stop()
         UI.error("Failed to change directory to " + next)
         return
       }
@@ -226,6 +252,9 @@ export const TuiThreadCommand = cmd({
       const daemonTransport = daemonAttempt.status === "connected" ? daemonAttempt.transport : undefined
       if (daemonAttempt.status === "unavailable") {
         daemonLog(`[tui] daemon unavailable pid=${process.pid} reason=${daemonAttempt.reason}; trying worker fallback`)
+        startupAnimation.setLabel("starting local engine")
+      } else {
+        startupAnimation.setLabel("opening interface")
       }
 
       let client: ReturnType<typeof Rpc.client<typeof rpc>> | undefined
@@ -244,6 +273,7 @@ export const TuiThreadCommand = cmd({
             },
           })
         } catch (error) {
+          startupAnimation.stop()
           reportStartupFailure(error)
           return
         }
@@ -304,6 +334,7 @@ export const TuiThreadCommand = cmd({
         // bootstrap deadline at the host boundary as well.
         await withTimeout(assertEngineHealthy(transport), 10_000, "Arcana engine health check timed out")
       } catch (error) {
+        startupAnimation.stop()
         await stop()
         reportStartupFailure(error)
         return
@@ -324,6 +355,7 @@ export const TuiThreadCommand = cmd({
           })
         }
       } catch (error) {
+        startupAnimation.stop()
         await stop()
         UI.error(errorMessage(error))
         process.exitCode = 1
@@ -352,6 +384,9 @@ export const TuiThreadCommand = cmd({
         const { Effect } = await import("effect")
         const { run } = await import("../tui/layer")
         const { createLegacyTuiPluginHost } = await import("@/plugin/tui/runtime")
+        // The renderer is about to take the terminal: erase the startup line
+        // first so OpenTUI starts from a clean screen.
+        startupAnimation.stop()
         await Effect.runPromise(
           run({
             url: transport.url,
@@ -399,6 +434,7 @@ export const TuiThreadCommand = cmd({
         }
       }
     } finally {
+      startupAnimation?.stop()
       try {
         unguard?.()
       } catch {}
