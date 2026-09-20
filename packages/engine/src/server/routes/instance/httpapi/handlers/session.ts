@@ -62,16 +62,17 @@ const tryParseJson = (text: string) =>
  * unreachable (503). Both carry a message; an empty 500 is what made the
  * command look broken in the first place.
  */
-const shareError = (error: unknown) => {
-  if (error instanceof SessionShare.SharePolicyError) return new ForbiddenError({ message: error.message })
-  return new ServiceUnavailableError({
+const shareUnavailable = (error: unknown) =>
+  new ServiceUnavailableError({
     message:
       error instanceof Error && error.message.length > 0
         ? error.message
         : "Failed to reach the share service — try again.",
     service: "share",
   })
-}
+
+const shareError = (error: unknown) =>
+  error instanceof SessionShare.SharePolicyError ? new ForbiddenError({ message: error.message }) : shareUnavailable(error)
 
 export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", (handlers) =>
   Effect.gen(function* () {
@@ -432,7 +433,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       yield* requireSession(ctx.params.sessionID)
       yield* shareSvc
         .unshare(ctx.params.sessionID)
-        .pipe(Effect.mapError(shareError))
+        .pipe(Effect.mapError(shareUnavailable))
       return yield* requireSession(ctx.params.sessionID)
     })
 
