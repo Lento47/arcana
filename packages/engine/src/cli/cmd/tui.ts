@@ -11,7 +11,6 @@ import { Filesystem } from "@/util/filesystem"
 import type { GlobalEvent } from "@arcana/sdk/v2"
 import type { EventSource } from "@arcana/tui/context/sdk"
 import { writeHeapSnapshot } from "node:v8"
-import { validateSession } from "../tui/validate-session"
 import { win32InstallCtrlCGuard, win32RestoreTerminal } from "@arcana/tui/terminal-win32"
 import { mark, measure } from "../../cli/profile"
 import { assertEngineHealthy, createDaemonTransport } from "../tui/daemon-transport"
@@ -311,12 +310,19 @@ export const TuiThreadCommand = cmd({
       }
 
       try {
-        await validateSession({
-          url: transport.url,
-          sessionID: args.session,
-          directory: cwd,
-          fetch: transport.fetch,
-        })
+        // Lazy on purpose: `validate-session` eagerly imports the generated SDK
+        // and `@/session/schema` (which drags the whole `@arcana/core/session`
+        // barrel — 19 modules, ~0.5s of boot). It only matters when the
+        // operator asked for a specific session.
+        if (args.session) {
+          const { validateSession } = await import("../tui/validate-session")
+          await validateSession({
+            url: transport.url,
+            sessionID: args.session,
+            directory: cwd,
+            fetch: transport.fetch,
+          })
+        }
       } catch (error) {
         await stop()
         UI.error(errorMessage(error))

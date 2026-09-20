@@ -93,9 +93,16 @@ export async function startDaemon(cwd: string, version: string): Promise<{ port:
   // Atomic lock acquisition — wins the race or fails fast
   const lock = acquireLock(cwd, port, version)
   if (!lock) {
-    // Another process won the race — stop our server, connect to theirs
+    // Another process won the race — stop our server, connect to theirs.
+    // A reader can catch the winner mid-write, so re-read briefly before
+    // declaring the state broken (the lock file is written with `wx` and a
+    // concurrent read can observe a partial body).
     await server.stop(true)
-    const theirs = readLock(cwd)
+    let theirs = readLock(cwd)
+    for (let attempt = 0; attempt < 3 && !theirs; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 25))
+      theirs = readLock(cwd)
+    }
     if (theirs) {
       // In daemon mode the process exists only to serve this workspace;
       // losing the race means there is nothing left to do.

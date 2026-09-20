@@ -13,18 +13,28 @@ export interface DaemonLock {
   version: string
 }
 
-const DAEMON_DIR = join(homedir(), ".arcana", "daemon")
+const DAEMON_DIR_ENV = "ARCANA_HOME"
+
+/**
+ * Resolve the daemon directory per call so `ARCANA_HOME` (the repo-wide
+ * override used by license/proof/proxy paths) can redirect it — including in
+ * tests, which must never touch a real `~/.arcana/daemon`.
+ */
+function daemonDir(): string {
+  return join(process.env[DAEMON_DIR_ENV] ?? join(homedir(), ".arcana"), "daemon")
+}
 
 export function workspaceHash(cwd: string): string {
   return createHash("sha256").update(cwd).digest("hex").slice(0, 12)
 }
 
 export function lockPath(wsHash: string): string {
-  return join(DAEMON_DIR, `${wsHash}.json`)
+  return join(daemonDir(), `${wsHash}.json`)
 }
 
 function ensureDir() {
-  if (!existsSync(DAEMON_DIR)) mkdirSync(DAEMON_DIR, { recursive: true })
+  const dir = daemonDir()
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
 }
 
 export function readLock(cwd: string): DaemonLock | null {
@@ -32,7 +42,15 @@ export function readLock(cwd: string): DaemonLock | null {
     const file = lockPath(workspaceHash(cwd))
     if (!existsSync(file)) return null
     const raw = readFileSync(file, "utf8")
-    return JSON.parse(raw) as DaemonLock
+    const parsed = JSON.parse(raw) as Partial<DaemonLock> | null
+    // A parseable file is not automatically a usable lock: an interrupted
+    // NTFS write can leave JSON-ish or zero-filled content. Validate the
+    // fields every consumer depends on, so a corrupt lock reads as "no lock"
+    // and the next acquisition can reclaim it.
+    if (!parsed || typeof parsed !== "object") return null
+    if (typeof parsed.pid !== "number" || !Number.isInteger(parsed.pid) || parsed.pid <= 0) return null
+    if (typeof parsed.port !== "number" || !Number.isInteger(parsed.port) || parsed.port <= 0) return null
+    return parsed as DaemonLock
   } catch {
     return null
   }
@@ -50,12 +68,32 @@ export function acquireLock(cwd: string, port: number, version: string): DaemonL
     lastActivityAt: Date.now(),
     version,
   }
-  try {
+  const claim = () => {
     // wx = write + exclusive create. Throws EEXIST if file already exists.
     writeFileSync(file, JSON.stringify(lock, null, 2), { flag: "wx" })
     return lock
+  }
+  try {
+    return claim()
   } catch (err: any) {
-    if (err?.code === "EEXIST") return null // another process won the race
+    if (err?.code !== "EEXIST") throw err
+  }
+
+  // EEXIST: someone owns the path. Return null only for a *live* owner; a
+  // corrupt (unparseable/NUL-filled) or dead lock is reclaimed so one bad
+  // file can never deadlock daemon boot forever.
+  const existing = readLock(cwd)
+  if (existing && !isLockStale(existing)) return null
+
+  try {
+    unlinkSync(file)
+  } catch {
+    // Already gone (or unlink failed): the claim below decides.
+  }
+  try {
+    return claim()
+  } catch (err: any) {
+    if (err?.code === "EEXIST") return null // lost the re-claim race
     throw err
   }
 }
@@ -86,12 +124,13 @@ export function isLockStale(lock: DaemonLock): boolean {
 /** Scan all lock files across workspaces. Use for status/stop commands run from any directory. */
 export function listAllLocks(): DaemonLock[] {
   try {
-    if (!existsSync(DAEMON_DIR)) return []
-    return readdirSync(DAEMON_DIR)
+    const dir = daemonDir()
+    if (!existsSync(dir)) return []
+    return readdirSync(dir)
       .filter((f) => f.endsWith(".json"))
       .map((f) => {
         try {
-          const raw = readFileSync(join(DAEMON_DIR, f), "utf8")
+          const raw = readFileSync(join(dir, f), "utf8")
           return JSON.parse(raw) as DaemonLock
         } catch {
           return null

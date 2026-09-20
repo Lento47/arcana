@@ -254,7 +254,11 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
 
       yield* Effect.tryPromise(async () => {
         void renderer.getPalette({ size: 16 }).catch(() => undefined)
-        const mode = (await renderer.waitForThemeMode(1000)) ?? "dark"
+        // No await on the theme query: the theme provider resolves the real
+        // mode from `renderer.themeMode` and upgrades on THEME_MODE events, so
+        // blocking first paint on the terminal's reply only cost up to 1s on
+        // terminals that never answer.
+        const mode = renderer.themeMode ?? "dark"
         if (renderer.isDestroyed) return
 
         await render(() => {
