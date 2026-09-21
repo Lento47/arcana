@@ -25,6 +25,10 @@ export const Parameters = Schema.Struct({
   maxResults: Schema.optional(NonNegativeInt).annotate({
     description: `Maximum matching lines to return (default: ${DEFAULT_MAX_RESULTS}, max: ${HARD_MAX_RESULTS}). Narrow include/path or raise this instead of repeating the search.`,
   }),
+  context: Schema.optional(NonNegativeInt).annotate({
+    description:
+      "Lines of context to show around each match (0-10, default 0). Context lines come back unmarked and count toward maxResults - one call can show the surrounding code without a separate read.",
+  }),
 })
 
 export const GrepTool = Tool.define(
@@ -36,11 +40,12 @@ export const GrepTool = Tool.define(
       description: DESCRIPTION,
       parameters: Parameters,
       execute: (
-        params: { pattern: string; path?: string; include?: string; maxResults?: number },
+        params: { pattern: string; path?: string; include?: string; maxResults?: number; context?: number },
         ctx: Tool.Context,
       ) =>
         Effect.gen(function* () {
           const limit = Math.min(Math.max(params.maxResults ?? DEFAULT_MAX_RESULTS, 1), HARD_MAX_RESULTS)
+          const context = Math.min(Math.max(params.context ?? 0, 0), 10)
           const empty = {
             title: params.pattern,
             metadata: { matches: 0, truncated: false, limit },
@@ -79,6 +84,7 @@ export const GrepTool = Tool.define(
             pattern: params.pattern,
             include: params.include,
             limit,
+            ...(context > 0 ? { context } : {}),
           })
           if (result.length === 0) return empty
 
@@ -86,14 +92,15 @@ export const GrepTool = Tool.define(
             path: path.resolve(cwd, item.entry.path),
             line: item.line,
             text: item.text,
+            context: item.submatches.length === 0,
           }))
 
           const truncated = rows.length === limit
           const final = rows
           if (final.length === 0) return empty
 
-          const total = rows.length
-          const output = [`Found ${total} matches${truncated ? ` (limit ${limit} reached)` : ""}`]
+          const matches = final.filter((row) => !row.context).length
+          const output = [`Found ${matches} matches${truncated ? ` (limit ${limit} reached)` : ""}`]
 
           let current = ""
           for (const match of final) {
@@ -108,14 +115,14 @@ export const GrepTool = Tool.define(
           if (truncated) {
             output.push("")
             output.push(
-              `(Results truncated at ${limit} matches. Narrow with include/path or raise maxResults instead of repeating the search.)`,
+              `(Results truncated at ${limit} ${context > 0 ? "result lines" : "matches"}. Narrow with include/path or raise maxResults instead of repeating the search.)`,
             )
           }
 
           return {
             title: params.pattern,
             metadata: {
-              matches: total,
+              matches,
               truncated,
               limit,
             },

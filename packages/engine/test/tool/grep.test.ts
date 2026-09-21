@@ -189,6 +189,54 @@ describe("tool.grep", () => {
     }),
   )
 
+  it.instance("includes context lines around matches", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const file = path.join(test.directory, "test.txt")
+      yield* Effect.promise(() => Bun.write(file, "aaa\nbbb\nneedle\nccc\nddd"))
+      const info = yield* GrepTool
+      const grep = yield* info.init()
+      const result = yield* grep.execute({ pattern: "needle", path: file, context: 2 }, ctx)
+
+      expect(result.metadata.matches).toBe(1)
+      expect(result.output).toContain("Line 1: aaa")
+      expect(result.output).toContain("Line 2: bbb")
+      expect(result.output).toContain("Line 3: needle")
+      expect(result.output).toContain("Line 4: ccc")
+      expect(result.output).toContain("Line 5: ddd")
+    }),
+  )
+
+  it.instance("counts only matches, not context lines", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const file = path.join(test.directory, "test.txt")
+      yield* Effect.promise(() => Bun.write(file, "aaa\nneedle one\nccc\nxxx\nyyy\nneedle two\nzzz"))
+      const info = yield* GrepTool
+      const grep = yield* info.init()
+      const result = yield* grep.execute({ pattern: "needle", path: file, context: 1 }, ctx)
+
+      expect(result.metadata.matches).toBe(2)
+      expect(result.output).toContain("Found 2 matches")
+      expect(result.output).toContain("Line 3: ccc")
+      expect(result.output).toContain("Line 5: yyy")
+    }),
+  )
+
+  it.instance("clamps context to the supported range", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const file = path.join(test.directory, "test.txt")
+      yield* Effect.promise(() => Bun.write(file, "aaa\nneedle\nccc"))
+      const info = yield* GrepTool
+      const grep = yield* info.init()
+      const result = yield* grep.execute({ pattern: "needle", path: file, context: 999 }, ctx)
+
+      expect(result.metadata.matches).toBe(1)
+      expect(result.output).toContain("Line 1: aaa")
+    }),
+  )
+
   it.instance("does not ask for external_directory when alias path is allowed", () =>
     Effect.gen(function* () {
       if (process.platform === "win32") return

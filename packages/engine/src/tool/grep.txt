@@ -9,7 +9,7 @@ Write ONE strong pattern instead of many weak calls:
 - Scope the call: include "*.{ts,tsx}", path "src/"
 - Rust regex has no lookahead, lookbehind, or backreferences - combine alternatives instead
 
-Returns the whole matching line with file path and line number (each line up to 2000 chars), grouped by file. The matching line often answers without opening the file.
-- Results are capped (default 500, see maxResults). When truncated, narrow include/path or raise maxResults instead of repeating the search.
+Returns the whole matching line with file path and line number (each line up to 2000 chars), grouped by file. Set context (0-10) to also return N lines around each match - one call can show the surrounding code without a separate read. The matching line often answers without opening the file.
+- Results are capped (default 500, see maxResults; context lines count toward the cap). When truncated, narrow include/path or raise maxResults instead of repeating the search.
 - To count matches, use the bash tool with "rg -c". Do NOT pipe grep.
 - For open-ended search with multiple rounds, delegate to the task tool.

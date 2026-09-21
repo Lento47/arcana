@@ -22,7 +22,7 @@ const MAX_RECORD_BYTES = 64 * 1024
 const MAX_SUBMATCHES = 100
 
 const RawMatch = Schema.Struct({
-  type: Schema.Literal("match"),
+  type: Schema.Literals(["match", "context"]),
   data: Schema.Struct({
     path: Schema.Struct({ text: Schema.String }),
     lines: Schema.Struct({ text: Schema.String }),
@@ -75,6 +75,8 @@ export interface GrepInput {
   readonly file?: string
   readonly include?: string
   readonly limit: number
+  /** Lines of context around each match (ripgrep `--context`). Context lines count toward `limit` records. */
+  readonly context?: number
   readonly signal?: AbortSignal
 }
 
@@ -229,6 +231,7 @@ export const layer = Layer.effect(
             "--hidden",
             "--no-messages",
             ...(input.include ? [`--glob=${input.include}`] : []),
+            ...(input.context ? [`--context=${input.context}`] : []),
             "--glob=!**/.git/**",
             "--",
             input.pattern,
@@ -243,7 +246,12 @@ export const layer = Layer.effect(
                 })
             ).pipe(
               Effect.flatMap((json) => {
-                if (!json || typeof json !== "object" || !("type" in json) || json.type !== "match")
+                if (
+                  !json ||
+                  typeof json !== "object" ||
+                  !("type" in json) ||
+                  (json.type !== "match" && json.type !== "context")
+                )
                   return Effect.succeed(undefined)
                 return Schema.decodeUnknownEffect(RawMatch)(json).pipe(
                   Effect.map((match) => ({

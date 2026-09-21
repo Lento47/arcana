@@ -121,6 +121,12 @@ exports[`tool parameters JSON Schema (wire shape) grep 1`] = `
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "properties": {
+    "context": {
+      "description": "Lines of context to show around each match (0-10, default 0). Context lines come back unmarked and count toward maxResults - one call can show the surrounding code without a separate read.",
+      "maximum": 9007199254740991,
+      "minimum": 0,
+      "type": "integer",
+    },
     "include": {
       "description": "File pattern to include in the search (e.g. "*.js", "*.{ts,tsx}")",
       "type": "string",
