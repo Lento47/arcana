@@ -7,4 +7,6 @@ workspaceSymbol also takes: query (symbol name to search. Empty = all symbols).
 
 For workspaceSymbol, filePath selects and starts the matching LSP server but is not sent in the LSP request.
 
+Prefer LSP over text search for symbol resolution: goToDefinition and findReferences return exact symbol locations without textual false positives, and workspaceSymbol finds a symbol by name across the project in one call.
+
 LSP servers must be configured for the file type. Error if no server available.

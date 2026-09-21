@@ -19,7 +19,8 @@ function store(): MemoryStore {
 }
 
 export const MemorySearchTool = Tool.define("memory_search", Effect.succeed({
-  description: "Search persistent memory (facts and past sessions). Memory is on by default.",
+  description:
+    "Search persistent memory (facts and past sessions). Memory is on by default. Use one specific query - results are ranked, so raise limit rather than repeating the search.",
   parameters: SearchParams,
   execute: (params: Schema.Schema.Type<typeof SearchParams>) =>
     Effect.sync(() => {
