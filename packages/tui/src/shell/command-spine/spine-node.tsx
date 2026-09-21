@@ -15,7 +15,7 @@ import {
   type SpineLayout,
   type SpineReceipt,
 } from "./spine-types"
-import { thinkingRowChrome } from "./spine-chrome"
+import { thinkingRowChrome, type ToolChipLifecycle } from "./spine-chrome"
 import { useSpineMotion } from "./spine-motion"
 import { ShimmerText } from "../../component/shimmer-text"
 import { SpineToolChip } from "./spine-tool-chip"
@@ -86,6 +86,13 @@ export function SpineNode(props: {
   disclosure?: "▸" | "▾" | ""
   /** True while the row is still streaming. */
   streaming?: boolean
+  /**
+   * Engine cancellation reason for dead delegations. Forces the shared chip
+   * to `interrupted` — without it a cancelled agent row derives `success`
+   * (not streaming, no failure receipt) and paints a second ✓ next to the
+   * strip's.
+   */
+  cancelledReason?: string
   /** Merged think verb for tool rows — shows inline after the tool glyph. */
   thinking?: string
   /** Stable row cue used by the shell's single-animation arbiter. */
@@ -428,6 +435,7 @@ export function SpineNode(props: {
           label={label()}
           summary={summary()}
           receipt={props.receipt}
+          lifecycle={props.cancelledReason ? "interrupted" : undefined}
           streaming={streaming()}
           elapsed={elapsedText()}
           disclosure={disclosure()}

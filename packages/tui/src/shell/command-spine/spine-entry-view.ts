@@ -11,6 +11,8 @@ import type {
   SpineActivity,
 } from "./spine-types"
 import { joinSpineProse } from "./spine-prose"
+import { collapseToolCalls } from "../../util/tool-call-text"
+import type { GrepMatchesData } from "./mapper/grep-output"
 
 /**
  * Discriminated-union render view for a spine row.
@@ -78,6 +80,8 @@ export type ToolEntry = SpineEntryViewBase & {
   report?: SpineReportData
   table?: { headers: string[]; rows: string[][] }
   listing?: string[]
+  /** Parsed grep `matches`-mode output; the raw body is suppressed for it. */
+  grepMatches?: GrepMatchesData
   children?: SpineChildView[]
   childSessionID?: string
   proof?: SpineProofContinuation
@@ -152,6 +156,8 @@ export type SubagentEntry = SpineEntryViewBase & {
   streaming?: boolean
   /** Running task part moved to the background (Ctrl+B). */
   background?: boolean
+  /** Engine cancellation reason — the strip and chip render `!`, never ✓. */
+  cancelledReason?: string
   body?: string
   bodyLabel?: string
   bodyHint?: string
@@ -180,6 +186,11 @@ export type RecoveryEntry = SpineEntryViewBase & {
   bodyNote?: string
   receipt?: SpineReceipt
   actions?: readonly SpineEntryAction[]
+  /**
+   * Failed delegation's child session — a failed task part still resolves its
+   * subsession, so the row keeps the dive affordance instead of dead-ending.
+   */
+  childSessionID?: string
 }
 
 /** Grouped child row (tool burst / governance children). */
@@ -287,12 +298,16 @@ export function toSpineEntryView(entry: SpineEntry, ctx: {
     entry.source?.kind !== "governance"
 
   if (isChat) {
+    const text = joinSpineProse(entry.summary, entry.body)
     return {
       ...base,
       type: "chat",
       kind: entry.kind as "ask" | "plan" | "ok",
       label: entry.label,
-      text: joinSpineProse(entry.summary, entry.body),
+      // Assistant prose may carry text-protocol tool calls; collapse them the
+      // same way the row summary does, or the chat card paints raw markup.
+      // User prompts (`ask`) are the operator's own words — never rewritten.
+      text: entry.kind === "ask" ? text : collapseToolCalls(text),
       elapsed: entry.elapsed,
       timestamp: entry.timestamp,
       streaming: entry.streaming === true,
@@ -316,6 +331,7 @@ export function toSpineEntryView(entry: SpineEntry, ctx: {
       startMs: entry.startMs,
       streaming: entry.streaming === true,
       background: entry.background === true,
+      cancelledReason: entry.cancelledReason,
       body: entry.body,
       bodyLabel: entry.bodyLabel,
       bodyHint: entry.bodyHint,
@@ -395,6 +411,9 @@ export function toSpineEntryView(entry: SpineEntry, ctx: {
       bodyNote: entry.bodyNote,
       receipt: entry.receipt,
       actions: entry.actions,
+      // Failed delegations resolve their child session the same way live
+      // ones do — the row keeps the dive instead of dead-ending.
+      childSessionID: entry.source?.kind === "subtask" ? entry.source.sessionID : undefined,
     }
   }
 
@@ -420,6 +439,7 @@ export function toSpineEntryView(entry: SpineEntry, ctx: {
     report: entry.report,
     table: entry.table,
     listing: entry.listing,
+    grepMatches: entry.grepMatches,
     children: childrenViews(entry.children),
     childSessionID: ctx.childSessionID,
     proof: entry.proof,

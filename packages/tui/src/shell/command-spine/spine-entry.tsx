@@ -26,6 +26,7 @@ import { SpineProse, stripMarkdownEmphasis } from "./spine-prose"
 import { SpineReport } from "./spine-report"
 import { SpineListArtifact } from "./spine-list-artifact"
 import { SpineListing } from "./spine-listing"
+import { GrepMatches } from "./spine-grep"
 import { SpineChatCard } from "./spine-chat"
 import { SpineApprovalGate } from "./spine-approval-gate"
 import { SpineProof } from "./spine-proof"
@@ -59,8 +60,21 @@ import {
  */
 const LIVE_OUTPUT_LINES = 2
 const MAX_CARD_STEPS = 6
-/** Lead-in between a compact strip's content and its affordance. */
-const LEADER = "· · · "
+
+/**
+ * Engine cancellation reasons are wire vocabulary (`session_cancelled`); the
+ * strip speaks operator words. Unknown future reasons fall back to spaces.
+ */
+const CANCEL_WORD: Record<string, string> = {
+  session_cancelled: "cancelled",
+  superseded: "superseded",
+  recovered_stale: "stale",
+}
+
+export function cancelWord(reason: string | undefined): string {
+  if (!reason) return ""
+  return CANCEL_WORD[reason] ?? reason.replace(/_/g, " ")
+}
 
 /**
  * S7: single source of truth for a row's expand/toggle affordances.
@@ -171,6 +185,9 @@ type HeaderFields = {
   glyph: string
   streaming?: boolean
   thinking?: string
+  /** Engine cancellation reason — forwarded to the node so the shared chip
+      renders `interrupted` instead of deriving a false `success`. */
+  cancelledReason?: string
   /** Wall-clock timestamp for chat voice. Forwarded to SpineNode so the
       right column can render it for collapsed user prompts without
       unrolling the full SpineChatCard chrome. */
@@ -239,6 +256,7 @@ function RowHeader(props: {
         disclosure={props.disclosure}
         streaming={props.view.streaming === true}
         thinking={props.view.thinking}
+        cancelledReason={props.view.cancelledReason}
         cueID={props.cueID}
         outcomeHidden={props.outcomeHidden}
         onDisclosureMouseUp={props.onDisclosureMouseUp}
@@ -294,7 +312,7 @@ function ChildrenGroup(props: {
                   onMouseUp={(event) => openChildSession(child, event)}
                 />
                 <Show when={child.sessionID}>
-                  <text fg={theme.spineBrand} wrapMode="none">↵ open context</text>
+                  <text fg={theme.spineBrand} wrapMode="none">↵ open</text>
                 </Show>
               </box>
             </box>
@@ -304,7 +322,7 @@ function ChildrenGroup(props: {
                 <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={Space.padX}>
                   <SpineProse
                     kind={child.kind}
-                    text={child.body!}
+                    text={collapseToolCalls(child.body!)}
                     bodyLabel={child.bodyLabel}
                     hint={child.bodyHint || child.summary}
                     note={child.bodyNote}
@@ -470,11 +488,16 @@ export function SpineEntry(props: {
   const hasProse = createMemo(() => !!proseText().trim())
   const hasDiff = createMemo(() => !!toolView()?.diff)
   const hasListing = createMemo(() => !!(toolView()?.listing?.length || subagentView()?.listing?.length))
+  const hasGrepMatches = createMemo(() => !!toolView()?.grepMatches?.files.length)
   const hasToolBody = createMemo(() => {
     const v = view()
     if (v.type === "chat" || isThinkRow()) return false
     const body = (v as { body?: string }).body
-    return !!body?.trim() || ((v.type === "tool" || v.type === "subagent") && !!v.listing?.length)
+    return (
+      !!body?.trim()
+      || ((v.type === "tool" || v.type === "subagent") && !!v.listing?.length)
+      || hasGrepMatches()
+    )
   })
   const hasThinkBody = createMemo(() => isThinkRow() && !!toolView()?.body?.trim())
   const childCount = createMemo(() => viewChildren()?.length ?? 0)
@@ -648,7 +671,16 @@ export function SpineEntry(props: {
 
   // Chat voice lives in SpineChatCard (panel + accent line + title rule).
   // Empty prose still falls back to the compact RowHeader so a blank ask/ok
-  // row does not render an empty card.
+  // row does not render an empty card. Recovery rows dive into a failed
+  // child's session when one resolved.
+  const handleRecoveryDive = (event: MouseEvent) => {
+    const target = recoveryView()?.childSessionID
+    if (!target) return
+    if (event.button !== undefined && event.button !== MouseButton.LEFT) return
+    event.stopPropagation?.()
+    event.preventDefault?.()
+    props.onNavigate?.(target)
+  }
 
   return (
     <Show when={!entry().hidden}>
@@ -900,7 +932,22 @@ export function SpineEntry(props: {
                   </box>
                 </Show>
 
-                <Show when={hasToolBody() && bodyExpanded() && !v().table && !hasListing()}>
+                {/* Grep matches — dense rows with the query highlighted. */}
+                <Show when={hasGrepMatches() && bodyExpanded()}>
+                  <box flexDirection="row" flexShrink={0} alignItems="flex-start">
+                    <SpineRail layout={props.layout} active={props.focused} />
+                    <box flexGrow={1} minWidth={0} flexShrink={1}>
+                      <GrepMatches
+                        files={toolView()!.grepMatches!.files}
+                        pattern={toolView()!.grepMatches!.pattern}
+                        note={toolView()!.bodyNote}
+                        contentWidth={props.contentWidth}
+                      />
+                    </box>
+                  </box>
+                </Show>
+
+                <Show when={hasToolBody() && bodyExpanded() && !v().table && !hasListing() && !hasGrepMatches()}>
                   {/* Tool body uses a left border on the content box so every
                       body line gets a vertical rule (matches the user's
                       "minimal tool body" reference). The SpineRail sibling
@@ -1077,7 +1124,11 @@ export function SpineEntry(props: {
               const liveLines = createMemo(() => {
                 const raw = liveWorkingText()
                 if (!raw) return { lines: [] as string[], clipped: false }
-                const all = raw
+                // Collapse text-protocol calls BEFORE splitting: one
+                // `<tool_call>` block is one row (`◆ read · …/ai.module.ts`),
+                // not five raw markup lines wrapped mid-token. Same collapser
+                // the prose path uses, so the ticker and the transcript agree.
+                const all = collapseToolCalls(raw)
                   .split("\n")
                   .map((line) => line.trimEnd())
                   .filter((line) => line.trim().length > 0)
@@ -1120,10 +1171,13 @@ export function SpineEntry(props: {
                 return `${index + 1}/${siblings.length}`
               })
               // The last concrete action, not a state word: a step label is
-              // evidence of work, "delegated" is a label for waiting.
+              // evidence of work, "delegated" is a label for waiting. A
+              // cancelled delegation with no steps names its reason instead —
+              // an empty activity would leave the strip mute about why.
               const activity = createMemo(() => {
                 const steps = childSteps()
-                return steps.length > 0 ? steps[steps.length - 1]!.label : ""
+                if (steps.length > 0) return steps[steps.length - 1]!.label
+                return cancelWord(v().cancelledReason)
               })
               const visibleSteps = createMemo(() => childSteps().slice(0, MAX_CARD_STEPS))
               const hiddenStepCount = createMemo(() => Math.max(0, childSteps().length - MAX_CARD_STEPS))
@@ -1144,7 +1198,10 @@ export function SpineEntry(props: {
                   .map((line) => line.trim())
                   .find((line) => line.length > 0 && !line.startsWith("```"))
                 if (!first) return ""
-                const clean = stripMarkdownEmphasis(first)
+                // Preview is plain one-line text: collapse any text-protocol
+                // markup, strip emphasis, then drop inline-code backticks (the
+                // card keeps them, the preview has no code styling to earn them).
+                const clean = stripMarkdownEmphasis(collapseToolCalls(first)).replace(/`([^`\n]+)`/g, "$1")
                   .replace(/^#{1,6}\s+/, "")
                   .replace(/^[-*+]\s+/, "")
                   .replace(/^\d+\.\s+/, "")
@@ -1159,6 +1216,17 @@ export function SpineEntry(props: {
               // title row (the dive affordance renders right-aligned). The header
               // chip already owns the live dot and elapsed time, so neither is
               // repeated here.
+              // A settled card with zero signals (no steps, no sibling, no
+              // activity, no child link, no preview) hides the panel: a lone-✓
+              // box is the empty placeholder the contract bans. Streaming cards
+              // always keep it — the glyph is the liveness signal.
+              const stripHasSignals = () =>
+                v().streaming ||
+                childSteps().length > 0 ||
+                !!siblingPosition() ||
+                !!activity() ||
+                !!childSessionID() ||
+                !!reportPreview()
               const stepSummary = () => {
                 const completed = childSteps().length
                 if (completed > 0) return `${completed} ${completed === 1 ? "step" : "steps"}`
@@ -1198,18 +1266,38 @@ export function SpineEntry(props: {
                   <Show when={!bodyExpanded()}>
                     <box flexDirection="row" flexShrink={0} alignItems="flex-start">
                       <SpineRail layout={props.layout} glyph=" " active={false} />
-                      <box flexDirection="column" flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={Space.unit}>
+                      <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={Space.unit}>
+                        {/* Grey block without a frame: the collapsed row reads
+                            as a panel (backgroundPanel + breathing room) while
+                            the full RoundBorder stays expanded-only — five
+                            framed one-liners were five empty boxes. Hidden when
+                            the settled card carries nothing (see stripHasSignals). */}
+                        <Show when={stripHasSignals()}>
+                        <box
+                          flexDirection="column"
+                          flexShrink={0}
+                          width="100%"
+                          backgroundColor={theme.backgroundPanel}
+                          paddingLeft={Space.unit}
+                          paddingRight={Space.unit}
+                          paddingTop={Space.padY}
+                          paddingBottom={Space.padY}
+                        >
                         <box flexDirection="row" minWidth={0} alignItems="center">
                           {/* State is a glyph, not a word: the header chip has
                               already named the actor and its liveness, so the
                               strip carries *progress* — the step count, the
-                              wave position, and the last concrete action. */}
+                              wave position, and the last concrete action. A
+                              cancelled delegation is interrupted (`!`), never
+                              done: ✓ on a cancelled row was a lie. */}
                           <text
-                            fg={v().streaming ? theme.accent : theme.spineOk}
+                            fg={v().streaming ? theme.accent : v().cancelledReason ? theme.warning : theme.spineOk}
                             wrapMode="none"
                             flexShrink={0}
                           >
-                            {v().streaming ? StatusGlyph.running : StatusGlyph.done}
+                            {v().streaming
+                              ? StatusGlyph.running
+                              : (v().cancelledReason ? StatusGlyph.interrupted : StatusGlyph.done)}
                           </text>
                           <Show when={stepSummary()}>
                             <text fg={theme.spineContext} wrapMode="none" flexShrink={0}>
@@ -1226,9 +1314,9 @@ export function SpineEntry(props: {
                               {` · ${activity()}`}
                             </text>
                           </Show>
-                          {/* The badge keeps the row's right edge, but a dim
-                              lead-in makes it read as the end of the line
-                              rather than a stranded island. */}
+                          {/* The badge keeps the row's right edge. No dim lead-in:
+                              "· · · ↵ open" read as content plus an island;
+                              the padded badge alone is the affordance. */}
                           <box flexGrow={1} minWidth={1} />
                           <Show when={childSessionID()}>
                             <box
@@ -1241,9 +1329,6 @@ export function SpineEntry(props: {
                               onMouseOver={() => setDiveHovered(true)}
                               onMouseOut={() => setDiveHovered(false)}
                             >
-                              <text fg={theme.borderSubtle} wrapMode="none">
-                                {LEADER}
-                              </text>
                               <text fg={theme.spineBrand} wrapMode="none">
                                 ↵ open
                               </text>
@@ -1266,6 +1351,8 @@ export function SpineEntry(props: {
                           <text fg={theme.spineContext} wrapMode="none">
                             {reportPreview()}
                           </text>
+                        </Show>
+                        </box>
                         </Show>
                       </box>
                     </box>
@@ -1302,8 +1389,14 @@ export function SpineEntry(props: {
                             otherwise a narrow card clipped them to `dele…` and
                             `· 3 s` while the badge on the right stayed whole. */}
                         <box flexDirection="row" flexShrink={0} alignItems="center" gap={Space.gap}>
-                          <text fg={v().streaming ? theme.accent : theme.spineOk} wrapMode="none" flexShrink={0}>
-                            {chrome().cue}
+                          <text
+                            fg={v().streaming ? theme.accent : v().cancelledReason ? theme.warning : theme.spineOk}
+                            wrapMode="none"
+                            flexShrink={0}
+                          >
+                            {v().streaming
+                              ? chrome().cue
+                              : (v().cancelledReason ? `! ${cancelWord(v().cancelledReason)}` : chrome().cue)}
                           </text>
                           <Show when={stepSummary()}>
                             <text fg={theme.spineContext} wrapMode="none" flexShrink={0}>
@@ -1333,6 +1426,17 @@ export function SpineEntry(props: {
                             </box>
                           </Show>
                         </box>
+                        {/* Hairline between the title strip and the steps: the
+                            agreed card has three zones (title / steps / output),
+                            and without the rule the step rows read as a second
+                            title. */}
+                        <box
+                          flexShrink={0}
+                          marginTop={Space.padY}
+                          border={["top"]}
+                          borderColor={theme.borderSubtle}
+                          customBorderChars={HairlineBorder}
+                        />
                         {/* Completed step list — what the subagent actually did,
                             capped so a busy subagent cannot flood the spine. The
                             collapsed preview lives on the compact strip instead. */}
@@ -1430,6 +1534,19 @@ export function SpineEntry(props: {
                     </box>
                   </box>
                 </Show>
+                {/* Failed delegations resolve their child session the same way
+                    live ones do — the badge keeps the dive instead of
+                    dead-ending the row. */}
+                <Show when={v().childSessionID}>
+                  <box flexDirection="row" flexShrink={0} alignItems="flex-start">
+                    <SpineRail layout={props.layout} active={props.focused} />
+                    <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={Space.unit}>
+                      <box flexDirection="row" flexShrink={0} onMouseUp={handleRecoveryDive}>
+                        <text fg={theme.spineBrand} wrapMode="none">↵ open</text>
+                      </box>
+                    </box>
+                  </box>
+                </Show>
                 <Show when={v().body?.trim() && bodyExpanded()}>
                   <box flexDirection="row" flexShrink={0} alignItems="flex-start">
                     <SpineRail layout={props.layout} active={props.focused} />
@@ -1485,7 +1602,18 @@ export function SpineEntry(props: {
  * Compact one-line label for a completed child tool call (the step list inside
  * the returned subagent card). Prefers the tool title, then a command / path /
  * search summary from the input, mirroring the spine mapper's per-tool chrome.
+ *
+ * File paths show as parent + basename under an ellipsis: step rows have one
+ * line and the card has a fixed budget, so a full workspace path spends the row
+ * on directories the operator already knows. The basename is the identity; one
+ * parent keeps it placed.
  */
+export function shortStepPath(value: string): string {
+  const parts = value.replace(/\\/g, "/").split("/").filter(Boolean)
+  if (parts.length <= 2) return value
+  return `…/${parts.slice(-2).join("/")}`
+}
+
 export function childStepLabel(part: ToolPart): string {
   const tool = part.tool || "tool"
   const state = part.state
@@ -1496,13 +1624,18 @@ export function childStepLabel(part: ToolPart): string {
     : undefined
 
   const name = titlecase(tool)
-  if (title && title !== "Working") return `${name} · ${truncate(title, 60)}`
+  // Step rows are one line of plain text: collapse any text-protocol markup
+  // in model-set titles/inputs so tags never paint in the card.
+  if (title && title !== "Working") return collapseToolCalls(`${name} · ${truncate(title, 60)}`)
 
   const command = input?.command ?? input?.cmd
-  if (typeof command === "string" && command.trim()) return `${name} · ${truncate(command.trim(), 60)}`
+  if (typeof command === "string" && command.trim())
+    return collapseToolCalls(`${name} · ${truncate(command.trim(), 60)}`)
   const file = input?.filePath ?? input?.path ?? input?.file
-  if (typeof file === "string" && file.trim()) return `${name} · ${truncate(file.trim(), 60)}`
+  if (typeof file === "string" && file.trim())
+    return collapseToolCalls(`${name} · ${truncate(shortStepPath(file.trim()), 60)}`)
   const pattern = input?.pattern
-  if (typeof pattern === "string" && pattern.trim()) return `${name} · ${truncate(pattern.trim(), 60)}`
+  if (typeof pattern === "string" && pattern.trim())
+    return collapseToolCalls(`${name} · ${truncate(pattern.trim(), 60)}`)
   return name
 }

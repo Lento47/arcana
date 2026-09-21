@@ -6,6 +6,7 @@ import { createWidgetRenderNode } from "./widgets/registry"
 import { filetype } from "../../util/filetype"
 import type { SpineKind } from "./spine-types"
 import { looksLikeMarkdown, normalizeChatProse, stripMarkdownEmphasis, stripUnpairedEmphasis } from "./chat-prose"
+import { collapseToolCalls } from "../../util/tool-call-text"
 import { codeBlockChrome, streamTextCue } from "./spine-chrome"
 import { RoundBorder, Space } from "../../ui/chrome"
 import { HairlineBorder } from "../../ui/border"
@@ -182,7 +183,10 @@ export function SpineProse(props: {
   const text = createMemo(() => {
     const raw = (props.text ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n")
     if (kind() === "plan" || kind() === "ok" || kind() === "ask" || kind() === "think") {
-      return normalizeChatProse(raw)
+      // Think bodies render plain (no parser to hide behind): collapse
+      // text-protocol markup the same way assistant prose does.
+      const collapsed = kind() === "think" ? collapseToolCalls(raw) : raw
+      return normalizeChatProse(collapsed)
     }
     return raw
   })

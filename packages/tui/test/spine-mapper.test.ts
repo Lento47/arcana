@@ -2162,6 +2162,38 @@ Diff excerpts can be improved later.`,
     expect(run?.streaming).toBe(false)
   })
 
+  test("cancelled task part forwards its engine reason for the strip", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-cancelled-task", { completed: 5000 })
+    parts.push({
+      id: "p-cancelled-task",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c-cancelled-task",
+      tool: "task",
+      state: {
+        status: "cancelled",
+        reason: "superseded",
+        input: { description: "Explore", prompt: "map it", subagent_type: "explore" },
+        title: "task",
+        metadata: {},
+        time: { start: 1000, end: 5000 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+      sessionStatusType: "idle",
+    })
+    const task = result.find((entry) => entry.source?.partID === "p-cancelled-task")
+
+    expect(task?.kind).toBe("agent")
+    expect(task?.cancelledReason).toBe("superseded")
+    expect(task?.streaming).toBe(false)
+  })
+
   test("operator-denied tool rows name the tool and say who denied it", () => {
     const { messages: msgs, parts } = makeAssistantMessage("a-denied", { completed: 5000 })
     parts.push({

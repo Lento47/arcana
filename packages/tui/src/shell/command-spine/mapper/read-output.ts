@@ -28,7 +28,7 @@ function isEntryFooter(line: string): boolean {
     /^\((?:\d+\s+entries|Showing\s+\d+\s+of\s+\d+\s+entries)[\s\S]*\)$/i.test(trimmed) ||
     /^\((?:End of file|Showing lines|Output capped)[\s\S]*\)$/i.test(trimmed) ||
     /^\(Output capped at[\s\S]*\)$/i.test(trimmed) ||
-    /^\(Results are truncated[\s\S]*\)$/i.test(trimmed)
+    /^\(Results (?:are )?truncated[\s\S]*\)$/i.test(trimmed)
   )
 }
 

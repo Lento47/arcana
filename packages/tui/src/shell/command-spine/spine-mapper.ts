@@ -9,6 +9,8 @@ import {
   isSessionTurnActive,
 } from "./turn-lifecycle"
 import { parseReadToolOutput, type ParsedReadBody } from "./mapper/read-output"
+import { parseGrepOutput, type GrepMatchesData, type ParsedGrepOutput } from "./mapper/grep-output"
+import { collapseToolCalls } from "../../util/tool-call-text"
 
 const INSPECT_TOOLS = new Set([
   "read",
@@ -153,7 +155,12 @@ function stripEngineMetadataBlocks(text: string): string {
 }
 
 function cleanText(text: string): string {
-  return stripEngineMetadataBlocks(preserveBodyText(text)).trim()
+  // Reminder blocks are model metadata, never operator content: strip them on
+  // every summary path, not just the read parser. The read parser still
+  // extracts them separately for callouts — stripping here is idempotent.
+  return stripEngineMetadataBlocks(preserveBodyText(text))
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>\s*/gi, "")
+    .trim()
 }
 
 /** Parse subagent task output into a structured report. Extracts summary paragraph,
@@ -260,6 +267,39 @@ const INSPECT_AUTO_EXPAND_MAX_LINES = 2
  */
 const MAX_DISPLAY_LISTING = 500
 const MAX_DISPLAY_BODY_LINES = 2000
+/**
+ * Grep match rows shown before the elided remainder. Mirrors the 24-line grep
+ * body cap below: a match dump must never drown the reply it belongs to.
+ */
+const MAX_GREP_MATCH_ROWS = 24
+
+/**
+ * Cap parsed grep matches to the display budget, preserving file groups. The
+ * elided count feeds the `… (N more — refine the query)` note, in the same
+ * words the body path uses so the two never disagree.
+ */
+function capGrepMatches(
+  parsed: ParsedGrepOutput,
+  cap: number,
+): { files: ParsedGrepOutput["files"]; elided: number } {
+  const files: ParsedGrepOutput["files"] = []
+  let shown = 0
+  let elided = 0
+  for (const file of parsed.files) {
+    const room = cap - shown
+    if (room <= 0) {
+      elided += file.matches.length
+      continue
+    }
+    const kept = file.matches.slice(0, room)
+    elided += file.matches.length - kept.length
+    shown += kept.length
+    // A file whose every row was cut contributes no header: a header with no
+    // rows reads as a file with no matches.
+    if (kept.length > 0) files.push({ ...file, matches: kept })
+  }
+  return { files, elided }
+}
 
 /** Number of lines in `text` — scans without materializing a split array
  *  (a 1M-line body would otherwise allocate a million-element array). */
@@ -913,6 +953,7 @@ type ToolOutputBody = {
   report?: SpineReportData
   table?: { headers: string[]; rows: string[][] }
   listing?: string[]
+  grepMatches?: GrepMatchesData
   /** File path for syntax / header (read tools). */
   path?: string
   bodyHint?: string
@@ -969,9 +1010,11 @@ function toolOutputBody(part: ToolPart): ToolOutputBody {
   }
 
   // Subagent task output — parse as structured report if markdown headings detected.
+  // Text-protocol calls collapse first: a child emitting raw `<tool_call>`
+  // blocks would otherwise paint markup in the report body and preview.
   if (part.tool === "task" || part.tool === "subtask") {
     const raw = stripAnsi(preserveBodyText(state.output ?? ""))
-    const cleaned = stripTaskXml(raw)
+    const cleaned = stripTaskXml(collapseToolCalls(raw))
     if (cleaned) {
       const report = parseReportSections(cleaned)
       if (report) return { body: cleaned, label: "report", reminders: [], report }
@@ -1016,6 +1059,27 @@ function toolOutputBody(part: ToolPart): ToolOutputBody {
         lineStart: parsed.lineStart,
         lineEnd: parsed.lineEnd,
         totalLines: parsed.totalLines,
+      }
+    }
+  }
+
+  // Grep `matches` mode: dense rows with the query highlighted, not engine
+  // prose with a blank row between every match. Other modes and unshaped
+  // output fall through to the generic branches below untouched.
+  if (part.tool === "grep" || part.tool === "ripgrep") {
+    const parsed = parseGrepOutput(output)
+    if (parsed && parsed.files.length > 0) {
+      const shown = capGrepMatches(parsed, MAX_GREP_MATCH_ROWS)
+      return {
+        body: "",
+        label: "matches",
+        reminders: [],
+        grepMatches: {
+          pattern: toolInputText(part, "pattern"),
+          files: shown.files,
+          totalMatches: parsed.totalMatches,
+        },
+        bodyNote: shown.elided > 0 ? `… (${shown.elided} more — refine the query)` : undefined,
       }
     }
   }
@@ -1096,8 +1160,10 @@ function toolPartToEntries(
   if (toolKind === "run") {
     summary = getRunSummary(resolved)
     if (!summary) {
-      if (state.status === "completed") summary = truncate(stripAnsi(state.output ?? ""), 120)
-      else if (state.status === "error") summary = truncate(stripAnsi(state.error ?? ""), 80)
+      // Chip preview is one line of raw output head — collapse any
+      // text-protocol markup so tags never paint in the header.
+      if (state.status === "completed") summary = truncate(collapseToolCalls(stripAnsi(state.output ?? "")), 120)
+      else if (state.status === "error") summary = truncate(collapseToolCalls(stripAnsi(state.error ?? "")), 80)
       else summary = resolved.tool
     }
   }
@@ -1121,12 +1187,16 @@ function toolPartToEntries(
       ? SPINE_GLYPH.report
       : glyph
   const taskSessionID = taskToolSessionID(resolved)
+  // Cancelled parts keep their engine reason on the entry: the strip and the
+  // header chip derive `!` from it instead of reading a settled ✓.
+  const cancelledReason =
+    state.status === "cancelled" && typeof state.reason === "string" ? state.reason : undefined
   if (renderedOutput.report) {
     summary = agentName ? renderedOutput.report.title : `Divination: ${renderedOutput.report.title}`
   }
   if (kind === "fail" && state.status === "error") {
     // Prefer the error on the spine line (design: "fail  error[E0308]: …").
-    summary = truncate(stripAnsi(state.error ?? ""), 120) || summary || resolved.tool
+    summary = truncate(collapseToolCalls(stripAnsi(state.error ?? "")), 120) || summary || resolved.tool
   }
   if (denial) {
     // Clean operator-facing headline; the raw DENIED payload stays as
@@ -1156,6 +1226,8 @@ function toolPartToEntries(
 
   const listing = renderedOutput.listing
   const isListing = renderedOutput.label === "listing" && !!listing?.length
+  const grepMatches = renderedOutput.grepMatches
+  const isGrepMatches = renderedOutput.label === "matches" && !!grepMatches?.files.length
   // True entry count for the summary — computed before any display slicing so a
   // capped listing still reports the engine's real total ("N entries").
   const listingTotal = isListing ? (renderedOutput.totalLines ?? listing!.length) : 0
@@ -1254,14 +1326,14 @@ function toolPartToEntries(
       && bodyLines <= INSPECT_AUTO_EXPAND_MAX_LINES
     )
 
-  const hasExpandableBody = (!!body && !diff) || isListing
+  const hasExpandableBody = (!!body && !diff) || isListing || isGrepMatches
 
   // Cap what reaches the renderer. Engine output limits (1M lines / 10k rows)
   // are model-facing; the terminal cannot paint them — a huge listing overflows
   // the native TextBuffer (crash) and multi-MB bodies stall frames. The caps
   // below are display-only: collapsed summaries keep the true totals, and the
   // trailing note says the rest was elided so the user can refine the query.
-  let displayBody = body && !diff && !renderedOutput.report && !isListing ? body : undefined
+  let displayBody = body && !diff && !renderedOutput.report && !isListing && !isGrepMatches ? body : undefined
   if (displayBody) {
     // Grep match dumps stay tight (24) so they never drown assistant replies;
     // other tool bodies (reads, run output) get a generous-but-bounded cap.
@@ -1311,8 +1383,9 @@ function toolPartToEntries(
       body: displayBody,
       bodyLabel: renderedOutput.report ? "report" : renderedOutput.label,
       bodyHint: renderedOutput.bodyHint || (resolved.tool === "read" ? filePath : undefined),
-      bodyNote: [listingBodyNote, listingNote].filter(Boolean).join(" · ") || undefined,
+      bodyNote: [listingBodyNote, listingNote, isGrepMatches ? renderedOutput.bodyNote : undefined].filter(Boolean).join(" · ") || undefined,
       liveOutput: running ? preliminaryToolOutput(state) : undefined,
+      cancelledReason,
       collapsible: !!diff || !!renderedOutput.report || hasExpandableBody,
       expandedByDefault: denial ? false : expandDefault,
       receipt,
@@ -1321,6 +1394,7 @@ function toolPartToEntries(
       reminders: renderedOutput.reminders.length ? renderedOutput.reminders : undefined,
       report: renderedOutput.report,
       table: renderedOutput.table,
+      grepMatches: isGrepMatches ? grepMatches : undefined,
       source: { messageID: message.id, partID: resolved.id, kind: agentName ? "subtask" : "tool", sessionID: taskSessionID },
     },
   ]

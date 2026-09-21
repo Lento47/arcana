@@ -271,3 +271,54 @@ test("returned card caps its step list and counts the remainder", async () => {
   expect(frame).not.toContain("step-6.ts")
   expect(frame).toContain("… 2 more steps")
 })
+
+test("cancelled delegation renders interrupted, never done", async () => {
+  harness = await renderCards([
+    agent({
+      id: "cancelled",
+      streaming: false,
+      cancelledReason: "superseded",
+      source: { messageID: "cancelled", partID: "cancelled-part", kind: "agent" },
+    }),
+  ])
+  const frame = harness.app.captureCharFrame()
+  // Both the header chip and the strip derive interrupted — a cancelled
+  // delegation must never read as a clean return.
+  expect(frame).toContain("!")
+  expect(frame).toContain("superseded")
+  expect(frame).not.toContain("✓")
+})
+
+test("settled card with zero signals hides the strip panel", async () => {
+  harness = await renderCards([
+    agent({
+      id: "empty",
+      streaming: false,
+      source: { messageID: "empty", partID: "empty-part", kind: "agent" },
+    }),
+  ])
+  const frame = harness.app.captureCharFrame()
+  // The header chip keeps its single ✓; the strip panel (a second ✓ in its
+  // own grey box) stays hidden until the card carries a signal.
+  expect(frame.match(/✓/g)?.length).toBe(1)
+  expect(frame).not.toContain("↵ open")
+})
+
+test("failed delegation keeps the dive into its child session", async () => {
+  harness = await renderCards([
+    {
+      index: 1,
+      id: "failed-dive",
+      elapsed: "+3.1s",
+      kind: "fail",
+      glyph: "✗",
+      label: "fail",
+      summary: "Explore failed",
+      streaming: false,
+      collapsible: false,
+      source: { messageID: "failed-dive", partID: "failed-dive-part", kind: "subtask", sessionID: CHILD },
+    },
+  ])
+  const frame = harness.app.captureCharFrame()
+  expect(frame).toContain("↵ open")
+})

@@ -1,6 +1,7 @@
 import type { Theme } from "../../theme"
 import { displayWidth } from "../../util/locale"
 import { Space } from "../../ui/chrome"
+import type { GrepMatchesData } from "./mapper/grep-output"
 
 export type SpineKind =
   | "ask"
@@ -194,6 +195,12 @@ export type SpineEntry = {
   /** Live preliminary output while running (subagent text stream). Each update
    * replaces the previous value — mirrors ToolStateRunning.output on the wire. */
   liveOutput?: string
+  /**
+   * Engine cancellation reason (`session_cancelled | superseded |
+   * recovered_stale`) for `cancelled` tool parts. The strip and chip render
+   * `!` instead of ✓ — a cancelled delegation is interrupted, not done.
+   */
+  cancelledReason?: string
   /** Grouped child entries (when this entry is a parent row). */
   children?: SpineEntry[]
   /** Derived activity reel marker; children remain the source of truth. */
@@ -218,6 +225,11 @@ export type SpineEntry = {
    * Prefer this over stuffing entries into `body` as "file" source.
    */
   listing?: string[]
+  /**
+   * Parsed grep `matches`-mode output — dense rows with hit highlights instead
+   * of the engine's blank-line-separated prose.
+   */
+  grepMatches?: GrepMatchesData
 }
 
 export type SpineEntryAction = {

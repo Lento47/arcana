@@ -49,6 +49,19 @@ describe("parseReadToolOutput", () => {
     expect(a.body).toContain("alpha")
     expect(b.body).toContain("beta")
   })
+
+  test("new grep/glob truncation footers collapse to the note", () => {
+    const grep = parseReadToolOutput(
+      "  Line 42: needle\n(Results truncated at 500 matches. Narrow with include/path or raise maxResults instead of repeating the search.)",
+    )
+    expect(grep.body).not.toContain("Results truncated")
+    expect(grep.note ?? "").toContain("Results truncated at 500 matches")
+    const glob = parseReadToolOutput(
+      "src/a.ts\nsrc/b.ts\n(Results truncated at 10000 paths. Narrow with path or combine patterns with braces.)",
+    )
+    expect(glob.body).not.toContain("Results truncated")
+    expect(glob.note ?? "").toContain("Results truncated at 10000 paths")
+  })
 })
 
 type ParsedReadBodyCheck = ParsedReadBody
