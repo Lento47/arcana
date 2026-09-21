@@ -26,7 +26,8 @@ export type MermaidNodeShape = "rect" | "round" | "stadium" | "diamond" | "circl
 
 export interface MermaidNode {
   id: string
-  label: string
+  /** Label lines (`<br/>` breaks become rows — narrower and truer than one line). */
+  label: string[]
   shape: MermaidNodeShape
   /** Innermost enclosing subgraph id, if any. */
   subgraph?: string
@@ -60,9 +61,10 @@ export type MermaidDiagram =
   | { type: "unsupported"; kind: string }
 
 export const MERMAID_LIMITS = {
-  maxNodes: 40,
-  maxEdges: 80,
-  maxLabelChars: 64,
+  maxNodes: 96,
+  maxEdges: 192,
+  maxLabelChars: 48,
+  maxLabelLines: 8,
   maxBadLines: 8,
 } as const
 
@@ -110,17 +112,28 @@ function truncateLabel(label: string): string {
   return `${chars.slice(0, MERMAID_LIMITS.maxLabelChars - 1).join("")}…`
 }
 
-function cleanLabel(raw: string): string {
-  let label = raw.trim()
+/**
+ * Split a raw label on `<br/>` breaks first, then clean each line (outer
+ * quotes, whitespace collapse). Empty lines drop; a fully empty label
+ * yields no lines and the caller falls back to the node id.
+ */
+function cleanLabelLines(raw: string): string[] {
+  let text = raw.trim()
   if (
-    (label.startsWith('"') && label.endsWith('"')) ||
-    (label.startsWith("'") && label.endsWith("'"))
+    (text.startsWith('"') && text.endsWith('"') && text.length >= 2) ||
+    (text.startsWith("'") && text.endsWith("'") && text.length >= 2)
   ) {
-    label = label.slice(1, -1)
+    text = text.slice(1, -1)
   }
-  // Inline `<br/>` breaks are the standard multi-line label idiom.
-  label = label.replace(/<br\s*\/?>/gi, " ")
-  return truncateLabel(label.replace(/\s+/g, " ").trim())
+  return text
+    .split(/<br\s*\/?>/gi)
+    .map((line) => truncateLabel(line.replace(/\s+/g, " ").trim()))
+    .filter((line) => line.length > 0)
+    .slice(0, MERMAID_LIMITS.maxLabelLines)
+}
+
+function cleanLabel(raw: string): string {
+  return cleanLabelLines(raw).join(" ")
 }
 
 /** Split a statement into top-level `&` segments (depth/quote aware). */
@@ -224,7 +237,8 @@ function splitStatements(source: string): string[] {
 
 interface Bracketed {
   id: string
-  label?: string
+  /** Explicit label lines; absent for bare references. */
+  label?: string[]
   shape?: MermaidNodeShape
   rest: string
 }
@@ -278,7 +292,7 @@ function scanBracket(
       i += closer.length
       if (depth === 0) {
         const inner = rest.slice(opener.length, i - closer.length)
-        return { id, label: cleanLabel(inner), shape, rest: rest.slice(i).trimStart() }
+        return { id, label: cleanLabelLines(inner), shape, rest: rest.slice(i).trimStart() }
       }
       continue
     }
@@ -421,7 +435,7 @@ export function parseMermaid(source: string): MermaidDiagram {
   const ensureNode = (id: string, subgraph?: string): MermaidNode => {
     let node = nodes.get(id)
     if (!node) {
-      node = { id, label: id, shape: "rect", subgraph }
+      node = { id, label: [id], shape: "rect", subgraph }
       nodes.set(id, node)
     } else if (subgraph && !node.subgraph) {
       node.subgraph = subgraph
@@ -433,11 +447,11 @@ export function parseMermaid(source: string): MermaidDiagram {
     const node = ensureNode(parsed.id, subgraph)
     // An explicit label overrides (a later `B[Real label]` beats the bare
     // `A --> B` reference); shape follows the defining occurrence.
-    if (parsed.label !== undefined) {
+    if (parsed.label !== undefined && parsed.label.length > 0) {
       node.label = parsed.label
       node.shape = parsed.shape ?? node.shape
       if (subgraph) node.subgraph = subgraph
-    } else if (parsed.shape && node.label === node.id) {
+    } else if (parsed.shape && node.label.length === 1 && node.label[0] === node.id) {
       node.shape = parsed.shape
     }
   }
@@ -550,9 +564,10 @@ export function parseMermaid(source: string): MermaidDiagram {
       let id: string
       let title: string
       const bracketed = arg ? parseNodeHead(arg) : undefined
-      if (bracketed && (bracketed.label !== undefined || !bracketed.rest)) {
+      if (bracketed && ((bracketed.label?.length ?? 0) > 0 || !bracketed.rest)) {
         id = bracketed.id
-        title = bracketed.label ?? bracketed.id
+        // Box titles are single-row: join break lines with spaces.
+        title = bracketed.label && bracketed.label.length > 0 ? bracketed.label.join(" ") : bracketed.id
       } else if (arg) {
         subgraphSeq++
         id = `sg${subgraphSeq}`

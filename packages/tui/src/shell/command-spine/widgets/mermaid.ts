@@ -36,6 +36,9 @@ const toneColor = (tone: MermaidCell["tone"], palette: WidgetPaletteInput) =>
  * (non-graph diagrams, empty input, oversized graphs, layout overflow)
  * returns `undefined` so the fence falls back to a plain code block — a
  * widget must never be the reason a diagram disappears.
+ *
+ * The canvas sizes to the live terminal width (box art cannot wrap without
+ * breaking, so an over-wide diagram declines instead of rendering broken).
  */
 export function mermaidWidget(
   renderer: CliRenderer,
@@ -44,7 +47,16 @@ export function mermaidWidget(
 ): BoxRenderable | undefined {
   const parsed = parseMermaid(source)
   if (parsed.type !== "flowchart") return undefined
-  const laidOut = layoutFlowchart(parsed)
+  let maxWidth: number | undefined
+  try {
+    const terminalWidth = renderer.terminalWidth
+    if (Number.isFinite(terminalWidth) && terminalWidth > 0) {
+      maxWidth = Math.max(64, Math.floor(terminalWidth) - 12)
+    }
+  } catch {
+    maxWidth = undefined
+  }
+  const laidOut = layoutFlowchart(parsed, maxWidth === undefined ? undefined : { maxWidth })
   if (!laidOut) return undefined
 
   const root = new BoxRenderable(renderer, {

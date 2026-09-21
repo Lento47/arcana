@@ -50,16 +50,16 @@ export interface MermaidFlowchart {
 const MAX_RANKS = 12
 const MAX_LANES = 8
 const MAX_JOG_ROWS = 8
-const MAX_SCREEN_WIDTH = 100
-const MAX_SCREEN_HEIGHT = 120
+const DEFAULT_MAX_WIDTH = 100
+const DEFAULT_MAX_HEIGHT = 300
 const MAX_LABEL_WIDTH = 48
-const CROSS_GAP = 3
+const CROSS_GAP = 2
 
 type ScreenDir = "N" | "S" | "E" | "W"
 
 interface Placed {
   id: string
-  label: string
+  lines: string[]
   shape: MermaidNodeShape
   rank: number
   /** Screen rect (top-left + size), axis-aligned in both orientations. */
@@ -241,17 +241,26 @@ function orderRanks(
 // Node sizes
 // ---------------------------------------------------------------------------
 
-function nodeSize(shape: MermaidNodeShape, labelWidth: number): { w: number; h: number } {
+function nodeSize(shape: MermaidNodeShape, labelWidth: number, lineCount: number): { w: number; h: number } {
   if (shape === "diamond") return { w: labelWidth + 4, h: 5 }
-  if (shape === "stadium") return { w: labelWidth + 6, h: 3 }
-  return { w: labelWidth + 4, h: 3 }
+  if (shape === "stadium") return { w: labelWidth + 6, h: 2 + lineCount }
+  return { w: labelWidth + 4, h: 2 + lineCount }
 }
 
 // ---------------------------------------------------------------------------
 // Main layout
 // ---------------------------------------------------------------------------
 
-export function layoutFlowchart(diagram: MermaidFlowchart): MermaidLayoutResult | undefined {
+export function layoutFlowchart(
+  diagram: MermaidFlowchart,
+  opts?: { maxWidth?: number; maxHeight?: number },
+): MermaidLayoutResult | undefined {
+  // The canvas sizes to the viewport (the widget passes terminal width):
+  // wrapping box art destroys it, so an over-wide diagram declines instead.
+  // Height is generous — scrollback absorbs rows; width is the hard bound.
+  const maxWidth = Math.max(48, Math.floor(opts?.maxWidth ?? DEFAULT_MAX_WIDTH))
+  const maxHeight = Math.max(8, Math.floor(opts?.maxHeight ?? DEFAULT_MAX_HEIGHT))
+  const wrapBudget = Math.max(40, maxWidth - 16)
   const horizontal = diagram.direction === "LR" || diagram.direction === "RL"
   const rank = assignRanks(diagram.nodes, diagram.edges)
   if (!rank) return undefined
@@ -260,10 +269,17 @@ export function layoutFlowchart(diagram: MermaidFlowchart): MermaidLayoutResult 
 
   const placed = new Map<string, Placed>()
   for (const node of diagram.nodes) {
-    const label = truncate(node.label, MAX_LABEL_WIDTH)
-    const { w, h } = nodeSize(node.shape, displayWidth(label))
+    // Diamonds stay single-line (joined): a 5-row rhombus cannot stack text.
+    const lines =
+      node.shape === "diamond"
+        ? [truncate(node.label.join(" ") || node.id, MAX_LABEL_WIDTH)]
+        : node.label.length > 0
+          ? node.label.map((line) => truncate(line, MAX_LABEL_WIDTH))
+          : [node.id]
+    const labelWidth = Math.max(...lines.map((line) => displayWidth(line)))
+    const { w, h } = nodeSize(node.shape, labelWidth, lines.length)
     placed.set(node.id, {
-      id: node.id, label, shape: node.shape,
+      id: node.id, lines, shape: node.shape,
       rank: rank.get(node.id) ?? 0, x: 0, y: 0, w, h,
       subgraph: node.subgraph,
     })
@@ -279,28 +295,59 @@ export function layoutFlowchart(diagram: MermaidFlowchart): MermaidLayoutResult 
   }
 
   // Lane assignment for rank-skipping edges: global interval coloring per
-  // side, so a lane column stays consistent across gaps. Downward lanes live
-  // left (cross 1, 3, 5…), upward lanes right of all nodes.
-  const downLanes: Array<Array<{ fromRank: number; toRank: number }>> = []
-  const upLanes: Array<Array<{ fromRank: number; toRank: number }>> = []
+  // side, so a lane column stays consistent across gaps. Edges from the SAME
+  // source share one lane (bus routing): a fan-out hub like Diagnose paints
+  // one trunk with per-target branches instead of a wall of parallel lines.
+  // The shared trunk is the union of member ranges.
+  interface LaneUse { key: string; fromRank: number; toRank: number }
+  const downLanes: LaneUse[][] = []
+  const upLanes: LaneUse[][] = []
   const dropped: string[] = []
   interface RoutedMeta { lane: number; up: boolean }
   const metas = new Map<MermaidEdge, RoutedMeta>()
 
   const takeLane = (
-    pools: Array<Array<{ fromRank: number; toRank: number }>>,
+    pools: LaneUse[][],
+    key: string,
     fromRank: number,
     toRank: number,
   ): number => {
     for (let lane = 0; lane < pools.length; lane++) {
-      const clash = pools[lane]!.some((other) => fromRank <= other.toRank && other.fromRank <= toRank)
+      const covering = pools[lane]!.find(
+        (other) => other.key === key && other.fromRank <= fromRank && toRank <= other.toRank,
+      )
+      if (covering) {
+        // Extending must not newly clash with another source's trunk on
+        // this lane — otherwise take a fresh lane below.
+        const extended = {
+          fromRank: Math.min(covering.fromRank, fromRank),
+          toRank: Math.max(covering.toRank, toRank),
+        }
+        const clash = pools[lane]!.some(
+          (other) =>
+            other !== covering &&
+            other.key !== key &&
+            extended.fromRank <= other.toRank &&
+            other.fromRank <= extended.toRank,
+        )
+        if (!clash) {
+          covering.fromRank = extended.fromRank
+          covering.toRank = extended.toRank
+          return lane
+        }
+      }
+    }
+    for (let lane = 0; lane < pools.length; lane++) {
+      const clash = pools[lane]!.some(
+        (other) => fromRank <= other.toRank && other.fromRank <= toRank,
+      )
       if (!clash) {
-        pools[lane]!.push({ fromRank, toRank })
+        pools[lane]!.push({ key, fromRank, toRank })
         return lane
       }
     }
     if (pools.length >= MAX_LANES) return -1
-    pools.push([{ fromRank, toRank }])
+    pools.push([{ key, fromRank, toRank }])
     return pools.length - 1
   }
 
@@ -308,14 +355,14 @@ export function layoutFlowchart(diagram: MermaidFlowchart): MermaidLayoutResult 
     const fromRank = rank.get(edge.from) ?? 0
     const toRank = rank.get(edge.to) ?? 0
     if (toRank <= fromRank) {
-      const lane = takeLane(upLanes, toRank, fromRank)
+      const lane = takeLane(upLanes, edge.from, toRank, fromRank)
       if (lane < 0) {
         dropped.push(`${edge.from} → ${edge.to}`)
         continue
       }
       metas.set(edge, { lane, up: true })
     } else if (toRank - fromRank > 1) {
-      const lane = takeLane(downLanes, fromRank, toRank)
+      const lane = takeLane(downLanes, edge.from, fromRank, toRank)
       if (lane < 0) {
         dropped.push(`${edge.from} → ${edge.to}`)
         continue
@@ -329,29 +376,56 @@ export function layoutFlowchart(diagram: MermaidFlowchart): MermaidLayoutResult 
   // Cross placement per rank, centered within the widest rank: rows share
   // a visual axis, and single-node ranks (chains) line up center-to-center
   // so their edges run straight instead of jogging.
-  const leftLaneWidth = downLanes.length * 2
-  const rankCross: number[][] = []
-  const rankContentWidth: number[] = []
-  let maxContentWidth = 0
-  ranks.forEach((ids) => {
-    const positions: number[] = []
-    let cursor = leftLaneWidth + 1
+  // Ranks wider than the wrap budget wrap into stacked sub-rows: a crowded
+  // rank (many disconnected nodes) would otherwise force the whole canvas
+  // past the viewport width. Sub-rows restart the cursor; edges reference
+  // node positions, so routing is unaffected.
+  interface RankSubRow { ids: string[]; height: number; width: number }
+  const leftLaneWidth = downLanes.length
+  const rankSubs: RankSubRow[][] = ranks.map((ids) => {
+    const rows: RankSubRow[] = []
+    let cur: string[] = []
+    let curW = 0
+    const flush = () => {
+      if (cur.length === 0) return
+      rows.push({
+        ids: cur,
+        height: Math.max(...cur.map((id) => flowLen(id))),
+        width: curW,
+      })
+      cur = []
+      curW = 0
+    }
     for (const id of ids) {
-      positions.push(cursor)
-      cursor += crossWid(id) + CROSS_GAP
+      const w = crossWid(id)
+      if (cur.length > 0 && curW + CROSS_GAP + w > wrapBudget) flush()
+      if (cur.length > 0) curW += CROSS_GAP
+      cur.push(id)
+      curW += w
+    }
+    flush()
+    return rows
+  })
+  const maxSubWidth = Math.max(
+    0,
+    ...rankSubs.flatMap((subs) => subs.map((sub) => sub.width)),
+  )
+  const rankCross: number[][] = []
+  ranks.forEach((ids, r) => {
+    const positions: number[] = []
+    let subStart = 0
+    for (const sub of rankSubs[r]!) {
+      const offset = Math.floor((maxSubWidth - sub.width) / 2)
+      let cursor = leftLaneWidth + 1 + offset
+      for (let i = 0; i < sub.ids.length; i++) {
+        positions[subStart + i] = cursor
+        cursor += crossWid(sub.ids[i]!) + CROSS_GAP
+      }
+      subStart += sub.ids.length
     }
     rankCross.push(positions)
-    const contentWidth = ids.length === 0 ? 0 : cursor - CROSS_GAP - (leftLaneWidth + 1)
-    rankContentWidth.push(contentWidth)
-    maxContentWidth = Math.max(maxContentWidth, contentWidth)
   })
-  ranks.forEach((ids, r) => {
-    const offset = Math.floor((maxContentWidth - rankContentWidth[r]!) / 2)
-    if (offset <= 0) return
-    const positions = rankCross[r]!
-    for (let i = 0; i < positions.length; i++) positions[i]! += offset
-  })
-  const crossExtent = leftLaneWidth + 1 + maxContentWidth
+  const crossExtent = leftLaneWidth + 1 + maxSubWidth
   const rightLaneStart = crossExtent + 1
 
   const crossCenter = (id: string): number => {
@@ -359,8 +433,10 @@ export function layoutFlowchart(diagram: MermaidFlowchart): MermaidLayoutResult 
     const order = ranks[node.rank]!.indexOf(id)
     return rankCross[node.rank]![order]! + Math.floor(crossWid(id) / 2)
   }
-  const rankLen: number[] = ranks.map((ids) =>
-    ids.length === 0 ? 0 : Math.max(...ids.map((id) => flowLen(id))),
+  // Band flow sizes: wrapped sub-rows stack with one separator row between
+  // them so adjacent boxes never touch borders.
+  const bandLen: number[] = rankSubs.map((subs) =>
+    subs.length === 0 ? 0 : subs.reduce((total, sub) => total + sub.height, 0) + (subs.length - 1),
   )
 
   // Jog demand per gap: span-1 cross edges + lane entry/exit runs.
@@ -374,11 +450,11 @@ export function layoutFlowchart(diagram: MermaidFlowchart): MermaidLayoutResult 
     const vcA = crossCenter(edge.from)
     const vcB = crossCenter(edge.to)
     if (meta.up) {
-      const laneV = rightLaneStart + meta.lane * 2
+      const laneV = rightLaneStart + meta.lane
       gapDemand[fromRank - 1]?.push({ v0: Math.min(vcA, laneV), v1: Math.max(vcA, laneV), edge })
       gapDemand[toRank]?.push({ v0: Math.min(vcB, laneV), v1: Math.max(vcB, laneV), edge })
     } else if (meta.lane >= 0) {
-      const laneV = leftLaneWidth - 1 - meta.lane * 2
+      const laneV = leftLaneWidth - meta.lane
       gapDemand[fromRank]?.push({ v0: Math.min(vcA, laneV), v1: Math.max(vcA, laneV), edge })
       gapDemand[toRank - 1]?.push({ v0: Math.min(vcB, laneV), v1: Math.max(vcB, laneV), edge })
     } else if (vcA !== vcB) {
@@ -416,7 +492,7 @@ export function layoutFlowchart(diagram: MermaidFlowchart): MermaidLayoutResult 
     let flow = 0
     for (let r = 0; r <= maxRank; r++) {
       rankFlow.push(flow)
-      flow += rankLen[r]!
+      flow += bandLen[r]!
       if (r < maxRank) {
         gapStart.push(flow)
         flow += gapHeight[r]!
@@ -424,13 +500,22 @@ export function layoutFlowchart(diagram: MermaidFlowchart): MermaidLayoutResult 
     }
   }
 
-  // Place nodes, centered in their rank band along the flow axis.
+  // Place nodes, centered in their sub-row along the flow axis.
+  const subFlowOffset = new Map<string, number>()
+  ranks.forEach((ids, r) => {
+    let offset = rankFlow[r]!
+    for (const sub of rankSubs[r]!) {
+      for (const id of sub.ids) subFlowOffset.set(id, offset)
+      offset += sub.height + 1
+    }
+  })
   ranks.forEach((ids, r) => {
     ids.forEach((id, order) => {
       const node = placed.get(id)!
       const cross = rankCross[r]![order]!
       const len = flowLen(id)
-      const start = rankFlow[r]! + Math.floor((rankLen[r]! - len) / 2)
+      const sub = rankSubs[r]!.find((s) => s.ids.includes(id))!
+      const start = (subFlowOffset.get(id) ?? rankFlow[r]!) + Math.floor((sub.height - len) / 2)
       if (horizontal) {
         node.x = start
         node.y = cross
@@ -464,12 +549,12 @@ export function layoutFlowchart(diagram: MermaidFlowchart): MermaidLayoutResult 
     const lenA = nodeFlowLen(edge.from)
     const pts: Array<[number, number]> = []
     if (meta.up) {
-      const laneV = rightLaneStart + meta.lane * 2
+      const laneV = rightLaneStart + meta.lane
       const entryU = gapStart[fromRank - 1]! + (gapRowOf[fromRank - 1]?.get(edge) ?? 0)
       const exitU = gapStart[toRank]! + (gapRowOf[toRank]?.get(edge) ?? 0)
       pts.push([fsA - 1, vcA], [entryU, vcA], [entryU, laneV], [exitU, laneV], [exitU, vcB], [fsB + nodeFlowLen(edge.to), vcB])
     } else if (meta.lane >= 0) {
-      const laneV = leftLaneWidth - 1 - meta.lane * 2
+      const laneV = leftLaneWidth - meta.lane
       const entryU = gapStart[fromRank]! + (gapRowOf[fromRank]?.get(edge) ?? 0)
       const exitU = gapStart[toRank - 1]! + (gapRowOf[toRank - 1]?.get(edge) ?? 0)
       pts.push(
@@ -566,14 +651,16 @@ export function layoutFlowchart(diagram: MermaidFlowchart): MermaidLayoutResult 
   const boxNeed = boxes.reduce((max, b) => Math.max(max, b.x1 + 1), 0)
 
   // Allocate + draw.
-  const crossNeed = crossExtent + upLanes.length * 2 + 2
-  const flowNeed = (rankFlow[maxRank] ?? 0) + (rankLen[maxRank] ?? 0) + 1
+  const crossNeed = crossExtent + upLanes.length + 2
+  const flowNeed = (rankFlow[maxRank] ?? 0) + (bandLen[maxRank] ?? 0) + 1
   const labelNeed = routed.reduce((max, e) => Math.max(max, e.labelNeedX + 1), 0)
+  // Node-driven overflow declines (nodes cannot shrink); label room only
+  // extends up to the cap — labels past it are skipped at draw time.
   // Node-driven overflow declines (nodes cannot shrink); label room only
   // extends up to the cap — labels past it are skipped at draw time.
   const nodeWidth = horizontal ? flowNeed : crossNeed
   const nodeHeight = horizontal ? crossNeed : flowNeed
-  if (nodeWidth > MAX_SCREEN_WIDTH || nodeHeight > MAX_SCREEN_HEIGHT || nodeWidth <= 0 || nodeHeight <= 0) {
+  if (nodeWidth > maxWidth || nodeHeight > maxHeight || nodeWidth <= 0 || nodeHeight <= 0) {
     return undefined
   }
   // Labels and subgraph boxes extend the canvas up to the cap; past it they
@@ -581,10 +668,10 @@ export function layoutFlowchart(diagram: MermaidFlowchart): MermaidLayoutResult 
   // shrink — but titles already cap at 40 columns, so this is pathological).
   const width = horizontal
     ? nodeWidth
-    : Math.min(Math.max(crossNeed, labelNeed, boxNeed), MAX_SCREEN_WIDTH)
+    : Math.min(Math.max(crossNeed, labelNeed, boxNeed), maxWidth)
   const height = nodeHeight
   if (width < boxNeed) return undefined
-  if (width > MAX_SCREEN_WIDTH || height > MAX_SCREEN_HEIGHT || width <= 0 || height <= 0) {
+  if (width > maxWidth || height > maxHeight || width <= 0 || height <= 0) {
     return undefined
   }
 
@@ -679,11 +766,15 @@ export function layoutFlowchart(diagram: MermaidFlowchart): MermaidLayoutResult 
   }
 
   // Subgraph boxes: under nodes, over edges (lines pass behind borders).
+  // Titles paint in their own pass after ALL borders: box rectangles can
+  // cross each other on crowded diagrams, and the crossing border must not
+  // eat a title character — text outranks chrome.
   const putBox = (x: number, y: number, ch: string) => {
     if (inBounds(x, y)) grid[y]![x]! = { ch, tone: "muted" }
   }
+  const boxTitles: Array<{ x0: number; y0: number; x1: number; title: string }> = []
   for (const box of boxes) {
-    const { x0, y0, x1, y1, title } = box
+    const { x0, y0, x1, y1 } = box
     for (let x = x0; x <= x1; x++) {
       putBox(x, y0, x === x0 ? "┌" : x === x1 ? "┐" : "─")
       putBox(x, y1, x === x0 ? "└" : x === x1 ? "┘" : "─")
@@ -693,10 +784,30 @@ export function layoutFlowchart(diagram: MermaidFlowchart): MermaidLayoutResult 
       putBox(x1, y, "│")
     }
     if (x1 - x0 >= 4) {
-      const label = `─ ${truncate(title, Math.max(1, x1 - x0 - 5))} `
-      for (let i = 0; i < label.length && x0 + 2 + i < x1; i++) {
-        putBox(x0 + 2 + i, y0, label[i]!)
+      boxTitles.push({ x0, y0, x1, title: box.title })
+    }
+  }
+  for (const { x0, y0, x1, title } of boxTitles) {
+    const label = `─ ${truncate(title, Math.max(1, x1 - x0 - 5))} `
+    // Only border chrome (muted) and blanks may yield: node borders, edge
+    // lines and other text block the title rather than being eaten by it.
+    const clearAt = (s: number): boolean => {
+      for (let i = 0; i < label.length; i++) {
+        if (!inBounds(s + i, y0)) return false
+        const cell = grid[y0]![s + i]!
+        if (cell.ch !== " " && (cell.tone !== "muted" || !(cell.ch in DIRS))) return false
       }
+      return true
+    }
+    // Slide right past other titles sharing this border row: two labels on
+    // one rule read fine, overwritten text does not.
+    let start = -1
+    for (let s = x0 + 2; s + label.length <= x1 && start < 0; s++) {
+      if (clearAt(s)) start = s
+    }
+    if (start < 0) continue
+    for (let i = 0; i < label.length && start + i < x1; i++) {
+      putBox(start + i, y0, label[i]!)
     }
   }
 
@@ -714,31 +825,35 @@ export function layoutFlowchart(diagram: MermaidFlowchart): MermaidLayoutResult 
         cx += displayWidth(ch) > 1 ? 2 : 1
       }
     }
-    const { x, y, w, label, shape } = node
-    const labelW = displayWidth(label)
+    const { x, y, w, h, lines, shape } = node
+    const labelW = w - 4
     if (shape === "diamond") {
-      // Widest at the label row; 45° slopes both sides.
+      const label = lines[0] ?? ""
+      const labelWidth = displayWidth(label)
+      // 5-row diamond, widest at the label row; 45° slopes both sides.
       putText(x, y + 2, `╱ ${label} ╲`)
-      putText(x + 1, y + 1, `╱${" ".repeat(labelW)}╲`)
-      putText(x + 1, y + 3, `╲${" ".repeat(labelW)}╱`)
-      putText(x + 2, y, `╱${" ".repeat(Math.max(0, labelW - 2))}╲`)
-      putText(x + 2, y + 4, `╲${" ".repeat(Math.max(0, labelW - 2))}╱`)
-      void w
+      putText(x + 1, y + 1, `╱${" ".repeat(labelWidth)}╲`)
+      putText(x + 1, y + 3, `╲${" ".repeat(labelWidth)}╱`)
+      putText(x + 2, y, `╱${" ".repeat(Math.max(0, labelWidth - 2))}╲`)
+      putText(x + 2, y + 4, `╲${" ".repeat(Math.max(0, labelWidth - 2))}╱`)
       return
     }
     const rounded = shape !== "rect"
-    const [tl, h, tr, ml, mr, bl, br] = rounded
+    const [tl, hbar, tr, ml, mr, bl, br] = rounded
       ? (["╭", "─", "╮", "│", "│", "╰", "╯"] as const)
       : (["┌", "─", "┐", "│", "│", "└", "┘"] as const)
     put(x, y, tl)
-    putText(x + 1, y, h.repeat(w - 2))
+    putText(x + 1, y, hbar.repeat(w - 2))
     put(x + w - 1, y, tr)
-    put(x, y + 1, ml)
-    putText(x + 1, y + 1, ` ${label} `)
-    put(x + w - 1, y + 1, mr)
-    put(x, y + 2, bl)
-    putText(x + 1, y + 2, h.repeat(w - 2))
-    put(x + w - 1, y + 2, br)
+    lines.forEach((line, i) => {
+      const row = y + 1 + i
+      put(x, row, ml)
+      putText(x + 1, row, ` ${line}${" ".repeat(Math.max(0, labelW - displayWidth(line)))} `)
+      put(x + w - 1, row, mr)
+    })
+    put(x, y + h - 1, bl)
+    putText(x + 1, y + h - 1, hbar.repeat(w - 2))
+    put(x + w - 1, y + h - 1, br)
   }
 
   // Edge labels last (horizontal text always): centered over the longest

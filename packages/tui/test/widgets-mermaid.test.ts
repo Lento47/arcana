@@ -99,18 +99,18 @@ describe("mermaid parser", () => {
 
   test("quoted labels survive separators", () => {
     const diagram = flowchart('graph TB\nA["x; y & z"] --> B')
-    expect(diagram.nodes.find((n) => n.id === "A")?.label).toBe("x; y & z")
+    expect(diagram.nodes.find((n) => n.id === "A")?.label).toEqual(["x; y & z"])
     expect(diagram.edges).toHaveLength(1)
   })
 
-  test("br breaks become spaces", () => {
+  test("br breaks become rows", () => {
     const diagram = flowchart("graph TB\nA[Web App<br/>React 18]")
-    expect(diagram.nodes.find((n) => n.id === "A")?.label).toBe("Web App React 18")
+    expect(diagram.nodes.find((n) => n.id === "A")?.label).toEqual(["Web App", "React 18"])
   })
 
   test("later explicit labels override bare references", () => {
     const diagram = flowchart("graph TB\nA --> B\nB[Real Label]")
-    expect(diagram.nodes.find((n) => n.id === "B")?.label).toBe("Real Label")
+    expect(diagram.nodes.find((n) => n.id === "B")?.label).toEqual(["Real Label"])
   })
 
   test("multiline statements join across newlines", () => {
@@ -126,7 +126,7 @@ describe("mermaid parser", () => {
   })
 
   test("oversized graphs decline", () => {
-    const many = `graph TB\n${Array.from({ length: 41 }, (_, i) => `N${i}`).join("\n")}`
+    const many = `graph TB\n${Array.from({ length: 100 }, (_, i) => `N${i}`).join("\n")}`
     const parsed = parseMermaid(many)
     expect(parsed.type).toBe("unsupported")
     if (parsed.type === "unsupported") expect(parsed.kind).toBe("flowchart-too-large")
@@ -174,6 +174,16 @@ describe("mermaid layout", () => {
     expect(joined).toContain("decide")
   })
 
+  test("br breaks stack into label rows", () => {
+    const rows = render("graph TB\nA[cli.ts<br/>commander entry] --> B[ok]")
+    const joined = rows.join("\n")
+    expect(joined).toContain("cli.ts")
+    expect(joined).toContain("commander entry")
+    const cliRow = rows.findIndex((row) => row.includes("cli.ts"))
+    const entryRow = rows.findIndex((row) => row.includes("commander entry"))
+    expect(entryRow).toBe(cliRow + 1)
+  })
+
   test("edge labels paint on the canvas", () => {
     const rows = render("graph TB\nA[Start] -- hello world --> B[End]")
     expect(rows.join("\n")).toContain("hello world")
@@ -200,14 +210,37 @@ describe("mermaid layout", () => {
     expect(layoutFlowchart(flowchart(chain))).toBeUndefined()
   })
 
-  test("wide ranks decline to code fallback", () => {
-    const wide = `graph TB\n${Array.from({ length: 25 }, (_, i) => `N${i}[node ${i} label]`).join("\n")}`
-    expect(layoutFlowchart(flowchart(wide))).toBeUndefined()
+  test("wide ranks wrap into stacked rows instead of declining", () => {
+    const source = `graph TB\n${Array.from({ length: 25 }, (_, i) => `N${i}[node ${i} label]`).join("\n")}`
+    const rows = render(source)
+    const joined = rows.join("\n")
+    expect(joined).toContain("node 0 label")
+    expect(joined).toContain("node 24 label")
+    expect(rows.length).toBeGreaterThan(6)
   })
 
   test("canvas rows are trimmed and bounded", () => {
     const rows = render("graph TB\nA --> B")
     for (const row of rows) expect(row).not.toMatch(/\s+$/)
     expect(Math.max(...rows.map((row) => row.length))).toBeLessThanOrEqual(100)
+  })
+
+  test("same-source fan-out shares one bus lane", () => {
+    // Twelve span-2 edges from one hub: without bus routing they need twelve
+    // lanes (cap: eight) and four would drop. The bus carries them all.
+    // (R gives every B rank 1 so H --> C spans two ranks and needs a lane.)
+    const roots = Array.from({ length: 12 }, (_, i) => `R --> B${i}`).join("\n")
+    const branches = Array.from({ length: 12 }, (_, i) => `B${i} --> C${i}`).join("\n")
+    const hub = Array.from({ length: 12 }, (_, i) => `H --> C${i}`).join("\n")
+    const diagram = flowchart(`graph TB\nR[root]\nH[hub]\n${roots}\n${branches}\n${hub}`)
+    const laidOut = layoutFlowchart(diagram)
+    expect(laidOut).toBeDefined()
+    expect(laidOut!.dropped).toEqual([])
+  })
+
+  test("viewport budget declines over-tall diagrams", () => {
+    const source = "graph TB\nA --> B --> C --> D --> E"
+    expect(layoutFlowchart(flowchart(source), { maxHeight: 10 })).toBeUndefined()
+    expect(layoutFlowchart(flowchart(source))).toBeDefined()
   })
 })

@@ -61,6 +61,7 @@ If a tool fails, read the error message carefully, adjust your approach, and ret
 - Concise. 1-3 sentences when possible. No preamble/postamble.
 - GitHub-flavored Markdown in monospace. No emojis unless user requests.
 - Reference code as `file_path:line_number`.
+- Diagrams: wrap Mermaid diagrams in ```mermaid fenced blocks so they render as diagrams instead of plain text.
 
 # Knowledge
 If you are unsure of a fact, package name, API, CVE, or how to do something: stop and research online first (`websearch`, then `webfetch` on a specific URL, or `npm view` / registry lookup). Do not invent. Do not install a package to learn what it is. Research, then if an install is still required, request the exact install and wait for operator approval.
