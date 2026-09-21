@@ -892,6 +892,98 @@ const CODE_DEFER_V21_TO = `    if (this._filetype && !this._drawUnstyledText && 
       return;
     }`
 
+// ── @opentui/solid: lazy Babel imports ─────────────────────────────────────
+//
+// `scripts/solid-transform.js` statically imports @babel/core,
+// @babel/preset-typescript, babel-plugin-module-resolver and
+// babel-preset-solid. bunfig preloads the Solid plugin in the wrapper, the
+// engine, and the daemon, so every one of those processes paid ~340ms for
+// Babel even when no JSX/TSX file ever loaded (measured: `bun -e 0` is 35ms
+// without the preload, 373ms with it). Moving the imports inside the already
+// async transform keeps plugin registration cheap and loads Babel on the
+// first real .tsx transform.
+const SOLID_LAZY_BABEL_MARKER = "// [arcana] lazy Babel imports (patch-opentui.ts)"
+const SOLID_BABEL_IMPORTS = `import { transformAsync } from "@babel/core";
+// @ts-expect-error - Types not important.
+import ts from "@babel/preset-typescript";
+// @ts-expect-error - Types not important.
+import moduleResolver from "babel-plugin-module-resolver";
+// @ts-expect-error - Types not important.
+import solid from "babel-preset-solid";`
+const SOLID_BABEL_IMPORTS_LAZY = `${SOLID_LAZY_BABEL_MARKER}
+let arcanaBabelPromise;
+function arcanaBabelModules() {
+  arcanaBabelPromise ??= Promise.all([
+    import("@babel/core"),
+    import("@babel/preset-typescript"),
+    import("babel-plugin-module-resolver"),
+    import("babel-preset-solid"),
+  ]).then(([core, ts, resolver, solid]) => ({
+    transformAsync: core.transformAsync ?? core.default?.transformAsync,
+    ts: ts.default ?? ts,
+    moduleResolver: resolver.default ?? resolver,
+    solid: solid.default ?? solid,
+  }));
+  return arcanaBabelPromise;
+}`
+const SOLID_TRANSFORM_SIGNATURE = `export async function transformSolidSource(code, options) {
+    const filename = stripQueryAndHash(options.filename);`
+const SOLID_TRANSFORM_LAZY = `export async function transformSolidSource(code, options) {
+    const { transformAsync, ts, moduleResolver, solid } = await arcanaBabelModules();
+    const filename = stripQueryAndHash(options.filename);`
+
+function versionOfPackageAt(file: string): string | undefined {
+  for (const up of ["..", "../.."]) {
+    try {
+      const pkg = JSON.parse(readFileSync(join(file, up, "package.json"), "utf-8"))
+      if (typeof pkg.version === "string") return pkg.version
+    } catch {
+      // try the next level
+    }
+  }
+  return undefined
+}
+
+function solidDirs(): string[] {
+  const out = new Set<string>()
+  const roots = ["node_modules", "packages/tui/node_modules", "packages/engine/node_modules"]
+
+  for (const root of roots) {
+    const direct = join(root, "@opentui/solid")
+    if (existsSync(direct)) {
+      try {
+        out.add(realpathSync(direct))
+      } catch {
+        // ignore unreadable entries
+      }
+    }
+
+    const bunCache = join(root, ".bun")
+    if (!existsSync(bunCache)) continue
+    for (const entry of readdirSync(bunCache)) {
+      if (!entry.startsWith(`@opentui+solid@${TARGET_VERSION}`)) continue
+      const cached = join(bunCache, entry, "node_modules/@opentui/solid")
+      if (!existsSync(cached)) continue
+      try {
+        out.add(realpathSync(cached))
+      } catch {
+        // ignore unreadable entries
+      }
+    }
+  }
+
+  return [...out]
+}
+
+function patchSolidLazyBabel(source: string): string | undefined {
+  if (source.includes(SOLID_LAZY_BABEL_MARKER)) return undefined
+  if (!source.includes(SOLID_BABEL_IMPORTS)) return undefined
+  if (!source.includes(SOLID_TRANSFORM_SIGNATURE)) return undefined
+  return source
+    .replace(SOLID_BABEL_IMPORTS, SOLID_BABEL_IMPORTS_LAZY)
+    .replace(SOLID_TRANSFORM_SIGNATURE, SOLID_TRANSFORM_LAZY)
+}
+
 function coreDirs(): string[] {
   const out = new Set<string>()
   const roots = ["node_modules", "packages/tui/node_modules", "packages/engine/node_modules"]
@@ -1484,7 +1576,6 @@ for (const bundle of collectEntryBundles()) {
 let diffTargets = 0
 let diffReady = 0
 let diffPatched = 0
-
 for (const bundle of collectEntryBundles()) {
   const version = versionOf(bundle)
   if (version !== TARGET_VERSION) {
@@ -1517,6 +1608,38 @@ for (const bundle of collectEntryBundles()) {
   console.log(`[patch-opentui] patched diff unstyled frames ${bundle}`)
   diffReady++
   diffPatched++
+}
+
+let solidTargets = 0
+let solidReady = 0
+let solidPatched = 0
+
+for (const dir of solidDirs()) {
+  const file = join(dir, "scripts/solid-transform.js")
+  if (!existsSync(file)) continue
+  const version = versionOfPackageAt(file)
+  if (version !== TARGET_VERSION) {
+    skipped++
+    continue
+  }
+  solidTargets++
+  const source = readFileSync(file, "utf-8")
+  const next = patchSolidLazyBabel(source)
+  if (next === undefined) {
+    if (source.includes(SOLID_LAZY_BABEL_MARKER)) {
+      console.log(`[patch-opentui] lazy Babel already patched ${file}`)
+      solidReady++
+      skipped++
+      continue
+    }
+    console.error(`[patch-opentui] lazy Babel signatures missing in ${file}`)
+    process.exitCode = 1
+    continue
+  }
+  writeFileSync(file, next, "utf-8")
+  console.log(`[patch-opentui] patched lazy Babel ${file}`)
+  solidReady++
+  solidPatched++
 }
 
 if (targets === 0) {
@@ -1573,6 +1696,12 @@ if (diffTargets === 0) {
   console.error(`[patch-opentui] patched ${diffReady}/${diffTargets} diff unstyled frame bundle(s)`)
   process.exitCode = 1
 }
+if (solidTargets === 0) {
+  console.log(`[patch-opentui] no @opentui/solid ${TARGET_VERSION} transform found to patch`)
+} else if (solidReady !== solidTargets) {
+  console.error(`[patch-opentui] patched ${solidReady}/${solidTargets} solid transform(s)`)
+  process.exitCode = 1
+}
 console.log(
-  `[patch-opentui] loader_patched=${patched} markdown_patched=${markdownPatched} code_patched=${codePatched} parse_patched=${parsePatched} tsclient_patched=${tsClientPatched} streaming_patched=${streamingPatched} diff_patched=${diffPatched} blockstyle_patched=${blockStylePatched} syncframe_patched=${syncAlwaysPatched} skipped=${skipped}`,
+  `[patch-opentui] loader_patched=${patched} markdown_patched=${markdownPatched} code_patched=${codePatched} parse_patched=${parsePatched} tsclient_patched=${tsClientPatched} streaming_patched=${streamingPatched} diff_patched=${diffPatched} blockstyle_patched=${blockStylePatched} syncframe_patched=${syncAlwaysPatched} solid_patched=${solidPatched} skipped=${skipped}`,
 )
