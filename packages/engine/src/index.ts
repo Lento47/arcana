@@ -114,6 +114,20 @@ process.on("exit", (code) => {
 const args = process.argv.slice(2)
 const exitsBeforeRuntime = args.some((arg) => arg === "--help" || arg === "-h" || arg === "--version" || arg === "-v")
 
+// Ultra-fast --version: print and exit before the yargs import and command
+// graph. Guarded to bare/flag invocations so subcommand `-v` aliases (e.g.
+// `proof -v` = --verify) keep existing yargs behavior.
+{
+  const first = args[0]
+  if (
+    (args.includes("--version") || args.includes("-v")) &&
+    (first === undefined || first.startsWith("-") || ["--help", "-h", "--version", "-v"].includes(first))
+  ) {
+    process.stdout.write(InstallationVersion + "\n")
+    process.exit(0)
+  }
+}
+
 async function prepareRuntime(opts: {
   printLogs?: boolean
   logLevel?: string

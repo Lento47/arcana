@@ -25,7 +25,7 @@ const ENTRY = resolve(REPO_ROOT, "packages/arcana/src/index.ts")
 
 // --------------- args ---------------
 
-function parseFlags(argv: string[]): { runs: number; args: string[]; json: boolean } {
+function parseFlags(argv: string[]): { runs: number; args: string[]; json: boolean; warm: boolean } {
   let runs = 5
   // Default args: `serve --help` exercises the bare-arcana fast path
   // (arcana wrapper → Bun.spawn(engine) → engine yargs → serve help → exit).
@@ -33,6 +33,7 @@ function parseFlags(argv: string[]): { runs: number; args: string[]; json: boole
   // needing a TTY. Override with --args="...".
   const args: string[] = ["serve", "--help"]
   let json = false
+  let warm = false
   for (const a of argv) {
     if (a.startsWith("--runs=")) {
       runs = Math.max(1, parseInt(a.slice("--runs=".length), 10) || 5)
@@ -40,6 +41,11 @@ function parseFlags(argv: string[]): { runs: number; args: string[]; json: boole
     }
     if (a === "--json") {
       json = true
+      continue
+    }
+    if (a === "--warm") {
+      // Drop run 1 (cold file cache) from all aggregates.
+      warm = true
       continue
     }
     if (a.startsWith("--args=")) {
@@ -52,10 +58,10 @@ function parseFlags(argv: string[]): { runs: number; args: string[]; json: boole
     }
     args.push(a)
   }
-  return { runs, args, json }
+  return { runs, args, json, warm }
 }
 
-const { runs, args, json } = parseFlags(process.argv.slice(2))
+const { runs, args, json, warm } = parseFlags(process.argv.slice(2))
 
 // --------------- types ---------------
 
@@ -185,13 +191,27 @@ function median(sorted: number[]): number {
   return percentile(sorted, 50)
 }
 
-function summarize(samples: number[]): { min: number; p50: number; p90: number; max: number; median: number; n: number } {
-  if (samples.length === 0) return { min: NaN, p50: NaN, p90: NaN, max: NaN, median: NaN, n: 0 }
+function summarize(samples: number[]): {
+  min: number
+  p25: number
+  p50: number
+  p75: number
+  p90: number
+  p99: number
+  max: number
+  median: number
+  n: number
+} {
+  if (samples.length === 0)
+    return { min: NaN, p25: NaN, p50: NaN, p75: NaN, p90: NaN, p99: NaN, max: NaN, median: NaN, n: 0 }
   const sorted = [...samples].sort((a, b) => a - b)
   return {
     min: sorted[0],
+    p25: percentile(sorted, 25),
     p50: percentile(sorted, 50),
+    p75: percentile(sorted, 75),
     p90: percentile(sorted, 90),
+    p99: percentile(sorted, 99),
     max: sorted[sorted.length - 1],
     median: median(sorted),
     n: sorted.length,
@@ -222,6 +242,10 @@ async function main() {
     return
   }
 
+  // --warm drops run 1 (cold file cache) from every aggregate below, so
+  // p50/p90 describe steady state. The JSON still records all walls.
+  const effective = warm && results.length > 1 ? results.slice(1) : results
+
   // Group markers by phase. For start/end pairs (e.g. resolveModelInfo_start/_end),
   // compute derived duration. For absolute-phase markers, use ts_raw (wall-clock
   // within the spawned process).
@@ -231,7 +255,7 @@ async function main() {
   // Track pending start phases per run per phase-name-with-_start suffix.
   const pendingByRun = new Map<number, Map<string, number>>()
 
-  for (const r of results) {
+  for (const r of effective) {
     const pending = new Map<string, number>()
     pendingByRun.set(r.runIndex, pending)
     for (const m of r.markers) {
@@ -268,7 +292,7 @@ async function main() {
     byPhase.set(s.phase, arr)
   }
   // Merge in engine [profile] samples (existing cli/profile.ts emit).
-  for (const r of results) {
+  for (const r of effective) {
     for (const [name, vals] of r.engineProfile) {
       const arr = byPhase.get(name) ?? []
       arr.push(...vals)
@@ -313,8 +337,11 @@ async function main() {
     kind: "absolute" | "duration"
     n: number
     min: number
+    p25: number
     p50: number
+    p75: number
     p90: number
+    p99: number
     max: number
     median: number
   }> = []
@@ -325,7 +352,7 @@ async function main() {
     // _duration suffix; absolute markers are everything else.
     let kind: "absolute" | "duration" = "absolute"
     if (phase.endsWith("_duration")) kind = "duration"
-    else if (phase === "TOTAL" || phase.includes("→") || results.some((r) => r.engineProfile.has(phase))) {
+    else if (phase === "TOTAL" || phase.includes("→") || effective.some((r) => r.engineProfile.has(phase))) {
       kind = "duration"
     }
     rows.push({
@@ -333,33 +360,46 @@ async function main() {
       kind,
       n: stats.n,
       min: Math.round(stats.min),
+      p25: Math.round(stats.p25),
       p50: Math.round(stats.p50),
+      p75: Math.round(stats.p75),
       p90: Math.round(stats.p90),
+      p99: Math.round(stats.p99),
       max: Math.round(stats.max),
       median: Math.round(stats.median),
     })
   }
 
+  // Per-run wall-clock durations (parent-measured). Always complete — even
+  // with --warm — so warm-only stats stay recomputable from the JSON.
+  const walls = results.map((r) => Math.round(r.durationMs))
+
   if (json) {
-    console.log(JSON.stringify({ runs, args, rows }, null, 2))
+    console.log(JSON.stringify({ runs, args, warm, rows, walls }, null, 2))
     return
   }
 
   // Pretty print markdown table.
   process.stderr.write("\n")
-  process.stderr.write(`# Arcana startup bench — runs=${runs} args=${JSON.stringify(args)}\n\n`)
-  process.stderr.write(`| Phase | Kind | n | min (ms) | p50 (ms) | p90 (ms) | max (ms) |\n`)
-  process.stderr.write(`|-------|------|---|---------:|---------:|---------:|---------:|\n`)
+  process.stderr.write(
+    `# Arcana startup bench — runs=${runs} args=${JSON.stringify(args)}${warm ? " (warm: run 1 excluded)" : ""}\n\n`,
+  )
+  process.stderr.write(
+    `| Phase | Kind | n | min (ms) | p25 (ms) | p50 (ms) | p75 (ms) | p90 (ms) | p99 (ms) | max (ms) |\n`,
+  )
+  process.stderr.write(
+    `|-------|------|---|---------:|---------:|---------:|---------:|---------:|---------:|---------:|\n`,
+  )
   for (const r of rows) {
     process.stderr.write(
-      `| ${r.phase} | ${r.kind} | ${r.n} | ${r.min} | ${r.p50} | ${r.p90} | ${r.max} |\n`,
+      `| ${r.phase} | ${r.kind} | ${r.n} | ${r.min} | ${r.p25} | ${r.p50} | ${r.p75} | ${r.p90} | ${r.p99} | ${r.max} |\n`,
     )
   }
-  process.stderr.write(`\nTotal wall-clock per run (parent process measured):\n`)
-  const wallTimes = results.map((r) => Math.round(r.durationMs))
+  process.stderr.write(`\nTotal wall-clock per run (parent process measured${warm ? ", warm" : ""}):\n`)
+  const wallTimes = effective.map((r) => Math.round(r.durationMs))
   const wallStats = summarize(wallTimes)
   process.stderr.write(
-    `  min=${Math.round(wallStats.min)} p50=${Math.round(wallStats.p50)} p90=${Math.round(wallStats.p90)} max=${Math.round(wallStats.max)} ms\n`,
+    `  min=${Math.round(wallStats.min)} p25=${Math.round(wallStats.p25)} p50=${Math.round(wallStats.p50)} p75=${Math.round(wallStats.p75)} p90=${Math.round(wallStats.p90)} p99=${Math.round(wallStats.p99)} max=${Math.round(wallStats.max)} ms\n`,
   )
 }
 

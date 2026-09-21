@@ -125,6 +125,21 @@ if (firstArg && ENGINE_BRIDGED.has(firstArg)) {
   process.exit()
 }
 
+const _require = createRequire(import.meta.url)
+const VERSION: string = _require("../../../package.json").version
+
+// Ultra-fast --version: the version string needs no command graph. Bare
+// --version used to load all 15 command modules (bench 2026-09-21: p50
+// ~1050ms command-load). Only short-circuit when no subcommand is named, so
+// `run --version` and friends keep existing yargs behavior.
+if (
+  (args.includes("--version") || args.includes("-v")) &&
+  (!firstArg || firstArg.startsWith("-") || HELP_FLAGS.has(firstArg))
+) {
+  process.stdout.write(VERSION + "\n")
+  process.exit(0)
+}
+
 const yargsImportStart = performance.now()
 const { default: yargs } = await import("yargs")
 profileEmit("subcommand_yargs_import_done", performance.now())
@@ -140,8 +155,6 @@ function show(out: string) {
   if (!text.startsWith("arcana")) process.stderr.write(LOGO + "\n")
   process.stderr.write(text + "\n")
 }
-const _require = createRequire(import.meta.url)
-const VERSION: string = _require("../../../package.json").version
 const commandLoaders = {
   run: () => import("./cli/cmd/run.js").then((m) => m.RunCommand),
   skills: () => import("./cli/cmd/skills.js").then((m) => m.SkillsCommand),
