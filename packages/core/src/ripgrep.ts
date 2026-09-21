@@ -64,6 +64,8 @@ export interface GlobInput {
   readonly cwd: string
   readonly pattern: string
   readonly limit: number
+  /** Glob of files to exclude (ripgrep negative glob). */
+  readonly exclude?: string
   readonly hidden?: boolean
   readonly follow?: boolean
   readonly signal?: AbortSignal
@@ -74,9 +76,13 @@ export interface GrepInput {
   readonly pattern: string
   readonly file?: string
   readonly include?: string
+  /** Glob of files to exclude (ripgrep negative glob). */
+  readonly exclude?: string
   readonly limit: number
   /** Lines of context around each match (ripgrep `--context`). Context lines count toward `limit` records. */
   readonly context?: number
+  /** Allow patterns to span lines (ripgrep `--multiline --multiline-dotall`). */
+  readonly multiline?: boolean
   readonly signal?: AbortSignal
 }
 
@@ -167,6 +173,7 @@ export const layer = Layer.effect(
             ...(input.hidden ? ["--hidden"] : []),
             ...(input.follow ? ["--follow"] : []),
             `--glob=${input.pattern}`,
+            ...(input.exclude ? [`--glob=!${input.exclude}`] : []),
             "--glob=!**/.git/**",
             ".",
           ],
@@ -231,7 +238,9 @@ export const layer = Layer.effect(
             "--hidden",
             "--no-messages",
             ...(input.include ? [`--glob=${input.include}`] : []),
+            ...(input.exclude ? [`--glob=!${input.exclude}`] : []),
             ...(input.context ? [`--context=${input.context}`] : []),
+            ...(input.multiline ? ["--multiline", "--multiline-dotall"] : []),
             "--glob=!**/.git/**",
             "--",
             input.pattern,

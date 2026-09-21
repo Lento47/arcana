@@ -237,6 +237,74 @@ describe("tool.grep", () => {
     }),
   )
 
+  it.instance("excludes files matching the exclude glob", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      yield* Effect.promise(() => Bun.write(path.join(test.directory, "keep.ts"), "needle"))
+      yield* Effect.promise(() => Bun.write(path.join(test.directory, "skip.test.ts"), "needle"))
+      const info = yield* GrepTool
+      const grep = yield* info.init()
+      const result = yield* grep.execute(
+        { pattern: "needle", path: test.directory, include: "*.ts", exclude: "**/*.test.ts" },
+        ctx,
+      )
+
+      expect(result.metadata.matches).toBe(1)
+      expect(result.metadata.files).toBe(1)
+      expect(result.output).toContain("keep.ts")
+      expect(result.output).not.toContain("skip.test.ts")
+    }),
+  )
+
+  it.instance("files mode returns paths without matching lines", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      yield* Effect.promise(() => Bun.write(path.join(test.directory, "a.txt"), "needle\nneedle"))
+      yield* Effect.promise(() => Bun.write(path.join(test.directory, "b.txt"), "needle"))
+      const info = yield* GrepTool
+      const grep = yield* info.init()
+      const result = yield* grep.execute({ pattern: "needle", path: test.directory, mode: "files" }, ctx)
+
+      expect(result.metadata.matches).toBe(3)
+      expect(result.metadata.files).toBe(2)
+      expect(result.output).toContain("a.txt")
+      expect(result.output).toContain("b.txt")
+      expect(result.output).not.toContain("Line 1:")
+    }),
+  )
+
+  it.instance("count mode returns per-file totals", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      yield* Effect.promise(() => Bun.write(path.join(test.directory, "a.txt"), "needle\nneedle"))
+      yield* Effect.promise(() => Bun.write(path.join(test.directory, "b.txt"), "needle"))
+      const info = yield* GrepTool
+      const grep = yield* info.init()
+      const result = yield* grep.execute({ pattern: "needle", path: test.directory, mode: "count" }, ctx)
+
+      expect(result.metadata.matches).toBe(3)
+      expect(result.output).toContain("a.txt: 2")
+      expect(result.output).toContain("b.txt: 1")
+    }),
+  )
+
+  it.instance("matches whole blocks with multiline enabled", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const file = path.join(test.directory, "test.txt")
+      yield* Effect.promise(() => Bun.write(file, "function foo() {\n  return 1\n}\nconst bar = 2"))
+      const info = yield* GrepTool
+      const grep = yield* info.init()
+      const result = yield* grep.execute(
+        { pattern: "function foo\\(\\) \\{[\\s\\S]*?\\n\\}", path: file, multiline: true },
+        ctx,
+      )
+
+      expect(result.metadata.matches).toBe(1)
+      expect(result.output).toContain("return 1")
+    }),
+  )
+
   it.instance("does not ask for external_directory when alias path is allowed", () =>
     Effect.gen(function* () {
       if (process.platform === "win32") return

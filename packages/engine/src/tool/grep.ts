@@ -14,7 +14,7 @@ export const HARD_MAX_RESULTS = 10_000
 export const Parameters = Schema.Struct({
   pattern: Schema.String.annotate({
     description:
-      "Rust regex pattern. Write ONE strong pattern: alternation (a|b|c), groups, \\b boundaries, (?i) for case-insensitivity. No lookahead, lookbehind, or backreferences.",
+      "Rust regex. Build ONE strong pattern: nested groups ((?:get|set|delete)(?:Config|Options)), optional parts ((?:export\\s+)?(?:async\\s+)?function\\s+\\w+), \\b boundaries, (?i) case-insensitive, (?x) verbose layout, \\p{Lu} Unicode classes. No lookahead/lookbehind/backreferences - restructure with alternation. Load the search-craft skill for the full pattern cookbook.",
   }),
   path: Schema.optional(Schema.String).annotate({
     description: "The directory or file to search in. Defaults to the current working directory.",
@@ -22,12 +22,23 @@ export const Parameters = Schema.Struct({
   include: Schema.optional(Schema.String).annotate({
     description: 'File pattern to include in the search (e.g. "*.js", "*.{ts,tsx}")',
   }),
+  exclude: Schema.optional(Schema.String).annotate({
+    description: 'File pattern to exclude (e.g. "**/*.test.ts", "**/{dist,node_modules}/**").',
+  }),
+  mode: Schema.optional(Schema.Literals(["matches", "files", "count"])).annotate({
+    description:
+      "'matches' (default): matching lines. 'files': only file paths containing matches - use for \"where is this used\" without line noise. 'count': per-file match totals.",
+  }),
   maxResults: Schema.optional(NonNegativeInt).annotate({
-    description: `Maximum matching lines to return (default: ${DEFAULT_MAX_RESULTS}, max: ${HARD_MAX_RESULTS}). Narrow include/path or raise this instead of repeating the search.`,
+    description: `Maximum result lines to return (default: ${DEFAULT_MAX_RESULTS}, max: ${HARD_MAX_RESULTS}). Narrow include/exclude/path or raise this instead of repeating the search.`,
   }),
   context: Schema.optional(NonNegativeInt).annotate({
     description:
       "Lines of context to show around each match (0-10, default 0). Context lines come back unmarked and count toward maxResults - one call can show the surrounding code without a separate read.",
+  }),
+  multiline: Schema.optional(Schema.Boolean).annotate({
+    description:
+      "Allow the pattern to span lines ('.' matches newlines). Use for whole blocks: \"(?:function|const)\\s+foo\\b[\\s\\S]*?\\}\". Slower - narrow with path/include.",
   }),
 })
 
@@ -40,15 +51,25 @@ export const GrepTool = Tool.define(
       description: DESCRIPTION,
       parameters: Parameters,
       execute: (
-        params: { pattern: string; path?: string; include?: string; maxResults?: number; context?: number },
+        params: {
+          pattern: string
+          path?: string
+          include?: string
+          exclude?: string
+          mode?: "matches" | "files" | "count"
+          maxResults?: number
+          context?: number
+          multiline?: boolean
+        },
         ctx: Tool.Context,
       ) =>
         Effect.gen(function* () {
           const limit = Math.min(Math.max(params.maxResults ?? DEFAULT_MAX_RESULTS, 1), HARD_MAX_RESULTS)
           const context = Math.min(Math.max(params.context ?? 0, 0), 10)
+          const mode = params.mode ?? "matches"
           const empty = {
             title: params.pattern,
-            metadata: { matches: 0, truncated: false, limit },
+            metadata: { matches: 0, files: 0, truncated: false, limit, mode },
             output: "No matches found",
           }
           if (!params.pattern) {
@@ -63,6 +84,7 @@ export const GrepTool = Tool.define(
               pattern: params.pattern,
               path: params.path,
               include: params.include,
+              exclude: params.exclude,
             },
           })
 
@@ -83,8 +105,10 @@ export const GrepTool = Tool.define(
             cwd,
             pattern: params.pattern,
             include: params.include,
+            ...(params.exclude ? { exclude: params.exclude } : {}),
             limit,
             ...(context > 0 ? { context } : {}),
+            ...(params.multiline ? { multiline: true } : {}),
           })
           if (result.length === 0) return empty
 
@@ -99,23 +123,37 @@ export const GrepTool = Tool.define(
           const final = rows
           if (final.length === 0) return empty
 
-          const matches = final.filter((row) => !row.context).length
-          const output = [`Found ${matches} matches${truncated ? ` (limit ${limit} reached)` : ""}`]
+          const byFile = new Map<string, number>()
+          for (const row of final) {
+            if (row.context) continue
+            byFile.set(row.path, (byFile.get(row.path) ?? 0) + 1)
+          }
+          const matches = [...byFile.values()].reduce((total, count) => total + count, 0)
+          const output = [
+            `Found ${matches} matches in ${byFile.size} files${truncated ? ` (limit ${limit} reached)` : ""}`,
+          ]
 
-          let current = ""
-          for (const match of final) {
-            if (current !== match.path) {
-              if (current !== "") output.push("")
-              current = match.path
-              output.push(`${match.path}:`)
+          if (mode === "files") {
+            output.push(...byFile.keys())
+          } else if (mode === "count") {
+            for (const [file, count] of byFile) output.push(`${file}: ${count}`)
+          } else {
+            let current = ""
+            for (const match of final) {
+              if (current !== match.path) {
+                if (current !== "") output.push("")
+                current = match.path
+                const count = byFile.get(match.path) ?? 0
+                output.push(`${match.path} (${count} ${count === 1 ? "match" : "matches"}):`)
+              }
+              output.push(`  Line ${match.line}: ${match.text}`)
             }
-            output.push(`  Line ${match.line}: ${match.text}`)
           }
 
           if (truncated) {
             output.push("")
             output.push(
-              `(Results truncated at ${limit} ${context > 0 ? "result lines" : "matches"}. Narrow with include/path or raise maxResults instead of repeating the search.)`,
+              `(Results truncated at ${limit} ${context > 0 ? "result lines" : "matches"}. Narrow with include/exclude/path or raise maxResults instead of repeating the search.)`,
             )
           }
 
@@ -123,8 +161,10 @@ export const GrepTool = Tool.define(
             title: params.pattern,
             metadata: {
               matches,
+              files: byFile.size,
               truncated,
               limit,
+              mode,
             },
             output: output.join("\n"),
           }

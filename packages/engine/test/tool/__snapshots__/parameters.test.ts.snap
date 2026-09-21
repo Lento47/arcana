@@ -95,6 +95,10 @@ exports[`tool parameters JSON Schema (wire shape) glob 1`] = `
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "properties": {
+    "exclude": {
+      "description": "File pattern to exclude (e.g. "**/*.test.ts", "**/{dist,build}/**").",
+      "type": "string",
+    },
     "maxResults": {
       "description": "Maximum file paths to return (default: 10000). Lower it to bound output; combine patterns with braces instead of repeating the call.",
       "maximum": 9007199254740991,
@@ -127,22 +131,39 @@ exports[`tool parameters JSON Schema (wire shape) grep 1`] = `
       "minimum": 0,
       "type": "integer",
     },
+    "exclude": {
+      "description": "File pattern to exclude (e.g. "**/*.test.ts", "**/{dist,node_modules}/**").",
+      "type": "string",
+    },
     "include": {
       "description": "File pattern to include in the search (e.g. "*.js", "*.{ts,tsx}")",
       "type": "string",
     },
     "maxResults": {
-      "description": "Maximum matching lines to return (default: 500, max: 10000). Narrow include/path or raise this instead of repeating the search.",
+      "description": "Maximum result lines to return (default: 500, max: 10000). Narrow include/exclude/path or raise this instead of repeating the search.",
       "maximum": 9007199254740991,
       "minimum": 0,
       "type": "integer",
+    },
+    "mode": {
+      "description": "'matches' (default): matching lines. 'files': only file paths containing matches - use for "where is this used" without line noise. 'count': per-file match totals.",
+      "enum": [
+        "matches",
+        "files",
+        "count",
+      ],
+      "type": "string",
+    },
+    "multiline": {
+      "description": "Allow the pattern to span lines ('.' matches newlines). Use for whole blocks: "(?:function|const)\\s+foo\\b[\\s\\S]*?\\}". Slower - narrow with path/include.",
+      "type": "boolean",
     },
     "path": {
       "description": "The directory or file to search in. Defaults to the current working directory.",
       "type": "string",
     },
     "pattern": {
-      "description": "Rust regex pattern. Write ONE strong pattern: alternation (a|b|c), groups, \\b boundaries, (?i) for case-insensitivity. No lookahead, lookbehind, or backreferences.",
+      "description": "Rust regex. Build ONE strong pattern: nested groups ((?:get|set|delete)(?:Config|Options)), optional parts ((?:export\\s+)?(?:async\\s+)?function\\s+\\w+), \\b boundaries, (?i) case-insensitive, (?x) verbose layout, \\p{Lu} Unicode classes. No lookahead/lookbehind/backreferences - restructure with alternation. Load the search-craft skill for the full pattern cookbook.",
       "type": "string",
     },
   },

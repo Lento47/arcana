@@ -18,6 +18,9 @@ export const Parameters = Schema.Struct({
   path: Schema.optional(Schema.String).annotate({
     description: `The directory to search in. If not specified, the current working directory will be used. IMPORTANT: Omit this field to use the default directory. DO NOT enter "undefined" or "null" - simply omit it for the default behavior. Must be a valid directory path if provided.`,
   }),
+  exclude: Schema.optional(Schema.String).annotate({
+    description: 'File pattern to exclude (e.g. "**/*.test.ts", "**/{dist,build}/**").',
+  }),
   maxResults: Schema.optional(NonNegativeInt).annotate({
     description: `Maximum file paths to return (default: ${DEFAULT_MAX_RESULTS}). Lower it to bound output; combine patterns with braces instead of repeating the call.`,
   }),
@@ -31,7 +34,7 @@ export const GlobTool = Tool.define(
     return {
       description: DESCRIPTION,
       parameters: Parameters,
-      execute: (params: { pattern: string; path?: string; maxResults?: number }, ctx: Tool.Context) =>
+      execute: (params: { pattern: string; path?: string; exclude?: string; maxResults?: number }, ctx: Tool.Context) =>
         Effect.gen(function* () {
           const ins = yield* InstanceState.context
           yield* ctx.ask({
@@ -56,7 +59,12 @@ export const GlobTool = Tool.define(
           })
 
           const limit = Math.min(Math.max(params.maxResults ?? DEFAULT_MAX_RESULTS, 1), DEFAULT_MAX_RESULTS)
-          const files = yield* ripgrep.glob({ cwd: search, pattern: params.pattern, limit })
+          const files = yield* ripgrep.glob({
+            cwd: search,
+            pattern: params.pattern,
+            ...(params.exclude ? { exclude: params.exclude } : {}),
+            limit,
+          })
           const truncated = files.length === limit
 
           const output = []
