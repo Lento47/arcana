@@ -139,7 +139,21 @@ const targets = singleFlag
 function rmrf(target: string) {
   const abs = path.resolve(dir, target)
   if (!fs.existsSync(abs)) return
-  fs.rmSync(abs, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+  try {
+    fs.rmSync(abs, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+  } catch (error) {
+    // Windows: a running `arcana.exe` (usually the detached daemon the TUI
+    // spawned) holds its own file open and locks the whole tree, so the wipe
+    // fails with EPERM. Say what to do instead of dumping a bare stack.
+    const code = (error as { code?: string }).code
+    if (code === "EPERM" || code === "EBUSY") {
+      console.error(
+        `[build] cannot remove ${abs} — an arcana.exe is still running from it.\n` +
+          `[build] stop it (taskkill /F /IM arcana.exe) or quit the TUI, then re-run the build.`,
+      )
+    }
+    throw error
+  }
 }
 
 rmrf("dist")
