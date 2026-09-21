@@ -3,7 +3,6 @@ import { Rpc } from "@/util/rpc"
 import { type rpc } from "../tui/worker"
 import path from "path"
 import { fileURLToPath } from "url"
-import { readFileSync } from "node:fs"
 import { UI } from "@/cli/ui"
 import { errorMessage } from "@arcana/tui/util/error"
 import { Global } from "@arcana/core/global"
@@ -14,7 +13,7 @@ import type { GlobalEvent } from "@arcana/sdk/v2"
 import type { EventSource } from "@arcana/tui/context/sdk"
 import { writeHeapSnapshot } from "node:v8"
 import { win32EnableUtf8Console, win32InstallCtrlCGuard, win32RestoreTerminal } from "@arcana/tui/terminal-win32"
-import { startStartupAnimation, type StartupAnimation } from "@arcana/tui/startup-animation"
+import { getStartupAnimation, startupAnimationsEnabled, type StartupAnimation } from "@arcana/tui/startup-animation"
 import { mark, measure } from "../../cli/profile"
 import { assertEngineHealthy, createDaemonTransport } from "../tui/daemon-transport"
 import { DAEMON_LOG, daemonLog } from "../../daemon/log"
@@ -104,21 +103,6 @@ function isInteractiveTerminal() {
   // both must be TTYs (pipes/redirects/CI/background jobs hard-fail).
   if (process.platform === "win32") return !!process.stdout.isTTY
   return !!process.stdin.isTTY && !!process.stdout.isTTY
-}
-
-/**
- * The pre-render animation honors the same `animations_enabled` switch as the
- * rest of the TUI. The KV provider is not mounted this early, so read its
- * backing file directly (best effort — an unreadable store means "on").
- */
-function startupAnimationsEnabled(): boolean {
-  if (process.env.ARCANA_NO_STARTUP_ANIMATION === "1") return false
-  try {
-    const raw = readFileSync(path.join(Global.Path.state, "kv.json"), "utf8")
-    return (JSON.parse(raw) as { animations_enabled?: unknown }).animations_enabled !== false
-  } catch {
-    return true
-  }
 }
 
 async function input(value?: string) {
@@ -212,7 +196,7 @@ export const TuiThreadCommand = cmd({
       // silent: engine boot, the daemon wait, and renderer setup. The
       // animation covers that gap and is erased before OpenTUI takes over.
       win32EnableUtf8Console()
-      startupAnimation = startStartupAnimation({ enabled: startupAnimationsEnabled() })
+      startupAnimation = getStartupAnimation({ enabled: startupAnimationsEnabled(Global.Path.state) })
       const { TuiConfig } = await import("@/config/tui")
       if (args.fork && !args.continue && !args.session) {
         startupAnimation.stop()

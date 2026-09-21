@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { APP_NAME, BOOT_PHRASES, SIGIL_SEQUENCE } from "./branding"
 
 /**
@@ -94,4 +96,35 @@ export function startStartupAnimation(options: StartupAnimationOptions = {}): St
       stream.write(ERASE_LINE)
     },
   }
+}
+
+/**
+ * The pre-render animation honors the same `animations_enabled` switch as the
+ * rest of the TUI. The KV provider is not mounted this early, so read its
+ * backing file directly (best effort — an unreadable store means "on").
+ */
+export function startupAnimationsEnabled(stateDir: string): boolean {
+  if (process.env.ARCANA_NO_STARTUP_ANIMATION === "1") return false
+  try {
+    const raw = readFileSync(join(stateDir, "kv.json"), "utf8")
+    return (JSON.parse(raw) as { animations_enabled?: unknown }).animations_enabled !== false
+  } catch {
+    return true
+  }
+}
+
+let active: StartupAnimation | undefined
+
+/**
+ * Process-wide startup animation.
+ *
+ * The engine entry starts it before the pre-TUI imports (Solid preload, the
+ * TUI command module, the config import), so the terminal is never blank while
+ * those load; the TUI command adopts the same instance to relabel phases and
+ * erase it before the renderer starts. Idempotent: the first caller's options
+ * win, later callers just get the instance back.
+ */
+export function getStartupAnimation(options?: StartupAnimationOptions): StartupAnimation {
+  active ??= startStartupAnimation(options)
+  return active
 }

@@ -10,7 +10,8 @@ import { Heap } from "./cli/heap"
 import { createKernelContract } from "./kernel/kernel"
 import { daemonLog } from "./daemon/log"
 import { readProxyKey } from "./account/license-bind"
-import { win32RestoreTerminal } from "@arcana/tui/terminal-win32"
+import { Global } from "@arcana/core/global"
+import { win32EnableUtf8Console, win32RestoreTerminal } from "@arcana/tui/terminal-win32"
 mark("cli-import-end")
 
 /**
@@ -204,6 +205,12 @@ function show(out: string) {
 
 async function runDirectTui() {
   mark("zero-arg-tui-dispatch-start")
+  // Cover the whole pre-TUI window: the animation starts before the Solid
+  // preload, the TUI command module, and the config import, so the terminal is
+  // never blank while those load. The TUI command adopts this instance.
+  const { getStartupAnimation, startupAnimationsEnabled } = await import("@arcana/tui/startup-animation")
+  win32EnableUtf8Console()
+  getStartupAnimation({ enabled: startupAnimationsEnabled(Global.Path.state) })
   // Register Solid transform before any TUI JSX modules load. Bunfig preload is
   // not enough when this file is launched from a cwd that skips packages/engine/bunfig.
   const { ensureSolidPreload } = await import("./cli/tui/ensure-solid-preload")
