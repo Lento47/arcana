@@ -2,11 +2,12 @@ Launch a subagent for parallel work. The subagent runs in its own context with i
 
 When to use:
 - Work on independent files that can proceed in parallel
+- Search or research that needs several rounds of glob/grep/read: delegate to "explore" and get one synthesized answer instead of raw hits
 - Research tasks that benefit from focused exploration
 - The user asks to "use subagents", "delegate", or "run in parallel"
 
 When NOT to use:
-- Tasks under ~10 tool calls (do them inline)
+- Tasks you can finish in a few calls with file paths you already know
 - Sequential work where each step depends on the previous result
 - Single-file changes
 

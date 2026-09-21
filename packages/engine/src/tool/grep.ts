@@ -1,5 +1,6 @@
 import path from "path"
 import { Effect, Schema } from "effect"
+import { NonNegativeInt } from "@arcana/core/schema"
 import { InstanceState } from "@/effect/instance-state"
 import { FSUtil } from "@arcana/core/fs-util"
 import { Ripgrep } from "@arcana/core/ripgrep"
@@ -7,13 +8,22 @@ import { assertExternalDirectoryEffect } from "./external-directory"
 import DESCRIPTION from "./grep.txt"
 import * as Tool from "./tool"
 
+export const DEFAULT_MAX_RESULTS = 500
+export const HARD_MAX_RESULTS = 10_000
+
 export const Parameters = Schema.Struct({
-  pattern: Schema.String.annotate({ description: "The regex pattern to search for in file contents" }),
+  pattern: Schema.String.annotate({
+    description:
+      "Rust regex pattern. Write ONE strong pattern: alternation (a|b|c), groups, \\b boundaries, (?i) for case-insensitivity. No lookahead, lookbehind, or backreferences.",
+  }),
   path: Schema.optional(Schema.String).annotate({
-    description: "The directory to search in. Defaults to the current working directory.",
+    description: "The directory or file to search in. Defaults to the current working directory.",
   }),
   include: Schema.optional(Schema.String).annotate({
     description: 'File pattern to include in the search (e.g. "*.js", "*.{ts,tsx}")',
+  }),
+  maxResults: Schema.optional(NonNegativeInt).annotate({
+    description: `Maximum matching lines to return (default: ${DEFAULT_MAX_RESULTS}, max: ${HARD_MAX_RESULTS}). Narrow include/path or raise this instead of repeating the search.`,
   }),
 })
 
@@ -25,12 +35,16 @@ export const GrepTool = Tool.define(
     return {
       description: DESCRIPTION,
       parameters: Parameters,
-      execute: (params: { pattern: string; path?: string; include?: string }, ctx: Tool.Context) =>
+      execute: (
+        params: { pattern: string; path?: string; include?: string; maxResults?: number },
+        ctx: Tool.Context,
+      ) =>
         Effect.gen(function* () {
+          const limit = Math.min(Math.max(params.maxResults ?? DEFAULT_MAX_RESULTS, 1), HARD_MAX_RESULTS)
           const empty = {
             title: params.pattern,
-            metadata: { matches: 0, truncated: false },
-            output: "No files found",
+            metadata: { matches: 0, truncated: false, limit },
+            output: "No matches found",
           }
           if (!params.pattern) {
             throw new Error("pattern is required")
@@ -64,7 +78,7 @@ export const GrepTool = Tool.define(
             cwd,
             pattern: params.pattern,
             include: params.include,
-            limit: 10_000,
+            limit,
           })
           if (result.length === 0) return empty
 
@@ -74,14 +88,12 @@ export const GrepTool = Tool.define(
             text: item.text,
           }))
 
-          const limit = 10_000
           const truncated = rows.length === limit
           const final = rows
           if (final.length === 0) return empty
 
           const total = rows.length
-          const hasMore = truncated || result.length === limit
-          const output = [`Found ${total} matches${hasMore ? " (more matches available)" : ""}`]
+          const output = [`Found ${total} matches${truncated ? ` (limit ${limit} reached)` : ""}`]
 
           let current = ""
           for (const match of final) {
@@ -95,7 +107,9 @@ export const GrepTool = Tool.define(
 
           if (truncated) {
             output.push("")
-            output.push("(Results truncated. Consider using a more specific path or pattern.)")
+            output.push(
+              `(Results truncated at ${limit} matches. Narrow with include/path or raise maxResults instead of repeating the search.)`,
+            )
           }
 
           return {
@@ -103,6 +117,7 @@ export const GrepTool = Tool.define(
             metadata: {
               matches: total,
               truncated,
+              limit,
             },
             output: output.join("\n"),
           }

@@ -8,7 +8,14 @@ import { InstallationVersion, USER_AGENT } from "@arcana/core/installation/versi
 import { RuntimeFlags } from "@/effect/runtime-flags"
 
 export const Parameters = Schema.Struct({
-  query: Schema.String.annotate({ description: "Websearch query" }),
+  query: Schema.optional(Schema.String).annotate({
+    description:
+      "A single websearch query. Prefer one comprehensive query over several narrow ones. Provide query or queries.",
+  }),
+  queries: Schema.optional(Schema.Array(Schema.String)).annotate({
+    description:
+      "2-4 distinct search queries for genuinely different angles, executed in one call (max 4). Merged into one result. Use only when a single comprehensive query cannot cover the angles.",
+  }),
   numResults: Schema.optional(Schema.Number).annotate({
     description: "Number of search results to return (default: 8)",
   }),
@@ -23,6 +30,17 @@ export const Parameters = Schema.Struct({
     description: "Maximum characters for context string optimized for LLMs (default: 10000)",
   }),
 })
+
+export const MAX_QUERIES = 4
+
+/** Merge `query` + `queries`, trim, drop blanks and exact duplicates, cap at MAX_QUERIES. */
+export function normalizeQueries(input: { query?: string; queries?: readonly string[] }): string[] {
+  const list = [
+    ...(input.query?.trim() ? [input.query.trim()] : []),
+    ...(input.queries ?? []).map((query) => query.trim()).filter((query) => query.length > 0),
+  ]
+  return [...new Set(list)].slice(0, MAX_QUERIES)
+}
 
 const WebSearchProviderSchema = Schema.Literals(["exa", "parallel"])
 export type WebSearchProvider = Schema.Schema.Type<typeof WebSearchProviderSchema>
@@ -61,6 +79,7 @@ function callProvider(
   http: HttpClient.HttpClient,
   provider: WebSearchProvider,
   params: Schema.Schema.Type<typeof Parameters>,
+  queries: string[],
   ctx: Tool.Context,
 ) {
   if (provider === "parallel") {
@@ -70,8 +89,8 @@ function callProvider(
       "web_search",
       McpWebSearch.ParallelSearchArgs,
       {
-        objective: params.query,
-        search_queries: [params.query],
+        objective: queries.join("; "),
+        search_queries: queries,
         session_id: ctx.sessionID,
         model_name: webSearchModelName(ctx.extra),
       },
@@ -80,19 +99,25 @@ function callProvider(
     )
   }
 
-  return McpWebSearch.call(
-    http,
-    McpWebSearch.EXA_URL,
-    "web_search_exa",
-    McpWebSearch.SearchArgs,
-    {
-      query: params.query,
-      type: params.type || "auto",
-      numResults: params.numResults || 8,
-      livecrawl: params.livecrawl || "fallback",
-      contextMaxCharacters: params.contextMaxCharacters,
-    },
-    "25 seconds",
+  const search = (query: string) =>
+    McpWebSearch.call(
+      http,
+      McpWebSearch.EXA_URL,
+      "web_search_exa",
+      McpWebSearch.SearchArgs,
+      {
+        query,
+        type: params.type || "auto",
+        numResults: params.numResults || 8,
+        livecrawl: params.livecrawl || "fallback",
+        contextMaxCharacters: params.contextMaxCharacters,
+      },
+      "25 seconds",
+    )
+
+  if (queries.length === 1) return search(queries[0]!)
+  return Effect.forEach(queries, search, { concurrency: MAX_QUERIES }).pipe(
+    Effect.map((results) => results.filter((text): text is string => Boolean(text)).join("\n\n---\n\n") || undefined),
   )
 }
 
@@ -109,19 +134,25 @@ export const WebSearchTool = Tool.define(
       parameters: Parameters,
       execute: (params: Schema.Schema.Type<typeof Parameters>, ctx: Tool.Context) =>
         Effect.gen(function* () {
+          const queries = normalizeQueries(params)
+          if (queries.length === 0) {
+            throw new Error("websearch requires a non-empty query or queries")
+          }
           const provider = selectWebSearchProvider(ctx.sessionID, {
             exa: flags.enableExa,
             parallel: flags.enableParallel,
           })
           const title = webSearchProviderLabel(provider)
-          yield* ctx.metadata({ title: `${title} "${params.query}"`, metadata: { provider } })
+          const label = queries.length === 1 ? `"${queries[0]}"` : `${queries.length} queries`
+          yield* ctx.metadata({ title: `${title} ${label}`, metadata: { provider, queries: queries.length } })
 
           yield* ctx.ask({
             permission: "websearch",
-            patterns: [params.query],
+            patterns: queries,
             always: ["*"],
             metadata: {
-              query: params.query,
+              query: queries[0],
+              queries,
               numResults: params.numResults,
               livecrawl: params.livecrawl,
               type: params.type,
@@ -130,11 +161,11 @@ export const WebSearchTool = Tool.define(
             },
           })
 
-          const result = yield* callProvider(http, provider, params, ctx)
+          const result = yield* callProvider(http, provider, params, queries, ctx)
 
           return {
             output: result ?? "No search results found. Please try a different query.",
-            title: `${title}: ${params.query}`,
+            title: `${title}: ${queries.join(" | ")}`,
             metadata: { provider },
           }
         }).pipe(Effect.orDie),

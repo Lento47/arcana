@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { parseResponse } from "../../src/tool/mcp-websearch"
-import { selectWebSearchProvider, webSearchModelName, webSearchProviderLabel } from "../../src/tool/websearch"
+import {
+  normalizeQueries,
+  selectWebSearchProvider,
+  webSearchModelName,
+  webSearchProviderLabel,
+} from "../../src/tool/websearch"
 
 import { webSearchEnabled } from "../../src/tool/registry"
 import { it } from "../lib/effect"
@@ -96,4 +101,23 @@ describe("websearch MCP response parser", () => {
       expect(result).toBe("search results")
     }),
   )
+})
+
+describe("websearch query normalization", () => {
+  test("accepts a single query", () => {
+    expect(normalizeQueries({ query: "arcana daemon lock" })).toEqual(["arcana daemon lock"])
+  })
+
+  test("merges query and queries, drops duplicates, caps at four", () => {
+    expect(normalizeQueries({ query: "a", queries: ["b", "a", "c", "d", "e"] })).toEqual(["a", "b", "c", "d"])
+  })
+
+  test("trims and drops blank entries", () => {
+    expect(normalizeQueries({ queries: ["  ", " x ", ""] })).toEqual(["x"])
+  })
+
+  test("returns an empty list when nothing usable is supplied", () => {
+    expect(normalizeQueries({})).toEqual([])
+    expect(normalizeQueries({ query: "   " })).toEqual([])
+  })
 })

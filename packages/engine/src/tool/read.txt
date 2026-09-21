@@ -1,10 +1,11 @@
 Read file or directory from local filesystem. Error if path not found.
 
 - filePath must be absolute path
+- Grep first when you do not know the file: read the matching window with offset/limit using the line numbers it returned
 - Returns file contents from the start by default, limited by configured tool_output.max_lines/max_bytes
-- offset: line number to start from (1-indexed). Call again with larger offset for later sections.
-- Use Grep to find content in large files or files with long lines
-- Use Glob to find files by pattern when unsure of path
+- offset: line number to start from (1-indexed). Truncation always reports the next offset to use.
+- Reading a directory returns its entries (offset/limit supported) - one call instead of several listings
 - Read multiple files in parallel when known
 - Avoid tiny repeated slices (30 lines). Read larger window if more context needed.
-- Can read images and PDFs — returns as file attachments.
+- Do not re-read a file you already read unless you changed it or the earlier content is no longer in context
+- Can read images and PDFs - returns as file attachments.

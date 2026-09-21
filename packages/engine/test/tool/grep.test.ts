@@ -112,7 +112,7 @@ describe("tool.grep", () => {
         ctx,
       )
       expect(result.metadata.matches).toBe(0)
-      expect(result.output).toBe("No files found")
+      expect(result.output).toBe("No matches found")
     }),
   )
 
@@ -145,10 +145,27 @@ describe("tool.grep", () => {
       )
       const info = yield* GrepTool
       const grep = yield* info.init()
-      const result = yield* grep.execute({ pattern: "needle", path: test.directory, include: "*.txt" }, ctx)
+      const result = yield* grep.execute(
+        { pattern: "needle", path: test.directory, include: "*.txt", maxResults: 100 },
+        ctx,
+      )
 
-      expect(result.output).toContain("(Results truncated. Consider using a more specific path or pattern.)")
+      expect(result.output).toContain("(Results truncated at 100 matches.")
+      expect(result.output).toContain("raise maxResults")
       expect(result.output).not.toMatch(/showing \d+ of \d+ matches/)
+      expect(result.metadata.limit).toBe(100)
+    }),
+  )
+
+  it.instance("clamps maxResults to the hard ceiling", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      yield* Effect.promise(() => Bun.write(path.join(test.directory, "test.txt"), "line1\nline2\nline3"))
+      const info = yield* GrepTool
+      const grep = yield* info.init()
+      const result = yield* grep.execute({ pattern: "line", path: test.directory, maxResults: 999_999 }, ctx)
+
+      expect(result.metadata.limit).toBe(10_000)
     }),
   )
 

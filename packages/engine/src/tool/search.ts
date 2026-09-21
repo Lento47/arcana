@@ -27,7 +27,9 @@ export const SearchTool = Tool.define(
     return {
       description:
         "Deep content search using ripgrep across all files in a directory tree. " +
-        "Supports regex patterns and file type filters. Always available regardless of goal state — " +
+        "Write ONE strong Rust-regex pattern - alternation (a|b|c), groups, \\b boundaries, (?i) - " +
+        "and scope with include; one call should answer, not five. No lookahead/lookbehind/backreferences. " +
+        "Supports regex patterns and file type filters. Always available regardless of goal state - " +
         "use for code exploration, log analysis, pattern matching, and answering questions " +
         "about the codebase even after your primary goal is complete.",
       parameters: Parameters,
