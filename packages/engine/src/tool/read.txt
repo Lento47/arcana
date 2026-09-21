@@ -2,6 +2,7 @@ Read file or directory from local filesystem. Error if path not found.
 
 - filePath must be absolute path
 - Grep first when you do not know the file: read the matching window with offset/limit using the line numbers it returned
+- Window sizing: ~50 lines around a function, ~200 for a class or module, whole file when under ~400 lines
 - Returns file contents from the start by default, limited by configured tool_output.max_lines/max_bytes
 - offset: line number to start from (1-indexed). Truncation always reports the next offset to use.
 - Reading a directory returns its entries (offset/limit supported) - one call instead of several listings

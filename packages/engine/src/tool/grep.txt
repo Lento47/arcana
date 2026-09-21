@@ -2,14 +2,21 @@ Fast content search via ripgrep (Rust regex). Works with any codebase size.
 
 Write ONE strong pattern instead of many weak calls:
 - Alternatives in a single pass: "parseConfig|loadConfig|readConfig"
-- Definitions or uses together: "(export\s+)?(async\s+)?function\s+parseConfig|parseConfig\s*\("
+- Family with shared prefix/suffix: "(?:get|set|delete|update)(?:Config|Settings|Options)"
+- Definition or use together: "(?:(?:export\s+)?(?:async\s+)?function\s+parseConfig|parseConfig\s*\()"
+- Optional wrappers: "(?:export\s+)?(?:default\s+)?class\s+\w+"
 - Case-insensitive with word boundaries: "(?i)\b(config|settings)\b"
-- Verbose multi-term pattern: "(?x)(foo|bar) \s* \("
-- Escape literal punctuation: "foo\(", "a\.b"
-- Scope the call: include "*.{ts,tsx}", path "src/"
-- Rust regex has no lookahead, lookbehind, or backreferences - combine alternatives instead
+- Verbose layout for complex patterns: "(?x) (?:foo|bar) \s* \("
+- Escape literals: "foo\(", "a\.b", "\$\{"
+- Character classes: "[^)\n]*", "\w+", "\p{Lu}" (Unicode), "[[:alpha:]]"
+- Quantifiers: "{1,3}", "*?", "+"
+- Rust regex has no lookahead, lookbehind, or backreferences - restructure with alternation or run a second scoped search
+- Whole blocks across lines: set multiline and use "[\s\S]*?" between anchors, e.g. "function\s+foo\b[\s\S]*?\}"
+- Load the search-craft skill for the full pattern cookbook (per-language recipes)
 
-Returns the whole matching line with file path and line number (each line up to 2000 chars), grouped by file. Set context (0-10) to also return N lines around each match - one call can show the surrounding code without a separate read. The matching line often answers without opening the file.
-- Results are capped (default 500, see maxResults; context lines count toward the cap). When truncated, narrow include/path or raise maxResults instead of repeating the search.
+Returns the whole matching line with file path and line number (each line up to 2000 chars), grouped by file with per-file counts. Set context (0-10) to also return N lines around each match - one call can show the surrounding code without a separate read. The matching line often answers without opening the file.
+- mode "files" lists only paths ("where is it used"); "count" gives per-file totals
+- exclude skips globs (e.g. "**/*.test.ts") without a second call
+- Results are capped (default 500, see maxResults; context lines count toward the cap). When truncated, narrow include/exclude/path or raise maxResults instead of repeating the search.
 - To count matches, use the bash tool with "rg -c". Do NOT pipe grep.
 - For open-ended search with multiple rounds, delegate to the task tool.

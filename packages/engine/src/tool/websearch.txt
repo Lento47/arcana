@@ -1,13 +1,22 @@
 Real-time web search via the session's search provider. Returns content from the most relevant sites.
 
-Write ONE comprehensive query instead of several narrow ones:
-- Combine subject + artifact (docs, changelog, source, release notes) + version + timeframe in one query
-- Include {{year}} for date-sensitive searches
+Write ONE comprehensive query instead of several narrow ones - stack every constraint:
+- Subject + artifact (docs, changelog, source, release notes) + version + timeframe in one query
 - Quote exact phrases, identifiers, or error strings: "arcana daemon", "ECONNRESET"
+- Include {{year}} for date-sensitive searches
 - For genuinely different angles, pass up to 4 queries in the queries array - one call, merged results
 - Prefer type 'deep' for comprehensive research, 'fast' for simple facts; raise numResults for broad surveys
 - Use webfetch only for a specific URL you already have, not to search
 
+Query recipes:
+- Error: "<exact message>" <library> <language> - quote the message verbatim
+- Release/changes: <product> <version> release notes changelog {{year}}
+- Docs: <product> <feature> docs configuration example
+- Migration: migrate <from> to <to> breaking changes guide
+- Comparison: <a> vs <b> differences {{year}}
+- Source: <repo> <symbol> implementation github
+
 - Live crawling: 'fallback' (use cached if live unavailable) or 'preferred' (prioritize live)
 - Search types: 'auto' (balanced), 'fast' (quick), 'deep' (comprehensive)
 - Configurable result count, domain filtering, context length
+- Load the search-craft skill for provider-specific syntax and research strategy

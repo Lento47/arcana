@@ -1,8 +1,13 @@
 Fast file pattern matching via ripgrep. Works with any codebase size.
 
 - Combine alternatives with braces in one pattern: "**/*.{ts,tsx}", "src/**/*.{js,jsx}"
+- Exclude with the exclude param: pattern "**/*.ts" + exclude "**/*.{test,spec}.ts"
 - One call can cover several speculative patterns - batch independent calls in the same turn
 - Narrow with path: "src/components" searches only that subtree
 - Returns absolute file paths in traversal order (not sorted)
 - Use to find files by name; use grep for file contents
+- Recipe - all sources: "**/*.{ts,tsx,js,jsx}" exclude "{**/node_modules/**,**/dist/**}"
+- Recipe - tests only: "**/*.{test,spec}.{ts,tsx}"
+- Recipe - configs: "**/*.{json,jsonc,toml,yaml,yml}"
+- Recipe - monorepo package: "packages/*/src/**/*.ts"
 - For open-ended multi-round glob+grep, delegate to the task tool
