@@ -536,3 +536,83 @@ test("projects live context updates with their message ID", async () => {
     app.renderer.destroy()
   }
 })
+
+test("aborted location refreshes are cancellations, not logged failures", async () => {
+  const logged: unknown[][] = []
+  const original = console.error
+  console.error = (...args: unknown[]) => {
+    logged.push(args)
+  }
+  const aborting = (() =>
+    Promise.reject(new DOMException("The operation was aborted.", "AbortError"))) as unknown as typeof fetch
+  let ready!: () => void
+  const mounted = new Promise<void>((resolve) => {
+    ready = resolve
+  })
+
+  function Probe() {
+    onMount(ready)
+    return <box />
+  }
+
+  const app = await testRender(() => (
+    <TestTuiContexts>
+      <SDKProvider url="http://test" directory={directory} events={createEventSource().source} fetch={aborting}>
+        <ProjectProvider>
+          <DataProvider>
+            <Probe />
+          </DataProvider>
+        </ProjectProvider>
+      </SDKProvider>
+    </TestTuiContexts>
+  ))
+
+  try {
+    await mounted
+    // The initial refresh rejects immediately; the deferred one fires at +250ms.
+    await Bun.sleep(600)
+    expect(logged.filter((args) => String(args[0]).includes("Failed to refresh"))).toHaveLength(0)
+  } finally {
+    app.renderer.destroy()
+    console.error = original
+  }
+})
+
+test("a genuine location refresh failure is still logged", async () => {
+  const logged: unknown[][] = []
+  const original = console.error
+  console.error = (...args: unknown[]) => {
+    logged.push(args)
+  }
+  const failing = (() => Promise.reject(new Error("daemon unavailable"))) as unknown as typeof fetch
+  let ready!: () => void
+  const mounted = new Promise<void>((resolve) => {
+    ready = resolve
+  })
+
+  function Probe() {
+    onMount(ready)
+    return <box />
+  }
+
+  const app = await testRender(() => (
+    <TestTuiContexts>
+      <SDKProvider url="http://test" directory={directory} events={createEventSource().source} fetch={failing}>
+        <ProjectProvider>
+          <DataProvider>
+            <Probe />
+          </DataProvider>
+        </ProjectProvider>
+      </SDKProvider>
+    </TestTuiContexts>
+  ))
+
+  try {
+    await mounted
+    await Bun.sleep(600)
+    expect(logged.some((args) => String(args[0]).includes("Failed to refresh initial location data"))).toBe(true)
+  } finally {
+    app.renderer.destroy()
+    console.error = original
+  }
+})

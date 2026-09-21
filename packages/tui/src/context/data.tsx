@@ -24,6 +24,18 @@ import { createSimpleContext } from "./helper"
 import { useSDK } from "./sdk"
 import { createSignal, onCleanup, onMount } from "solid-js"
 
+/**
+ * Aborted requests are cancellations, not failures. The TUI can exit with a
+ * refresh in flight (initial location, the deferred reference pass) and process
+ * teardown aborts the fetch — logging the DOMException made every quit look
+ * like a crash.
+ */
+export function isAbortFailure(reason: unknown): boolean {
+  if (typeof reason !== "object" || reason === null) return false
+  const error = reason as { name?: unknown; code?: unknown }
+  return error.name === "AbortError" || error.code === "ABORT_ERR"
+}
+
 type LocationData = {
   agent?: AgentV2Info[]
   command?: CommandV2Info[]
@@ -586,8 +598,15 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
     }
 
     function logRefreshFailures(label: string, settled: PromiseSettledResult<unknown>[]) {
-      for (const failure of settled.filter((item) => item.status === "rejected"))
+      for (const failure of settled) {
+        if (failure.status !== "rejected") continue
+        // Aborted requests are cancellations, not refresh failures: the TUI
+        // exits with a refresh in flight (initial location or the deferred
+        // reference pass) and process teardown aborts the fetch. Logging the
+        // DOMException made every quit look like a crash.
+        if (isAbortFailure(failure.reason)) continue
         console.error(`Failed to refresh ${label} location data`, failure.reason)
+      }
     }
 
     onMount(() => {
