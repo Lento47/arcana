@@ -197,7 +197,6 @@ export const TuiThreadCommand = cmd({
       // animation covers that gap and is erased before OpenTUI takes over.
       win32EnableUtf8Console()
       startupAnimation = getStartupAnimation({ enabled: startupAnimationsEnabled(Global.Path.state) })
-      const { TuiConfig } = await import("@/config/tui")
       if (args.fork && !args.continue && !args.session) {
         startupAnimation.stop()
         UI.error("--fork requires --continue or --session")
@@ -226,13 +225,16 @@ export const TuiThreadCommand = cmd({
       const daemonCmd = isCompiled
         ? [process.execPath, "--daemon"]
         : [process.execPath, "--conditions=browser", daemonScript, "--daemon"]
-      // The engine host owns daemon lifecycle and injects the resulting
-      // workspace-bound transport into the presentation package. The daemon
-      // reads its lifecycle config (arcana.json daemon.*) itself at boot.
-      const daemonAttempt = await createDaemonTransport({
+      // Start the daemon before the TUI config import: a cold daemon takes
+      // ~2.4s while `@/config/tui` (which pulls OpenTUI) evaluates for ~0.8s,
+      // and the two have nothing to say to each other. Awaiting the import
+      // first serialized them.
+      const daemonAttemptPromise = createDaemonTransport({
         directory: cwd,
         command: daemonCmd,
       })
+      const { TuiConfig } = await import("@/config/tui")
+      const daemonAttempt = await daemonAttemptPromise
       const daemonTransport = daemonAttempt.status === "connected" ? daemonAttempt.transport : undefined
       if (daemonAttempt.status === "unavailable") {
         daemonLog(`[tui] daemon unavailable pid=${process.pid} reason=${daemonAttempt.reason}; trying worker fallback`)
