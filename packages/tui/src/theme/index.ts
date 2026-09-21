@@ -10,6 +10,7 @@ import ayu from "./assets/ayu.json" with { type: "json" }
 import base16 from "./assets/base16.json" with { type: "json" }
 import bloodmoon from "./assets/bloodmoon.json" with { type: "json" }
 import catppuccin from "./assets/catppuccin.json" with { type: "json" }
+import catppuccinFrappe from "./assets/catppuccin-frappe.json" with { type: "json" }
 import coven from "./assets/coven.json" with { type: "json" }
 import crypt from "./assets/crypt.json" with { type: "json" }
 import dracula from "./assets/dracula.json" with { type: "json" }
@@ -34,6 +35,7 @@ import oracle from "./assets/oracle.json" with { type: "json" }
 import phosphor from "./assets/phosphor.json" with { type: "json" }
 import poimandres from "./assets/poimandres.json" with { type: "json" }
 import rosepine from "./assets/rosepine.json" with { type: "json" }
+import rosepineMoon from "./assets/rosepine-moon.json" with { type: "json" }
 import sakura from "./assets/sakura.json" with { type: "json" }
 import solarized from "./assets/solarized.json" with { type: "json" }
 import synthwave from "./assets/synthwave.json" with { type: "json" }
@@ -248,6 +250,7 @@ export const DEFAULT_THEMES: Record<string, ThemeJson> = {
   base16,
   bloodmoon,
   catppuccin,
+  "catppuccin-frappe": catppuccinFrappe,
   coven,
   crypt,
   dracula,
@@ -272,6 +275,7 @@ export const DEFAULT_THEMES: Record<string, ThemeJson> = {
   phosphor,
   poimandres,
   rosepine,
+  "rosepine-moon": rosepineMoon,
   sakura,
   solarized,
   synthwave,
@@ -282,10 +286,11 @@ export const DEFAULT_THEMES: Record<string, ThemeJson> = {
 }
 
 /**
- * Shipped palettes take the designed monochrome ramp by default; `soft` and
- * `off` are opt-outs (config or a theme's own `mono` declaration).
+ * Fallback mono mode when no option is passed. Mirrors the config default so
+ * `fallbackTheme()` (error screens, isolated renders) matches what the app
+ * actually paints; `full`/`soft` remain explicit opt-ins.
  */
-const DEFAULT_MONO_MODE: MonoMode = "full"
+const DEFAULT_MONO_MODE: MonoMode = "off"
 
 const pluginThemes: Record<string, ThemeJson> = {}
 let customThemes: Record<string, ThemeJson> = {}
@@ -607,6 +612,31 @@ export function inspectTheme(
   const last = new Map<string, ThemeAdjustment>()
   for (const adjustment of adjustments) last.set(adjustment.token, adjustment)
   return { theme: resolved, adjustments: [...last.values()], apca: apcaAudit(resolved) }
+}
+
+/**
+ * Identity signature of a resolved theme: every color token that feeds
+ * `generateSyntax`/`generateSubtleSyntax` and the widget palette. Two resolves
+ * with the same signature produce pixel-identical styles, so style holders
+ * (SyntaxStyle, renderNode) can reuse the previous object instead of minting a
+ * new identity — a new identity forces every visible markdown/code leaf
+ * through destroy + re-highlight even when nothing visual changed (theme
+ * refreshes, KV reloads and palette detection all recompute the theme object
+ * mid-stream).
+ */
+export function themeColorSignature(theme: Record<string, unknown>): string {
+  const parts: string[] = []
+  for (const [key, value] of Object.entries(theme)) {
+    if (typeof value === "number" || typeof value === "string" || typeof value === "boolean") {
+      parts.push(`${key}=${String(value)}`)
+    } else if (value !== null && typeof value === "object" && "toInts" in value) {
+      const toInts = (value as { toInts: unknown }).toInts
+      if (typeof toInts === "function") {
+        parts.push(`${key}=${(toInts as () => number[]).call(value).join(",")}`)
+      }
+    }
+  }
+  return parts.join(";")
 }
 
 /** Temperature family for a hue in degrees. */
@@ -948,17 +978,17 @@ const MONO_LIGHT_STEPS = [
  * muted and semantic ink (fluent 60+); 14–17 carry body ink and headings.
  */
 const MONO_DARK_LC: Partial<Record<number, number>> = {
-  7: 33,
-  8: 49,
-  9: 61,
-  10: 67,
-  11: 73,
-  12: 79,
-  13: 85,
-  14: 91,
-  15: 96,
-  16: 100,
-  17: 103,
+  7: 31,
+  8: 36,
+  9: 46,
+  10: 48,
+  11: 50,
+  12: 52,
+  13: 54,
+  14: 56,
+  15: 58,
+  16: 61,
+  17: 90,
 }
 
 /** Token → step index on the dark ladder. */
@@ -1014,7 +1044,7 @@ const MONO_DARK_MAP: Partial<Record<ThemeColor, number>> = {
   syntaxOperator: 9,
   syntaxComment: 8,
   syntaxVariable: 17,
-  syntaxPunctuation: 16,
+  syntaxPunctuation: 17,
   syntaxFunction: 17,
   // Diff.
   diffAdded: 11,
@@ -1120,15 +1150,16 @@ const MONO_LIGHT_MAP: Partial<Record<ThemeColor, number>> = {
 
 /**
  * The cast: the theme's own hue at two strengths. Structural tokens (surfaces,
- * borders, ink, markdown) take the quiet strength — they read as neutral grays.
- * Identity tokens (accents, semantics, spine roles, code keywords) take the
- * louder one, so switching themes visibly changes the mood while nothing
- * approaches the original saturation.
+ * borders, ink, chrome) take the quiet strength and the theme's cast hue.
+ * Identity tokens (accents, statuses, markdown, code, spine signals) keep
+ * their OWN authored hue at the louder strength, so components stay
+ * distinguishable by color — error red, success green, info cyan — instead of
+ * collapsing into one hue at different brightnesses.
  */
-const MONO_STRUCTURE_SAT = 0.05
-const MONO_STRUCTURE_SAT_LIGHT = 0.035
-const MONO_IDENTITY_SAT = 0.16
-const MONO_IDENTITY_SAT_LIGHT = 0.14
+const MONO_STRUCTURE_SAT = 0.12
+const MONO_STRUCTURE_SAT_LIGHT = 0.1
+const MONO_IDENTITY_SAT = 0.78
+const MONO_IDENTITY_SAT_LIGHT = 0.72
 
 /** Tokens that carry theme identity rather than structure. */
 const MONO_IDENTITY_TOKENS = new Set<ThemeColor>([
@@ -1148,11 +1179,32 @@ const MONO_IDENTITY_TOKENS = new Set<ThemeColor>([
   "markdownHeading",
   "markdownLink",
   "markdownLinkText",
+  "markdownCode",
+  "markdownBlockQuote",
+  "markdownEmph",
+  "markdownStrong",
+  "markdownListItem",
+  "markdownListEnumeration",
+  "markdownImage",
+  "markdownImageText",
   "syntaxKeyword",
   "syntaxString",
   "syntaxNumber",
   "syntaxType",
   "syntaxOperator",
+  "spineBrand",
+  "spineAsk",
+  "spineRun",
+  "spinePrompt",
+  "spinePlan",
+  "spinePatch",
+  "spineInspect",
+  "spineFail",
+  "spineFix",
+  "spineOk",
+  "spineSubagent",
+  "spineDiffAdd",
+  "spineDiffRemove",
 ])
 
 function monochromeCast(
@@ -1188,20 +1240,33 @@ function castColor(hue: number, sat: number, luminance: number, alpha: number): 
   const neutral = grayFromLuminance(luminance)
   const fallback = RGBA.fromValues(neutral, neutral, neutral, alpha)
   if (sat <= 0) return fallback
-  let color = hslToRgba(hue, sat, neutral, alpha)
-  // Re-scale after quantization: each pass preserves the channel ratios (the
-  // tint) and moves the measured luminance toward the target.
-  for (let i = 0; i < 3; i++) {
-    const y = relativeLuminance(color)
-    if (!(y > 0)) return fallback
-    const k = luminance / y
-    const r = srgbToLinear(color.r) * k
-    const g = srgbToLinear(color.g) * k
-    const b = srgbToLinear(color.b) * k
-    if (r > 1 || g > 1 || b > 1) return fallback
-    color = RGBA.fromValues(linearToSrgb(r), linearToSrgb(g), linearToSrgb(b), alpha)
+  // A tinted color can leave the sRGB gamut at its target luminance (the
+  // bright rungs especially). Reduce chroma instead of dropping the hue — the
+  // CSS Color 4 gamut mapping — so an amber warning stays amber, just calmer.
+  for (let attempt = 0; attempt < 8; attempt++) {
+    let color = hslToRgba(hue, sat * 0.8 ** attempt, neutral, alpha)
+    let inGamut = true
+    // Re-scale after quantization: each pass preserves the channel ratios (the
+    // tint) and moves the measured luminance toward the target.
+    for (let i = 0; i < 3; i++) {
+      const y = relativeLuminance(color)
+      if (!(y > 0)) {
+        inGamut = false
+        break
+      }
+      const k = luminance / y
+      const r = srgbToLinear(color.r) * k
+      const g = srgbToLinear(color.g) * k
+      const b = srgbToLinear(color.b) * k
+      if (r > 1 || g > 1 || b > 1) {
+        inGamut = false
+        break
+      }
+      color = RGBA.fromValues(linearToSrgb(r), linearToSrgb(g), linearToSrgb(b), alpha)
+    }
+    if (inGamut) return color
   }
-  return color
+  return fallback
 }
 
 /** Re-draw every structural token on the designed ladder, cast-tinted. */
@@ -1221,14 +1286,20 @@ function applyDesignedMonochrome(
   for (const [key, step] of Object.entries(map) as Array<[ThemeColor, number]>) {
     const current = theme[key]
     if (!current) continue
-    const sat = MONO_IDENTITY_TOKENS.has(key) ? cast.identitySat : cast.sat
+    const identity = MONO_IDENTITY_TOKENS.has(key)
+    const sat = identity ? cast.identitySat : cast.sat
+    // Identity tokens keep their authored hue — error stays red, success green,
+    // info cyan — so roles are distinguishable by color, not just brightness.
+    // Structural tokens take the theme's cast so surfaces read as one family.
+    // An explicit `mono.hue` declaration overrides both.
+    const hue = character?.hue !== undefined ? cast.hue : identity ? rgbaToHsl(current).h : cast.hue
     const lc = mode === "dark" ? MONO_DARK_LC[step] : undefined
     const base = lc !== undefined ? surface() : undefined
     const target =
       lc !== undefined && base
         ? (apcaTargetLuminance(base, -lc) ?? srgbToLinear(steps[step]!))
         : srgbToLinear(steps[step]!)
-    theme[key] = castColor(cast.hue, sat, target, current.a)
+    theme[key] = castColor(hue, sat, target, current.a)
   }
 }
 
@@ -1249,7 +1320,12 @@ function clampToCast(
     const value = theme[key]
     if (!value || value.a === 0) continue
     const hsl = rgbaToHsl(value)
-    if (hsl.s > cast.identitySat) theme[key] = hslToRgba(hsl.h, cast.identitySat, hsl.l, value.a)
+    if (hsl.s > cast.identitySat) {
+      // Reduce chroma at the SAME luminance. Clamping HSL saturation directly
+      // shifts luminance (a desaturated blue darkens), which tripped the floor
+      // and re-lifted tokens the ramp had just designed.
+      theme[key] = castColor(hsl.h, cast.identitySat, relativeLuminance(value), value.a)
+    }
   }
 }
 
@@ -1322,7 +1398,10 @@ function spaceMonochromeRoles(
   // their original prominence order.
   const brandGray = clamp01(lightBg ? band.lo : band.hi)
   const brand = theme.spineBrand
-  if (brand) theme.spineBrand = castColor(cast.hue, cast.identitySat, srgbToLinear(brandGray), brand.a)
+  // Keep each chip's authored hue; the ladder only re-spaces lightness. An
+  // explicit `mono.hue` declaration overrides both.
+  const hueOf = (color: RGBA) => (character?.hue !== undefined ? cast.hue : rgbaToHsl(color).h)
+  if (brand) theme.spineBrand = castColor(hueOf(brand), cast.identitySat, srgbToLinear(brandGray), brand.a)
   const roles = MONO_LADDER_KEYS.map((key) => ({ key, lum: relativeLuminance(theme[key]!) })).sort((a, b) =>
     lightBg ? a.lum - b.lum : b.lum - a.lum,
   )
@@ -1330,7 +1409,7 @@ function spaceMonochromeRoles(
     const offset = (index + 1) * gap
     const gray = clamp01(lightBg ? band.lo + offset : band.hi - offset)
     const current = theme[role.key]!
-    theme[role.key] = castColor(cast.hue, cast.identitySat, srgbToLinear(gray), current.a)
+    theme[role.key] = castColor(hueOf(current), cast.identitySat, srgbToLinear(gray), current.a)
   })
 }
 

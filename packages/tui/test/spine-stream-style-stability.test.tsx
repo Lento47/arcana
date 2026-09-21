@@ -3,7 +3,7 @@ import { afterEach, expect, test } from "bun:test"
 import { RGBA, SyntaxStyle, getTreeSitterClient, type CapturedFrame, type TreeSitterClient } from "@opentui/core"
 import { testRender } from "@opentui/solid"
 import { createSignal } from "solid-js"
-import { SpineProse } from "../src/shell/command-spine/spine-prose"
+import { SpineProse, resolveFiletype } from "../src/shell/command-spine/spine-prose"
 import { TestTuiProviders } from "./fixture/tui-providers"
 
 /**
@@ -301,4 +301,69 @@ test("emphasis styles are identical before and after the real worker commit", as
   const settled = app.captureCharFrame()
   expect(settled).not.toContain("**")
   expect(settled).not.toContain("~~")
+})
+
+test("resolveFiletype maps fences and paths, and stays undefined for prose", () => {
+  expect(resolveFiletype(undefined, undefined, "```ts\nconst x = 1\n```")).toBe("typescript")
+  expect(resolveFiletype(undefined, undefined, "```tsx\nconst x = 1")).toBe("typescriptreact")
+  expect(resolveFiletype(undefined, undefined, "```py\nprint(1)")).toBe("python")
+  expect(resolveFiletype(undefined, undefined, "```sh\necho hi")).toBe("bash")
+  expect(resolveFiletype("diff", undefined, "@@ -1 +1 @@")).toBe("diff")
+  expect(resolveFiletype("error", undefined, "boom")).toBeUndefined()
+  expect(resolveFiletype(undefined, "notes.py", "anything")).toBe("python")
+  expect(resolveFiletype(undefined, undefined, "just some prose")).toBeUndefined()
+})
+
+/**
+ * Trailing-fence deferral. Tree-sitter tokenizes incomplete code differently
+ * on every prefix, so each publish restyled the trailing fence even though
+ * the retained frame bridged the async gap. While the fence is open the leaf
+ * paints plain body ink; closing it highlights exactly once.
+ */
+test("a trailing unclosed fence paints plain while streaming, styled once closed", async () => {
+  const client = await prepare(["typescript"])
+  const keyword = RGBA.fromHex(keywordColor).toString()
+  const [content, setContent] = createSignal("intro\n\n```typescript\nconst x = 1\n")
+  app = await testRender(
+    () => (
+      <markdown
+        width={56}
+        content={content()}
+        syntaxStyle={syntax}
+        treeSitterClient={client}
+        streaming={true}
+        internalBlockMode="top-level"
+        conceal={true}
+      />
+    ),
+    { width: 60, height: 12 },
+  )
+
+  // Several frames with the fence open: never the keyword color.
+  for (let i = 0; i < 10; i++) {
+    await app.renderOnce()
+    await Bun.sleep(15)
+    expect(colorOf(app.captureSpans(), "const"), `open fence frame ${i}`).not.toBe(keyword)
+  }
+
+  // Grow the fence, still open: still plain.
+  setContent("intro\n\n```typescript\nconst x = 1\nconst y = 2\n")
+  for (let i = 0; i < 10; i++) {
+    await app.renderOnce()
+    await Bun.sleep(15)
+    expect(colorOf(app.captureSpans(), "const"), `grown fence frame ${i}`).not.toBe(keyword)
+  }
+
+  // Close the fence: exactly one styled commit follows.
+  setContent("intro\n\n```typescript\nconst x = 1\nconst y = 2\n```")
+  let styled: string | undefined
+  for (let i = 0; i < 40; i++) {
+    await app.renderOnce()
+    await Bun.sleep(15)
+    if (colorOf(app.captureSpans(), "const") === keyword) {
+      styled = keyword
+      break
+    }
+  }
+  expect(styled).toBe(keyword)
 })

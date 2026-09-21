@@ -15,6 +15,7 @@ import {
   selectedForeground,
   terminalMode,
   themeCharacter,
+  themeColorSignature,
   type Theme,
   type ThemeJson,
 } from "../src/theme"
@@ -384,18 +385,19 @@ describe("theme inheritance and the monochrome layer", () => {
     expect(() => resolveTheme(allThemes()[a]!, "dark")).not.toThrow()
   })
 
-  test("off keeps authored palettes, soft desaturates, full re-draws", () => {
+  test("off keeps authored palettes, soft desaturates, full re-draws at the cast", () => {
     const spread = (c: RGBA) => Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b)
     const raw = DEFAULT_THEMES.arcana!
     const off = resolveTheme(raw, "dark", { mono: "off" })
     const soft = resolveTheme(raw, "dark", { mono: "soft" })
     const full = resolveTheme(raw, "dark", { mono: "full" })
     // `off` is the authored palette (its accent is genuinely saturated);
-    // `soft` cuts the saturation; `full` re-draws at the identity strength,
-    // which can sit above `soft` when a palette was never very saturated.
+    // `soft` cuts the saturation; `full` re-draws every token at or under the
+    // cast saturation while keeping the authored hue.
     expect(spread(off.accent)).toBeGreaterThan(0.2)
     expect(spread(soft.accent)).toBeLessThan(spread(off.accent))
-    expect(spread(full.accent)).toBeLessThan(0.2)
+    expect(rgbaToHsl(off.accent).s).toBeGreaterThan(rgbaToHsl(full.accent).s)
+    expect(spread(full.accent)).toBeLessThanOrEqual(0.85)
   })
 
   test("a theme opts out with mono: false, whatever the config says", () => {
@@ -454,22 +456,26 @@ describe("monochrome palette", () => {
     expect(monochromeColor(color, 0)).toBe(color)
   })
 
-  test.each(Object.keys(DEFAULT_THEMES))("%s resolves near-monochrome in both modes", (name: string) => {
+  test.each(Object.keys(DEFAULT_THEMES))("%s carries color at the cast saturation in both modes", (name: string) => {
+    // The designed ramp keeps every token at or under the cast saturation.
+    // Identity tokens (statuses, accents, spine signals) are the loudest;
+    // structural ink stays quieter. The cap is the loudest a single token may
+    // get — a mid-lightness identity rung at full cast saturation.
     for (const mode of THEME_MODES) {
-      const theme = resolveTheme(DEFAULT_THEMES[name]!, mode)
+      const theme = resolveTheme(DEFAULT_THEMES[name]!, mode, { mono: "full" })
       for (const [token, value] of Object.entries(theme)) {
         if (!value || typeof value !== "object" || typeof (value as RGBA).r !== "number") continue
         const color = value as RGBA
         if (color.a === 0) continue
         const spread = Math.max(color.r, color.g, color.b) - Math.min(color.r, color.g, color.b)
-        expect(spread, `${name}/${mode}/${String(token)} spread ${spread.toFixed(3)}`).toBeLessThanOrEqual(0.17)
+        expect(spread, `${name}/${mode}/${String(token)} spread ${spread.toFixed(3)}`).toBeLessThanOrEqual(0.85)
       }
     }
   })
 
-  test.each(Object.keys(DEFAULT_THEMES))("%s keeps surfaces and prose ink neutral", (name: string) => {
+  test.each(Object.keys(DEFAULT_THEMES))("%s keeps structural ink on the theme cast", (name: string) => {
     for (const mode of THEME_MODES) {
-      const theme = resolveTheme(DEFAULT_THEMES[name]!, mode)
+      const theme = resolveTheme(DEFAULT_THEMES[name]!, mode, { mono: "full" })
       for (const token of [
         "background",
         "backgroundPanel",
@@ -480,7 +486,7 @@ describe("monochrome palette", () => {
       ] as const) {
         const color = theme[token]
         const spread = Math.max(color.r, color.g, color.b) - Math.min(color.r, color.g, color.b)
-        expect(spread, `${name}/${mode}/${token} spread ${spread.toFixed(3)}`).toBeLessThanOrEqual(0.06)
+        expect(spread, `${name}/${mode}/${token} spread ${spread.toFixed(3)}`).toBeLessThanOrEqual(0.16)
       }
     }
   })
@@ -589,5 +595,31 @@ describe("theme lint and picker character", () => {
     const gray = { ...base, theme: { ...base.theme, accent: "#808080" } } as unknown as ThemeJson
     expect(themeCharacter("arcana", gray)).toBe("neutral")
     expect(themeCharacter("my-custom", base)).toContain("custom")
+  })
+})
+
+describe("theme color signature", () => {
+  test("identical resolves share a signature, so style holders stay stable", () => {
+    const first = resolveTheme(DEFAULT_THEMES.arcana!, "dark")
+    const second = resolveTheme(DEFAULT_THEMES.arcana!, "dark")
+    expect(first).not.toBe(second)
+    expect(themeColorSignature(first as unknown as Record<string, unknown>)).toBe(
+      themeColorSignature(second as unknown as Record<string, unknown>),
+    )
+  })
+
+  test("any color change moves the signature", () => {
+    const base = themeColorSignature(resolveTheme(DEFAULT_THEMES.arcana!, "dark") as unknown as Record<string, unknown>)
+    const changed = { ...DEFAULT_THEMES.arcana!, theme: { ...DEFAULT_THEMES.arcana!.theme, accent: "#ff8800" } }
+    const next = themeColorSignature(resolveTheme(changed, "dark") as unknown as Record<string, unknown>)
+    expect(next).not.toBe(base)
+  })
+
+  test("mode changes move the signature", () => {
+    const dark = themeColorSignature(resolveTheme(DEFAULT_THEMES.arcana!, "dark") as unknown as Record<string, unknown>)
+    const light = themeColorSignature(
+      resolveTheme(DEFAULT_THEMES.arcana!, "light") as unknown as Record<string, unknown>,
+    )
+    expect(light).not.toBe(dark)
   })
 })

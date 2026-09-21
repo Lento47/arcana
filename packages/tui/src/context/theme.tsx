@@ -15,8 +15,10 @@ import {
   setSystemTheme,
   subscribeThemes,
   terminalMode,
+  themeColorSignature,
   tint,
   upsertTheme,
+  type MonoMode,
   type ThemeJson,
 } from "../theme"
 import { createEffect, createMemo, onCleanup, onMount } from "solid-js"
@@ -268,24 +270,37 @@ export const { use: useTheme, provider: ThemeProvider, context: ThemeContext } =
       themeRefreshTimeouts.length = 0
     })
 
+    // The config sets the mono level; the picker can override it per session
+    // (persisted in KV) so the strength can be judged live.
+    const mono = (): MonoMode =>
+      (kv.get("theme_monochrome") as MonoMode | undefined) ?? config.theme_monochrome ?? "full"
+
     const values = createMemo(() => {
-      const mono = config.theme_monochrome
+      const monoMode = mono()
       const active = store.themes[store.active]
-      if (active) return resolveTheme(active, store.mode, { mono })
+      if (active) return resolveTheme(active, store.mode, { mono: monoMode })
 
       const saved = kv.get("theme")
       if (typeof saved === "string") {
         const theme = store.themes[saved]
-        if (theme) return resolveTheme(theme, store.mode, { mono })
+        if (theme) return resolveTheme(theme, store.mode, { mono: monoMode })
       }
 
-      return resolveTheme(store.themes.arcana ?? store.themes.opencode ?? store.themes.arcana, store.mode, { mono })
+      return resolveTheme(store.themes.arcana ?? store.themes.opencode ?? store.themes.arcana, store.mode, {
+        mono: monoMode,
+      })
     })
 
     createEffect(() => renderer.setBackgroundColor(values().background))
 
-    const syntax = createSyntaxStyleMemo(() => generateSyntax(values()))
-    const subtleSyntax = createSyntaxStyleMemo(() => generateSubtleSyntax(values()))
+    const syntax = createSyntaxStyleMemo(
+      () => generateSyntax(values()),
+      () => themeColorSignature(values() as unknown as Record<string, unknown>),
+    )
+    const subtleSyntax = createSyntaxStyleMemo(
+      () => generateSubtleSyntax(values()),
+      () => themeColorSignature(values() as unknown as Record<string, unknown>),
+    )
 
     return {
       theme: new Proxy(values(), {
@@ -302,6 +317,10 @@ export const { use: useTheme, provider: ThemeProvider, context: ThemeContext } =
       syntax,
       subtleSyntax,
       mode: () => store.mode,
+      mono,
+      setMono(mode: MonoMode) {
+        kv.set("theme_monochrome", mode)
+      },
       locked: () => store.lock !== undefined,
       lock: () => pin(store.mode),
       unlock: free,
@@ -319,10 +338,11 @@ export const { use: useTheme, provider: ThemeProvider, context: ThemeContext } =
   },
 })
 
-export function createSyntaxStyleMemo(factory: () => SyntaxStyle) {
+export function createSyntaxStyleMemo(factory: () => SyntaxStyle, signature?: () => string) {
   const renderer = useRenderer()
   const retained = new Set<SyntaxStyle>()
   let current: SyntaxStyle | undefined
+  let currentSig: string | undefined
 
   const release = (style: SyntaxStyle) => {
     retained.add(style)
@@ -340,6 +360,19 @@ export function createSyntaxStyleMemo(factory: () => SyntaxStyle) {
   })
 
   return createMemo(() => {
+    // A theme recompute with identical colors (refresh, KV reload, palette
+    // detection) must reuse the previous SyntaxStyle: a new identity forces
+    // every visible markdown/code leaf through re-highlight even though the
+    // pixels would be identical.
+    if (signature) {
+      const sig = signature()
+      if (current !== undefined && sig === currentSig) return current
+      const previous = current
+      current = factory()
+      currentSig = sig
+      if (previous) release(previous)
+      return current
+    }
     const previous = current
     current = factory()
     if (previous) release(previous)

@@ -1,8 +1,10 @@
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { useRenderer } from "@opentui/solid"
+import type { CliRenderer } from "@opentui/core"
 import { useTheme } from "../../context/theme"
 import { useKV } from "../../context/kv"
 import { createWidgetRenderNode } from "./widgets/registry"
+import { themeColorSignature } from "../../theme"
 import { filetype } from "../../util/filetype"
 import type { SpineKind } from "./spine-types"
 import { looksLikeMarkdown, normalizeChatProse, stripMarkdownEmphasis, stripUnpairedEmphasis } from "./chat-prose"
@@ -100,7 +102,7 @@ export function resolveProseMode(input: {
   return "code"
 }
 
-function resolveFiletype(
+export function resolveFiletype(
   bodyLabel: string | undefined,
   summary: string | undefined,
   text: string,
@@ -156,7 +158,26 @@ export function SpineProse(props: {
 }) {
   const { theme, syntax, subtleSyntax } = useTheme()
   const renderer = useRenderer()
-  const widgetRenderNode = createMemo(() => createWidgetRenderNode({ renderer, theme: theme as any }))
+  // renderNode identity is load-bearing: MarkdownRenderable destroys and
+  // rebuilds EVERY block when the callback identity changes, so a theme
+  // recompute with identical colors (refresh, KV reload, palette detection)
+  // would flash the whole answer. Cache per renderer + color signature.
+  const renderNodeCache = new WeakMap<object, Map<string, ReturnType<typeof createWidgetRenderNode>>>()
+  const widgetRenderNode = createMemo(() => {
+    const sig = themeColorSignature(theme as unknown as Record<string, unknown>)
+    let bySig = renderNodeCache.get(renderer)
+    if (!bySig) {
+      bySig = new Map()
+      renderNodeCache.set(renderer, bySig)
+    }
+    const hit = bySig.get(sig)
+    if (hit) return hit
+    // Bound growth: long sessions with many custom themes cycle signatures.
+    if (bySig.size > 64) bySig.delete(bySig.keys().next().value!)
+    const node = createWidgetRenderNode({ renderer: renderer as CliRenderer, theme: theme as any })
+    bySig.set(sig, node)
+    return node
+  })
   const kind = () => props.kind
   const bodyLabel = () => props.bodyLabel
   const hint = () => props.hint
@@ -270,7 +291,28 @@ export function SpineProse(props: {
   // An external session gate outlives rows while the route swaps. Remove this
   // row's pending callback so a late delta cannot publish into a new row.
   onCleanup(() => streamFrame.cancel(streamContentKey))
-  const ft = createMemo(() => resolveFiletype(bodyLabel(), hint(), text(), hint()))
+  const ft = (() => {
+    // A row's filetype never flips mid-stream: resolving from undefined to a
+    // language (or between languages as hints arrive) re-highlights the whole
+    // body with a new parser. Freeze the first resolution while the text grows
+    // monotonically; re-resolve only if the text is replaced outright.
+    let frozen: string | undefined
+    let frozenText = ""
+    return createMemo(() => {
+      const currentText = text()
+      if (!currentText.startsWith(frozenText)) {
+        frozen = resolveFiletype(bodyLabel(), hint(), currentText, hint())
+        frozenText = currentText
+      } else if (frozen === undefined) {
+        const next = resolveFiletype(bodyLabel(), hint(), currentText, hint())
+        if (next !== undefined) {
+          frozen = next
+          frozenText = currentText
+        }
+      }
+      return frozen
+    })
+  })()
   // Warm a code body's parser as soon as its filetype is known, so a cold
   // compile overlaps model/tool latency instead of the first visible frame.
   createEffect(() => {

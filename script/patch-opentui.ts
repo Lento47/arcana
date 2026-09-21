@@ -680,6 +680,134 @@ const MD_SYNC_ALWAYS_TO = `  createInitialStyledText(token, baseGroup) {
     const chunks = [];`
 
 /**
+ * Twelfth pass: defer the highlight of a trailing unclosed fence while
+ * streaming. Tree-sitter tokenizes incomplete code differently on every
+ * prefix (an identifier gains `function`, brackets appear, strings have no
+ * capture until the quote closes), so each publish visibly restyled the
+ * trailing fence even though the retained frame bridged the async gap. The
+ * trailing unclosed fence now paints plain body ink while the turn streams
+ * and highlights exactly once when the fence closes or streaming ends.
+ */
+const DEFER_FENCE_MARKER = "// [arcana] defer trailing unclosed-fence highlight (patch-opentui.ts)"
+const MD_DEFER_FENCE_FROM = `    if (token.type === "code") {
+      this.applyCodeBlockRenderable(state.renderable, token, marginBottom);
+      return;
+    }`
+const MD_DEFER_FENCE_TO = `    if (token.type === "code") {
+      this.applyCodeBlockRenderable(state.renderable, token, marginBottom);
+      if (state.renderable instanceof CodeRenderable) {
+        ${DEFER_FENCE_MARKER}
+        const arcanaRaw = typeof token.raw === "string" ? token.raw : "";
+        const arcanaText = typeof token.text === "string" ? token.text : "";
+        const arcanaFenced = arcanaRaw.startsWith("\\x60\\x60\\x60") || arcanaRaw.startsWith("~~~");
+        let arcanaUnclosed = false;
+        if (this._streaming && nextToken === undefined && arcanaFenced) {
+          arcanaUnclosed = true;
+          const arcanaNl = arcanaRaw.indexOf("\\n");
+          const arcanaBody = arcanaNl === -1 ? "" : arcanaRaw.slice(arcanaNl + 1);
+          for (const arcanaLine of arcanaBody.split("\\n")) {
+            const arcanaTrimmed = arcanaLine.trim();
+            if (
+              arcanaTrimmed.length >= 3 &&
+              (arcanaTrimmed[0] === "\\x60" || arcanaTrimmed[0] === "~") &&
+              arcanaTrimmed === arcanaTrimmed[0].repeat(arcanaTrimmed.length)
+            ) {
+              arcanaUnclosed = false;
+              break;
+            }
+          }
+        }
+        const arcanaLeaf = state.renderable;
+        if (arcanaUnclosed) {
+          arcanaLeaf._arcanaDeferHighlight = true;
+          arcanaLeaf._arcanaFirstPaintHoldArmed = false;
+          arcanaLeaf._arcanaClearFirstPaintHold();
+          arcanaLeaf._arcanaClearDeadline();
+          arcanaLeaf._highlightsDirty = false;
+          arcanaLeaf.clearPendingHighlight();
+          arcanaLeaf.textBuffer.setText(arcanaText);
+          arcanaLeaf.setRenderedLineSources(undefined);
+          arcanaLeaf.updateTextInfo();
+          arcanaLeaf._shouldRenderTextBuffer = arcanaText.length > 0;
+          arcanaLeaf.requestRender();
+        } else if (arcanaLeaf._arcanaDeferHighlight) {
+          arcanaLeaf._arcanaDeferHighlight = false;
+          arcanaLeaf.invalidateHighlights();
+          arcanaLeaf.requestRender();
+        }
+      }
+      return;
+    }`
+const MD_DEFER_FENCE_CREATE_FROM = `  createCodeRenderable(token, id, marginBottom = 0) {
+    return new CodeRenderable(this.ctx, {
+      id,
+      content: token.text,
+      filetype: infoStringToFiletype(token.lang ?? ""),
+      syntaxStyle: this._syntaxStyle,
+      fg: this._fg,
+      bg: this._bg,
+      conceal: this._concealCode,
+      drawUnstyledText: false, // [arcana] retain last styled frame, no flicker (patch-opentui.ts)
+      streaming: this._streaming,
+      treeSitterClient: this._treeSitterClient,
+      width: "100%",
+      marginBottom
+    });
+  }`
+const MD_DEFER_FENCE_CREATE_TO = `  createCodeRenderable(token, id, marginBottom = 0) {
+    const arcanaLeaf = new CodeRenderable(this.ctx, {
+      id,
+      content: token.text,
+      filetype: infoStringToFiletype(token.lang ?? ""),
+      syntaxStyle: this._syntaxStyle,
+      fg: this._fg,
+      bg: this._bg,
+      conceal: this._concealCode,
+      drawUnstyledText: false, // [arcana] retain last styled frame, no flicker (patch-opentui.ts)
+      streaming: this._streaming,
+      treeSitterClient: this._treeSitterClient,
+      width: "100%",
+      marginBottom
+    });
+    if (this._streaming && typeof token.raw === "string") {
+      ${DEFER_FENCE_MARKER}
+      const arcanaCreateFenced =
+        token.raw.startsWith("\\x60\\x60\\x60") || token.raw.startsWith("~~~");
+      if (arcanaCreateFenced) {
+        let arcanaCreateUnclosed = true;
+        const arcanaCreateNl = token.raw.indexOf("\\n");
+        const arcanaCreateBody = arcanaCreateNl === -1 ? "" : token.raw.slice(arcanaCreateNl + 1);
+        for (const arcanaCreateLine of arcanaCreateBody.split("\\n")) {
+          const arcanaCreateTrimmed = arcanaCreateLine.trim();
+          if (
+            arcanaCreateTrimmed.length >= 3 &&
+            (arcanaCreateTrimmed[0] === "\\x60" || arcanaCreateTrimmed[0] === "~") &&
+            arcanaCreateTrimmed === arcanaCreateTrimmed[0].repeat(arcanaCreateTrimmed.length)
+          ) {
+            arcanaCreateUnclosed = false;
+            break;
+          }
+        }
+        if (arcanaCreateUnclosed) {
+          const arcanaCreateText = typeof token.text === "string" ? token.text : "";
+          arcanaLeaf._arcanaDeferHighlight = true;
+          arcanaLeaf._arcanaFirstPaintHoldArmed = false;
+          arcanaLeaf._arcanaClearFirstPaintHold();
+          arcanaLeaf._arcanaClearDeadline();
+          arcanaLeaf._highlightsDirty = false;
+          arcanaLeaf.clearPendingHighlight();
+          arcanaLeaf.textBuffer.setText(arcanaCreateText);
+          arcanaLeaf.setRenderedLineSources(undefined);
+          arcanaLeaf.updateTextInfo();
+          arcanaLeaf._shouldRenderTextBuffer = arcanaCreateText.length > 0;
+          arcanaLeaf.requestRender();
+        }
+      }
+    }
+    return arcanaLeaf;
+  }`
+
+/**
  * Eighth pass: hold the first code paint for a WARM parser. A brand-new code
  * leaf painted plain, and the worker commit (2-6 ms warm) restyled it one frame
  * later — every code body flashed plain→coloured. Leaves whose filetype the
@@ -1576,6 +1704,67 @@ for (const bundle of collectEntryBundles()) {
 let diffTargets = 0
 let diffReady = 0
 let diffPatched = 0
+
+let deferTargets = 0
+let deferReady = 0
+let deferPatched = 0
+
+for (const bundle of collectEntryBundles()) {
+  const version = versionOf(bundle)
+  if (version !== TARGET_VERSION) {
+    skipped++
+    continue
+  }
+
+  deferTargets++
+  const source = readFileSync(bundle, "utf-8")
+  if (source.includes(DEFER_FENCE_MARKER) && source.includes("arcanaCreateUnclosed")) {
+    console.log(`[patch-opentui] trailing-fence defer already patched ${bundle}`)
+    deferReady++
+    skipped++
+    continue
+  }
+  // Migrate bundles patched by the first defer revision (update path only, no
+  // hold disarm, no creation path): bring them to the full patch.
+  if (source.includes(DEFER_FENCE_MARKER)) {
+    const disarmFrom = `          arcanaLeaf._arcanaDeferHighlight = true;
+          arcanaLeaf._highlightsDirty = false;`
+    const disarmTo = `          arcanaLeaf._arcanaDeferHighlight = true;
+          arcanaLeaf._arcanaFirstPaintHoldArmed = false;
+          arcanaLeaf._arcanaClearFirstPaintHold();
+          arcanaLeaf._arcanaClearDeadline();
+          arcanaLeaf._highlightsDirty = false;`
+    const createOccurrences = source.split(MD_DEFER_FENCE_CREATE_FROM).length - 1
+    if (!source.includes(disarmFrom) || createOccurrences !== 1) {
+      console.error(`[patch-opentui] trailing-fence migration anchors missing in ${bundle}`)
+      process.exitCode = 1
+      continue
+    }
+    const next = source.replace(disarmFrom, disarmTo).replace(MD_DEFER_FENCE_CREATE_FROM, MD_DEFER_FENCE_CREATE_TO)
+    writeFileSync(bundle, next, "utf-8")
+    console.log(`[patch-opentui] migrated trailing-fence defer ${bundle}`)
+    deferReady++
+    deferPatched++
+    continue
+  }
+  const occurrences = source.split(MD_DEFER_FENCE_FROM).length - 1
+  if (occurrences !== 1) {
+    console.error(`[patch-opentui] trailing-fence anchor must be unique (${occurrences}) in ${bundle}`)
+    process.exitCode = 1
+    continue
+  }
+  const createOccurrences = source.split(MD_DEFER_FENCE_CREATE_FROM).length - 1
+  if (createOccurrences !== 1) {
+    console.error(`[patch-opentui] trailing-fence create anchor must be unique (${createOccurrences}) in ${bundle}`)
+    process.exitCode = 1
+    continue
+  }
+  const next = source.replace(MD_DEFER_FENCE_FROM, MD_DEFER_FENCE_TO).replace(MD_DEFER_FENCE_CREATE_FROM, MD_DEFER_FENCE_CREATE_TO)
+  writeFileSync(bundle, next, "utf-8")
+  console.log(`[patch-opentui] patched trailing-fence defer ${bundle}`)
+  deferReady++
+  deferPatched++
+}
 for (const bundle of collectEntryBundles()) {
   const version = versionOf(bundle)
   if (version !== TARGET_VERSION) {
@@ -1696,6 +1885,12 @@ if (diffTargets === 0) {
   console.error(`[patch-opentui] patched ${diffReady}/${diffTargets} diff unstyled frame bundle(s)`)
   process.exitCode = 1
 }
+if (deferTargets === 0) {
+  console.log(`[patch-opentui] no @opentui/core ${TARGET_VERSION} entry bundles found for trailing-fence defer`)
+} else if (deferReady !== deferTargets) {
+  console.error(`[patch-opentui] patched ${deferReady}/${deferTargets} trailing-fence defer bundle(s)`)
+  process.exitCode = 1
+}
 if (solidTargets === 0) {
   console.log(`[patch-opentui] no @opentui/solid ${TARGET_VERSION} transform found to patch`)
 } else if (solidReady !== solidTargets) {
@@ -1703,5 +1898,5 @@ if (solidTargets === 0) {
   process.exitCode = 1
 }
 console.log(
-  `[patch-opentui] loader_patched=${patched} markdown_patched=${markdownPatched} code_patched=${codePatched} parse_patched=${parsePatched} tsclient_patched=${tsClientPatched} streaming_patched=${streamingPatched} diff_patched=${diffPatched} blockstyle_patched=${blockStylePatched} syncframe_patched=${syncAlwaysPatched} solid_patched=${solidPatched} skipped=${skipped}`,
+  `[patch-opentui] loader_patched=${patched} markdown_patched=${markdownPatched} code_patched=${codePatched} parse_patched=${parsePatched} tsclient_patched=${tsClientPatched} streaming_patched=${streamingPatched} diff_patched=${diffPatched} blockstyle_patched=${blockStylePatched} syncframe_patched=${syncAlwaysPatched} defer_patched=${deferPatched} solid_patched=${solidPatched} skipped=${skipped}`,
 )
