@@ -1123,7 +1123,12 @@ export function options(input: {
   }
 
   if (input.model.providerID === "openai" || input.providerOptions?.setCacheKey) {
-    result["promptCacheKey"] = input.sessionID
+    // Native OpenAI routes (and Azure) read the camelCase provider option.
+    // OpenAI-compatible gateways spread provider options into the wire body
+    // and expect the Chat Completions field name, so a camelCase key would be
+    // silently ignored and never improve cache affinity.
+    if (input.model.api.npm === "@ai-sdk/openai-compatible") result["prompt_cache_key"] = input.sessionID
+    else result["promptCacheKey"] = input.sessionID
   }
 
   if (input.model.api.npm === "@ai-sdk/google" || input.model.api.npm === "@ai-sdk/google-vertex") {

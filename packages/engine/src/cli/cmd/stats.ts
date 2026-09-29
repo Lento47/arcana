@@ -4,6 +4,7 @@ import { Session } from "@/session/session"
 import { NotFoundError } from "@/storage/storage"
 import { Database } from "@arcana/core/database/database"
 import { SessionTable } from "@arcana/core/session/sql"
+import { SessionV1 } from "@arcana/core/v1/session"
 import { Project } from "@/project/project"
 import { InstanceRef } from "@/effect/instance-ref"
 
@@ -44,6 +45,36 @@ export interface SessionStats {
   costPerDay: number
   tokensPerSession: number
   medianTokensPerSession: number
+}
+
+export type UsageTokens = {
+  input: number
+  output: number
+  reasoning: number
+  cache: { read: number; write: number }
+}
+
+/**
+ * Sum step-finish parts for one assistant message. The session total
+ * accumulates every step (V2 projector), but per-message `info.tokens` is only
+ * the last step — so model rows must read the parts to stay consistent with
+ * session totals on multi-step (tool-loop) turns.
+ */
+export function stepFinishUsage(parts: readonly SessionV1.Part[]): { tokens: UsageTokens; cost: number } | undefined {
+  const tokens: UsageTokens = { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
+  let cost = 0
+  let found = false
+  for (const part of parts) {
+    if (part.type !== "step-finish") continue
+    found = true
+    cost += part.cost || 0
+    tokens.input += part.tokens.input || 0
+    tokens.output += part.tokens.output || 0
+    tokens.reasoning += part.tokens.reasoning || 0
+    tokens.cache.read += part.tokens.cache?.read || 0
+    tokens.cache.write += part.tokens.cache?.write || 0
+  }
+  return found ? { tokens, cost } : undefined
 }
 
 export const StatsCommand = effectCmd({
@@ -190,15 +221,26 @@ const aggregateSessionStats = Effect.fn("Cli.stats.aggregate")(function* (
                 cost: 0,
               }
             }
-            sessionModelUsage[modelKey].messages++
-            sessionModelUsage[modelKey].cost += message.info.cost || 0
+            const entry = sessionModelUsage[modelKey]
+            entry.messages++
 
-            if (message.info.tokens) {
-              sessionModelUsage[modelKey].tokens.input += message.info.tokens.input || 0
-              sessionModelUsage[modelKey].tokens.output +=
-                (message.info.tokens.output || 0) + (message.info.tokens.reasoning || 0)
-              sessionModelUsage[modelKey].tokens.cache.read += message.info.tokens.cache?.read || 0
-              sessionModelUsage[modelKey].tokens.cache.write += message.info.tokens.cache?.write || 0
+            // Sum every step of the turn (session-total parity); fall back to
+            // the message's last-step usage when no step-finish parts exist.
+            const stepUsage = stepFinishUsage(message.parts)
+            if (stepUsage) {
+              entry.cost += stepUsage.cost
+              entry.tokens.input += stepUsage.tokens.input
+              entry.tokens.output += stepUsage.tokens.output + stepUsage.tokens.reasoning
+              entry.tokens.cache.read += stepUsage.tokens.cache.read
+              entry.tokens.cache.write += stepUsage.tokens.cache.write
+            } else {
+              entry.cost += message.info.cost || 0
+              if (message.info.tokens) {
+                entry.tokens.input += message.info.tokens.input || 0
+                entry.tokens.output += (message.info.tokens.output || 0) + (message.info.tokens.reasoning || 0)
+                entry.tokens.cache.read += message.info.tokens.cache?.read || 0
+                entry.tokens.cache.write += message.info.tokens.cache?.write || 0
+              }
             }
           }
 

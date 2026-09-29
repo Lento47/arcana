@@ -432,10 +432,17 @@ export const getUsage = (input: { model: Provider.Model; usage: Usage; metadata?
     ),
   )
 
-  // AI SDK v6 normalized inputTokens to include cached tokens across all providers
-  // (including Anthropic/Bedrock which previously excluded them). Always subtract cache
-  // tokens to get the non-cached input count for separate cost calculation.
-  const adjustedInputTokens = safe(inputTokens - cacheReadInputTokens - cacheWriteInputTokens)
+  // Prefer the provider-advertised non-cached count when present: AI SDK v6
+  // surfaces `inputTokenDetails.noCacheTokens` (mapped to nonCachedInputTokens
+  // by the session LLM adapter) and native protocols populate the same field.
+  // The subtraction path stays for providers that only report the inclusive
+  // input total; it is correct exactly when that total includes cache tokens.
+  const explicitNonCached = input.usage.nonCachedInputTokens
+  const adjustedInputTokens = safe(
+    explicitNonCached !== undefined && Number.isFinite(explicitNonCached)
+      ? explicitNonCached
+      : inputTokens - cacheReadInputTokens - cacheWriteInputTokens,
+  )
 
   const total = input.usage.totalTokens
 

@@ -118,3 +118,42 @@ describe("truncateMiddle", () => {
     expect(r.includes("…")).toBe(true)
   })
 })
+
+describe("ANSI escapes", () => {
+  // ESC is built, not written literally: control characters do not survive
+  // every transport between here and the file.
+  const ESC = String.fromCharCode(27)
+  const RED = `${ESC}[31mhi${ESC}[0m`
+  const GRAY_TEXT = `${ESC}[38;2;30;30;30mhello world${ESC}[0m`
+
+  test("displayWidth ignores SGR color sequences", () => {
+    expect(displayWidth(RED)).toBe(2)
+    expect(displayWidth(GRAY_TEXT)).toBe(11)
+  })
+
+  test("truncate never splits an escape sequence", () => {
+    // The reported defect: cutting the truecolor opener mid-sequence leaked a
+    // literal tail of it into the row. The opener must survive whole or not at
+    // all — startsWith proves it was not split.
+    const r = truncate(GRAY_TEXT, 7)
+    expect(r.startsWith(`${ESC}[38;2;30;30;30m`)).toBe(true)
+    expect(r).toBe(`${ESC}[38;2;30;30;30mhello${ESC}[0m…`)
+    expect(displayWidth(r)).toBe(6)
+  })
+
+  test("truncate keeps balanced color codes around the cut", () => {
+    expect(truncate(RED, 5)).toBe(RED)
+    expect(truncate(`${ESC}[31mhello world${ESC}[0m`, 7)).toBe(`${ESC}[31mhello${ESC}[0m…`)
+  })
+
+  test("non-SGR control sequences are dropped, not leaked", () => {
+    expect(truncate(`ab${ESC}[2Kcd`, 10)).toBe(`ab${ESC}[2Kcd`)
+    expect(truncate(`ab${ESC}[2Kcdefgh`, 5)).toBe("abcd…")
+    expect(displayWidth(`ab${ESC}[2Kcd`)).toBe(4)
+  })
+
+  test("truncateLeft keeps escapes whole from the right", () => {
+    const r = truncateLeft(GRAY_TEXT, 7)
+    expect(r).toBe(`… world${ESC}[0m`)
+  })
+})

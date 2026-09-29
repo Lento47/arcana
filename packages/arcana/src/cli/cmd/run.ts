@@ -528,6 +528,11 @@ export const RunCommand: CommandModule = {
         tool_calls: result.toolCalls,
         input_tokens: result.inputTokens,
         output_tokens: result.outputTokens,
+        input_uncached_tokens: result.inputUncachedTokens,
+        cache_read_tokens: result.cacheReadTokens,
+        cache_write_tokens: result.cacheWriteTokens,
+        output_visible_tokens: result.outputVisibleTokens,
+        reasoning_tokens: result.reasoningTokens,
       })
 
       return result.content

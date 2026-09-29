@@ -172,7 +172,7 @@ export const Info = Schema.Struct({
   lexicon: Schema.optional(LexiconVoice).annotate({ description: "Interface voice (arcane | plain)" }),
   theme_monochrome: Schema.optional(Schema.Literals(["off", "soft", "full"])).annotate({
     description:
-      "Monochrome strength for every theme: off keeps palettes as authored, soft desaturates them, full re-draws them on the designed ramp (default: full)",
+      "Monochrome strength for every theme: off keeps palettes as authored (default), soft desaturates them, full re-draws them on the designed ramp",
   }),
   keybinds: Schema.optional(TuiKeybind.KeybindOverrides),
   plugin: Schema.optional(Schema.Array(PluginSpec)),
@@ -272,7 +272,7 @@ export function resolve(input: Info, options: ResolveOptions): Resolved {
     },
     shell: input.shell ?? "command-spine",
     lexicon: input.lexicon ?? "arcane",
-    theme_monochrome: input.theme_monochrome ?? "full",
+    theme_monochrome: input.theme_monochrome ?? "off",
     keybinds: createBindingLookup(TuiKeybind.toBindingConfig(TuiKeybind.parse(keybinds)), {
       commandMap: TuiKeybind.CommandMap,
       bindingDefaults: TuiKeybind.bindingDefaults(),

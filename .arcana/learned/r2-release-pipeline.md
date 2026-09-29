@@ -69,3 +69,5 @@ build.yml (triggered by tag push):
 
 - [[proxy-origin-check]] — Same Cloudflare infra, different security surface
 - [[arcana-site-seo-spa]] — The site that documents releases at `/changelog`
+
+Related: [[demo-test-guard-bypass-for-execution-verification]] [[deployment-symbol-restriction]]

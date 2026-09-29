@@ -14,6 +14,10 @@ export type SessionMetricSnapshot = {
   ttftMs?: number
   cacheReadTokens?: number
   cacheWriteTokens?: number
+  /** Fresh (non-cached) share of the last turn's prompt tokens, 0–100. */
+  cacheMissPercentTurn?: number
+  /** Fresh (non-cached) share of the session's cumulative prompt tokens, 0–100. */
+  cacheMissPercentSession?: number
   costUsd?: number
   pressure?: ContextPressureLabel
   freeRemaining?: string
@@ -28,6 +32,7 @@ type MetricKey =
   | "ttft"
   | "cacheRead"
   | "cacheWrite"
+  | "cacheMiss"
   | "free"
 
 type MetricSegment = {
@@ -51,6 +56,31 @@ export function compactMetricCount(value: number | undefined): string | undefine
   if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1).replace(/\.0$/, "")}m`
   if (count >= 1_000) return `${(count / 1_000).toFixed(1).replace(/\.0$/, "")}k`
   return String(Math.round(count))
+}
+
+/** Token buckets needed for cache ratio math (uncached input + read + write = billed input). */
+export type CacheTokens = {
+  input?: number
+  cache?: { read?: number; write?: number }
+}
+
+const tokenCount = (value: number | undefined): number =>
+  typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0
+
+/**
+ * Share of prompt tokens served fresh (not from cache), 0–100. Cache-write
+ * tokens are fresh too — they populate the cache but are billed as misses this
+ * turn. Returns undefined when no input tokens are known, so cold sessions do
+ * not render a meaningless 0%.
+ */
+export function cacheMissPercent(tokens: CacheTokens | undefined): number | undefined {
+  if (!tokens) return undefined
+  const uncached = tokenCount(tokens.input)
+  const read = tokenCount(tokens.cache?.read)
+  const write = tokenCount(tokens.cache?.write)
+  const total = uncached + read + write
+  if (total <= 0) return undefined
+  return Math.round(((uncached + write) / total) * 100)
 }
 
 function joinSegments(segments: readonly MetricSegment[]): string {
@@ -93,6 +123,19 @@ function makeSegments(snapshot: SessionMetricSnapshot): MetricSegment[] {
   const cacheWrite = compactMetricCount(snapshot.cacheWriteTokens)
   if (cacheWrite) segments.push({ key: "cacheWrite", text: `${cacheWrite}↻` })
 
+  const missTurn = snapshot.cacheMissPercentTurn
+  const missSession = snapshot.cacheMissPercentSession
+  if (missTurn !== undefined || missSession !== undefined) {
+    const parts: string[] = []
+    if (missTurn !== undefined) parts.push(`${missTurn}% turn`)
+    if (missSession !== undefined) parts.push(`${missSession}% sess`)
+    segments.push({
+      key: "cacheMiss",
+      text: `miss ${parts.join(" · ")}`,
+      short: missTurn !== undefined ? `miss ${missTurn}%` : `miss ${missSession}%`,
+    })
+  }
+
   const cost = typeof snapshot.costUsd === "number" && Number.isFinite(snapshot.costUsd) && snapshot.costUsd > 0
     ? Locale.currency(snapshot.costUsd)
     : undefined
@@ -113,7 +156,7 @@ function makeSegments(snapshot: SessionMetricSnapshot): MetricSegment[] {
   return segments
 }
 
-const OPTIONAL_DROP_ORDER: readonly MetricKey[] = ["free", "cacheWrite", "cacheRead", "ttft", "flow"]
+const OPTIONAL_DROP_ORDER: readonly MetricKey[] = ["free", "cacheWrite", "cacheRead", "cacheMiss", "ttft", "flow"]
 
 function withoutKey(segments: readonly MetricSegment[], key: MetricKey): MetricSegment[] {
   return segments.filter((segment) => segment.key !== key)

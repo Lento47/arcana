@@ -4,6 +4,7 @@ import { testRender, type JSX } from "@opentui/solid"
 import { describe, expect, test } from "bun:test"
 import { displayWidth } from "../../src/util/locale"
 import {
+  cacheMissPercent,
   formatMetricsBorder,
   formatSessionMetrics,
   METRICS_BORDER_OVERHEAD,
@@ -17,8 +18,11 @@ const reference = {
   outputTokens: 3_100,
   totalTokens: 42_800,
   ttftMs: 340,
+  // Session-scoped counters, aligned with input/output/total above.
   cacheReadTokens: 8_200,
   cacheWriteTokens: 2_100,
+  cacheMissPercentTurn: 64,
+  cacheMissPercentSession: 71,
   costUsd: 0.08,
 }
 
@@ -26,8 +30,22 @@ describe("command-spine metrics formatting", () => {
   test("matches the wide reference ordering and spacing", () => {
     const text = formatSessionMetrics(reference)
     expect(text).toBe(
-      `⌬ 4m 12s  ·  12.4k↓  3.1k↑  ·  42.8k total  ·  340ms ttft  ·  8.2k↺  ·  2.1k↻  ·  ${new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(0.08)}`,
+      `⌬ 4m 12s  ·  12.4k↓  3.1k↑  ·  42.8k total  ·  340ms ttft  ·  8.2k↺  ·  2.1k↻  ·  miss 64% turn · 71% sess  ·  ${new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(0.08)}`,
     )
+  })
+
+  test("keeps the cache miss share after raw cache counts collapse", () => {
+    const text = formatSessionMetrics(reference, 100)
+    expect(text).toContain("miss 64% turn · 71% sess")
+    expect(text).not.toContain("↺")
+    expect(text).not.toContain("↻")
+    expect(displayWidth(text)).toBeLessThanOrEqual(100)
+  })
+
+  test("session-scale cache counters use the compact form", () => {
+    const text = formatSessionMetrics({ ...reference, cacheReadTokens: 1_100_000, cacheWriteTokens: 20_000 })
+    expect(text).toContain("1.1m↺")
+    expect(text).toContain("20k↻")
   })
 
   test("uses priority collapse without wrapping", () => {
@@ -47,6 +65,25 @@ describe("command-spine metrics formatting", () => {
     expect(text).toContain("ctx now")
     expect(text).not.toContain("ttft")
     expect(displayWidth(text)).toBeLessThanOrEqual(45)
+  })
+})
+
+describe("cacheMissPercent", () => {
+  test("counts uncached and cache-write tokens as misses", () => {
+    expect(cacheMissPercent({ input: 100 })).toBe(100)
+    expect(cacheMissPercent({ input: 0, cache: { read: 0, write: 20 } })).toBe(100)
+    expect(cacheMissPercent({ input: 50, cache: { read: 50 } })).toBe(50)
+    expect(cacheMissPercent({ input: 1, cache: { read: 2 } })).toBe(33)
+  })
+
+  test("fully cached input is 0% miss", () => {
+    expect(cacheMissPercent({ cache: { read: 100 } })).toBe(0)
+  })
+
+  test("returns undefined without any known input tokens", () => {
+    expect(cacheMissPercent(undefined)).toBeUndefined()
+    expect(cacheMissPercent({})).toBeUndefined()
+    expect(cacheMissPercent({ input: 0, cache: { read: 0, write: 0 } })).toBeUndefined()
   })
 })
 

@@ -43,15 +43,26 @@ describe("Arcana token ledger", () => {
     expect(reconcileTokenEntries("act_1", entries).status).toBe("exact")
   })
 
-  test("detects over-budget actual usage", () => {
+  test("detects under-estimated actual usage", () => {
     const entries = [
       createTokenLedgerEntry({ id: "tok_est", action_id: "act_1", provider: "test", model: "test-model", phase: "estimate", token_class: "input_uncached", estimated_tokens: 100 }),
       createTokenLedgerEntry({ id: "tok_actual", action_id: "act_1", provider: "test", model: "test-model", phase: "actual", token_class: "input_uncached", actual_tokens: 125 }),
     ]
 
     const reconciliation = reconcileTokenEntries("act_1", entries)
-    expect(reconciliation.status).toBe("over_estimate")
+    expect(reconciliation.status).toBe("under_estimate")
     expect(reconciliation.delta).toBe(25)
+  })
+
+  test("detects over-estimated actual usage", () => {
+    const entries = [
+      createTokenLedgerEntry({ id: "tok_est", action_id: "act_2", provider: "test", model: "test-model", phase: "estimate", token_class: "input_uncached", estimated_tokens: 100 }),
+      createTokenLedgerEntry({ id: "tok_actual", action_id: "act_2", provider: "test", model: "test-model", phase: "actual", token_class: "input_uncached", actual_tokens: 80 }),
+    ]
+
+    const reconciliation = reconcileTokenEntries("act_2", entries)
+    expect(reconciliation.status).toBe("over_estimate")
+    expect(reconciliation.delta).toBe(-20)
   })
 
   test("detects missing estimates", () => {

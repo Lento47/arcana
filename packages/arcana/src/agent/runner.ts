@@ -1,6 +1,6 @@
 import * as fs from "node:fs"
 import { randomUUID } from "node:crypto"
-import { generateText, Output, streamText, type ModelMessage } from "ai"
+import { generateText, Output, streamText, type LanguageModelUsage, type ModelMessage } from "ai"
 import { z } from "zod"
 import { createOpenAI } from "@ai-sdk/openai"
 import { createAnthropic } from "@ai-sdk/anthropic"
@@ -982,8 +982,50 @@ export class AgentRunner {
 
     let totalInput = 0
     let totalOutput = 0
+    let totalInputUncached = 0
+    let totalCacheRead = 0
+    let totalCacheWrite = 0
+    let totalOutputVisible = 0
+    let totalReasoning = 0
     let toolCalls = 0
     let finalContent = ""
+
+    const turnResult = (): TurnResult => ({
+      content: finalContent,
+      toolCalls,
+      inputTokens: totalInput,
+      outputTokens: totalOutput,
+      inputUncachedTokens: totalInputUncached,
+      cacheReadTokens: totalCacheRead,
+      cacheWriteTokens: totalCacheWrite,
+      outputVisibleTokens: totalOutputVisible,
+      reasoningTokens: totalReasoning,
+    })
+
+    /**
+     * Accumulate one provider call into both the legacy inclusive totals
+     * (inputTokens/outputTokens) and the normalized buckets used by RunProof
+     * and playbook §48 cost accounting. AI SDK v6 exposes explicit
+     * noCache/text details; subtraction is only a fallback for providers that
+     * report inclusive totals without a breakdown.
+     */
+    const addUsage = (usage: LanguageModelUsage | undefined) => {
+      if (!usage) return
+      const input = usage.inputTokenDetails
+      const output = usage.outputTokenDetails
+      const cacheRead = input?.cacheReadTokens ?? 0
+      const cacheWrite = input?.cacheWriteTokens ?? 0
+      const noCache = input?.noCacheTokens ?? Math.max(0, (usage.inputTokens ?? 0) - cacheRead - cacheWrite)
+      const reasoning = output?.reasoningTokens ?? 0
+      const visible = output?.textTokens ?? Math.max(0, (usage.outputTokens ?? 0) - reasoning)
+      totalInput += usage.inputTokens ?? (noCache + cacheRead + cacheWrite)
+      totalOutput += usage.outputTokens ?? (visible + reasoning)
+      totalInputUncached += noCache
+      totalCacheRead += cacheRead
+      totalCacheWrite += cacheWrite
+      totalOutputVisible += visible
+      totalReasoning += reasoning
+    }
 
     // Shared across the turn so read-only tools can reuse results (post-redact only).
     const toolResultCache = new Map<string, { result: string; ts: number }>()
@@ -1108,9 +1150,7 @@ export class AgentRunner {
         const streamTimeout = setTimeout(() => streamController.abort(), LLM_STREAM_TIMEOUT_MS)
         try {
           await result.finishReason // consume stream
-          const usage = await result.usage
-          totalInput += usage?.inputTokens ?? 0
-          totalOutput += usage?.outputTokens ?? 0
+          addUsage(await result.usage)
         } finally {
           clearTimeout(streamTimeout)
         }
@@ -1128,8 +1168,7 @@ export class AgentRunner {
         tools: hasTools ? tools : undefined,
       })
 
-      totalInput += result.usage?.inputTokens ?? 0
-      totalOutput += result.usage?.outputTokens ?? 0
+      addUsage(result.usage)
 
       const toolRequests = result.toolCalls
       const text = result.text
@@ -1146,8 +1185,7 @@ export class AgentRunner {
               maxOutputTokens: mlMaxTokens ?? this.config.maxTokens ?? 16_384,
               temperature: Math.min(mlTemperature ?? this.config.temperature ?? 0.7, 0.4),
             })
-            totalInput += revised.usage?.inputTokens ?? 0
-            totalOutput += revised.usage?.outputTokens ?? 0
+            addUsage(revised.usage)
             if (revised.text.trim()) {
               finalText = revised.text
               noteMlRevision(mlRuntime)
@@ -1218,7 +1256,7 @@ export class AgentRunner {
     ) {
       try {
         if (!learning.store.resolveConsent(learning.workspace).allowed) {
-          return { content: finalContent, toolCalls, inputTokens: totalInput, outputTokens: totalOutput }
+          return turnResult()
         }
         const refs = learning.store.references({
           workspace: learning.workspace,
@@ -1253,6 +1291,6 @@ export class AgentRunner {
         // Learning is optional telemetry and must never break the requested turn.
       }
     }
-    return { content: finalContent, toolCalls, inputTokens: totalInput, outputTokens: totalOutput }
+    return turnResult()
   }
 }

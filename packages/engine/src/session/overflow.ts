@@ -1,5 +1,6 @@
 import { ConfigV1 } from "@arcana/core/v1/config/config"
 import { SessionV1 } from "@arcana/core/v1/session"
+import { Token } from "@arcana/core/util/token"
 import type { Provider } from "@/provider/provider"
 import { ProviderTransform } from "@/provider/transform"
 
@@ -46,18 +47,12 @@ export function effectiveContext(cfg: ConfigV1.Info, model: Pick<Provider.Model,
 }
 
 /**
- * Same total used by isOverflow — input + output + reasoning + cache
- * (+ total if the provider already filled it).
+ * Canonical context size: `Token.contextCount` (provider total when it covers
+ * the non-overlapping buckets, otherwise the bucket sum — never under-reads).
+ * Shared by compaction pressure, TUI, ACP, and cockpit surfaces.
  */
 export function tokenCount(tokens: SessionV1.Assistant["tokens"]): number {
-  if (tokens.total != null && Number.isFinite(tokens.total)) return tokens.total
-  return (
-    (tokens.input ?? 0) +
-    (tokens.output ?? 0) +
-    (tokens.reasoning ?? 0) +
-    (tokens.cache?.read ?? 0) +
-    (tokens.cache?.write ?? 0)
-  )
+  return Token.contextCount(tokens)
 }
 
 /**

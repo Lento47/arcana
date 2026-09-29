@@ -175,8 +175,16 @@ export type ProofRuntime = {
     input_summary: string
     output_summary: string
     tool_calls?: number
+    /** Inclusive input tokens (cache included) — legacy billed total. */
     input_tokens?: number
+    /** Inclusive output tokens (reasoning included) — legacy billed total. */
     output_tokens?: number
+    /** Normalized buckets (playbook §48 CostPerRun inputs). */
+    input_uncached_tokens?: number
+    cache_read_tokens?: number
+    cache_write_tokens?: number
+    output_visible_tokens?: number
+    reasoning_tokens?: number
   }): Promise<void>
   finalizeCompleted(summary: string, proof_score?: number): Promise<void>
   finalizeFailed(error: unknown): Promise<void>
@@ -568,15 +576,27 @@ export async function createProofRuntime(options: ProofRuntimeOptions): Promise<
         reversible: false,
         result_summary: `${input.tool_calls ?? 0} tool call(s), ${input.input_tokens ?? 0} input tokens, ${input.output_tokens ?? 0} output tokens.`,
       })
+      const cacheRead = input.cache_read_tokens ?? 0
+      const cacheWrite = input.cache_write_tokens ?? 0
+      const visible = input.output_visible_tokens ?? 0
+      const reasoning = input.reasoning_tokens ?? 0
       manager.recordEvent({
         type: "token.used",
         actor: "agent",
         summary: `Agent turn used ${input.input_tokens ?? 0} input tokens and ${input.output_tokens ?? 0} output tokens.`,
         status: manager.proof.lifecycle.status,
         data: {
+          // Legacy inclusive totals (unchanged for existing proof consumers).
           input_tokens: input.input_tokens ?? 0,
           output_tokens: input.output_tokens ?? 0,
           total_tokens: (input.input_tokens ?? 0) + (input.output_tokens ?? 0),
+          // Normalized buckets: playbook §48 CostPerRun = uncached*inPrice +
+          // visible*outPrice + cacheRead*cachedPrice (+ retries).
+          input_uncached_tokens: input.input_uncached_tokens ?? 0,
+          cache_read_tokens: cacheRead,
+          cache_write_tokens: cacheWrite,
+          output_visible_tokens: visible,
+          reasoning_tokens: reasoning,
           tool_calls: input.tool_calls ?? 0,
         },
       })

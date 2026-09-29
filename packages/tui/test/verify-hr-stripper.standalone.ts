@@ -1,8 +1,8 @@
-// Standalone verification of the fence-aware HR stripper + underscore escape.
+// Standalone verification of the fence-aware HR stripper + underscore emphasis.
 // Runs with plain `bun run` (bun test segfaults on this Windows env). Mirrors
 // spine-prose-hr.test.ts — keep the two files in sync.
+import { stripMarkdownEmphasis } from "../src/shell/command-spine/chat-prose"
 import {
-  escapeMarkdownUnderscoreEmphasis,
   stripMarkdownHorizontalRules,
 } from "../src/shell/command-spine/spine-prose"
 
@@ -42,9 +42,19 @@ assert(stripMarkdownHorizontalRules(multi) === "```\n---\n```\n```\n---\n```", "
 assert(stripMarkdownHorizontalRules("") === "", "empty input")
 assert(stripMarkdownHorizontalRules("```\n---\n```") === "```\n---\n```", "fence-only input")
 
-// --- escapeMarkdownUnderscoreEmphasis (fence-aware regression) ---
-assert(escapeMarkdownUnderscoreEmphasis("_a_ and `_b_`") === "\\_a\\_ and `_b_`", "underscores escaped outside code")
-assert(escapeMarkdownUnderscoreEmphasis("```\n_a_\n```") === "```\n_a_\n```", "underscores preserved inside fence")
+// --- stripMarkdownEmphasis: underscore emphasis is stripped, not escaped ---
+assert(
+  stripMarkdownEmphasis("_a_ and `_b_`") === "a and `_b_`",
+  "underscore emphasis stripped outside inline code",
+)
+assert(
+  stripMarkdownEmphasis("```\n_a_\n```") === "```\n_a_\n```",
+  "underscores preserved inside fence",
+)
+assert(
+  stripMarkdownEmphasis("ma_cross(3,10) and max_open_positions") === "ma_cross(3,10) and max_open_positions",
+  "snake_case identifiers never gain escape backslashes",
+)
 
 if (failures > 0) {
   console.error(`\n${failures} FAILURES`)

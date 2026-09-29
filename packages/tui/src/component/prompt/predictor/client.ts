@@ -1,8 +1,18 @@
 import { detectLocalOllama } from "@arcana/core/providers/ollama"
-import { buildRequestBody, type PredictorSettings } from "./predict"
+import {
+  buildRequestBody,
+  type PredictorContextMessage,
+  type PredictorSettings,
+} from "./predict"
 
 const PROXY_BASE_URL = "https://proxy-arcana.otnelhq.com/v1"
 const OLLAMA_DEFAULT_MODEL = "qwen2.5:0.5b"
+/**
+ * Small models that actually continue code-adjacent prose well, best first.
+ * The 0.5b default is a last resort: it is fast but guesses topic poorly, which
+ * is exactly what "the prediction is not accurate" feels like.
+ */
+const OLLAMA_MODEL_PREFERENCE = ["qwen2.5-coder:1.5b", "qwen2.5:1.5b", "qwen2.5-coder:0.5b", "qwen2.5:0.5b"]
 
 export interface PredictorEndpoint {
   baseURL: string
@@ -22,6 +32,30 @@ async function readProxyKey(): Promise<string | undefined> {
   }
 }
 
+/**
+ * Prefer the best small model the local Ollama already has. A configured model
+ * always wins; an unconfigured Ollama otherwise silently used the 0.5b toy even
+ * when a 1.5b coder was pulled.
+ */
+async function chooseOllamaModel(host: string, configured?: string): Promise<string> {
+  if (configured) return configured
+  try {
+    const port = host.replace(/^.*:(\d+).*$/, "$1") || undefined
+    const local = await detectLocalOllama({ port })
+    if (local?.models?.length) {
+      for (const candidate of OLLAMA_MODEL_PREFERENCE) {
+        const installed = local.models.find(
+          (tag) => tag === candidate || tag.startsWith(`${candidate}-`) || tag.startsWith(`${candidate}.`),
+        )
+        if (installed) return installed
+      }
+    }
+  } catch {
+    // Discovery is best-effort; the tiny default still works.
+  }
+  return OLLAMA_DEFAULT_MODEL
+}
+
 /** Resolve an OpenAI-compatible endpoint for the configured source. Throws when unconfigured. */
 export async function resolvePredictorEndpoint(
   settings: PredictorSettings,
@@ -29,7 +63,7 @@ export async function resolvePredictorEndpoint(
   switch (settings.source) {
     case "ollama": {
       const host = (settings.host ?? "http://localhost:11434").replace(/\/$/, "")
-      return { baseURL: `${host}/v1`, model: settings.model ?? OLLAMA_DEFAULT_MODEL }
+      return { baseURL: `${host}/v1`, model: await chooseOllamaModel(host, settings.model) }
     }
     case "arcana-proxy": {
       const key =
@@ -82,6 +116,7 @@ export async function requestPrediction(
   prefix: string,
   maxTokens: number,
   signal?: AbortSignal,
+  context: readonly PredictorContextMessage[] = [],
 ): Promise<string> {
   if (!endpoint.model) throw new PredictorUnavailableError("predictor.model is not configured")
   const url = `${endpoint.baseURL.replace(/\/$/, "")}/chat/completions`
@@ -91,7 +126,7 @@ export async function requestPrediction(
   const response = await fetch(url, {
     method: "POST",
     headers,
-    body: JSON.stringify(buildRequestBody(prefix, endpoint.model, maxTokens)),
+    body: JSON.stringify(buildRequestBody(prefix, endpoint.model, maxTokens, context)),
     signal,
   })
 

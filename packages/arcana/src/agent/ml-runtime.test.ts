@@ -44,6 +44,17 @@ describe("agent ML runtime integration helpers", () => {
     expect(next[2]).toEqual(messages[1])
   })
 
+  test("uses the configured context window for token allocation", () => {
+    const state = prepareMlRuntime(
+      [{ role: "user", content: "implement the fix in runner.ts" }],
+      { ...config, contextWindow: 32_000 },
+      false,
+    )
+
+    expect(state.enabled).toBe(true)
+    expect(state.optimization?.tokenAllocation.contextWindow).toBe(32_000)
+  })
+
   test("prepares low-interference preflight state without disk persistence", () => {
     const state = prepareMlRuntime([{ role: "user", content: "avoid generic output and give the exact patch" }], config, false)
 

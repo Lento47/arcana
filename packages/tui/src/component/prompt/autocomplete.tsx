@@ -24,6 +24,11 @@ import { arcanaDitherPattern, arcanaDitherTick } from "../../ui/arcana"
 import { RoundBorder } from "../../ui/chrome"
 import { IntentRegistry, type IntentSuggestion } from "./intent"
 import { PredictorController } from "./predictor/controller"
+import {
+  PREDICTOR_DEFAULT_CONTEXT_MESSAGES,
+  trimContext,
+  type PredictorContextMessage,
+} from "./predictor/predict"
 
 function removeLineRange(input: string) {
   const hashIndex = input.lastIndexOf("#")
@@ -276,12 +281,37 @@ export function Autocomplete(props: {
       api_key: p.api_key,
       max_tokens: p.max_tokens,
       debounce_ms: p.debounce_ms,
+      context_messages: p.context_messages,
     }
   })
   const predictor = new PredictorController(() => predictorSettings())
   const [predictionVersion, setPredictionVersion] = createSignal(0)
   predictor.onUpdate = () => setPredictionVersion((v) => v + 1)
   predictor.onDisabled = (reason) => props.onPredictorDisabled?.(reason)
+
+  /**
+   * Recent turns for topic and vocabulary only. Resolved lazily (inside the
+   * debounce) so a keystroke never pays for context that no request will use.
+   */
+  function predictorContext(): readonly PredictorContextMessage[] {
+    const limit = predictorSettings()?.context_messages ?? PREDICTOR_DEFAULT_CONTEXT_MESSAGES
+    if (limit <= 0) return []
+    const sessionID = props.sessionID
+    if (!sessionID) return []
+    const messages = sync.data.message[sessionID] ?? []
+    const recent: PredictorContextMessage[] = []
+    for (let index = messages.length - 1; index >= 0; index--) {
+      const message = messages[index]!
+      if (message.role !== "user" && message.role !== "assistant") continue
+      const text = (sync.data.part[message.id] ?? [])
+        .flatMap((part) => (part.type === "text" ? [part.text] : []))
+        .join("\n")
+      if (!text.trim()) continue
+      recent.push({ role: message.role, content: text })
+      if (recent.length >= limit + 2) break
+    }
+    return trimContext(recent.reverse(), { maxMessages: limit })
+  }
 
   function currentPrediction(): string | null {
     predictionVersion()
@@ -295,6 +325,7 @@ export function Autocomplete(props: {
       cursorOffset: props.input().cursorOffset,
       autocompleteVisible: store.visible !== false,
       busy: props.busy?.() ?? false,
+      context: predictorContext,
     })
   }
 

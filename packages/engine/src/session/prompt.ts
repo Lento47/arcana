@@ -30,6 +30,7 @@ import { pathToFileURL, fileURLToPath } from "url"
 import { Config } from "@/config/config"
 import { ConfigMarkdown } from "@/config/markdown"
 import { SessionSummary } from "./summary"
+import { cacheDebugEnabled, logCacheDebug } from "./cache-debug"
 import { NamedError } from "@arcana/core/util/error"
 import { SessionProcessor } from "./processor"
 import { Tool } from "@/tool/tool"
@@ -165,6 +166,58 @@ function normalizeStepLimit(value: number | undefined) {
   if (value === undefined || !Number.isFinite(value)) return Infinity
   return Math.max(0, Math.floor(value))
 }
+
+const CACHE_DEBUG_STATE_LIMIT = 64
+
+export type PromptFingerprint = { system: string[]; tools: string; history: string[] }
+const promptFingerprints = new Map<string, PromptFingerprint>()
+
+/** FNV-1a fingerprint for prompt-stability diagnostics (not security). */
+export function promptHash(text: string): string {
+  let hash = 2166136261
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0).toString(16)
+}
+
+/**
+ * Compare two prompt fingerprints and report which byte regions changed.
+ * A volatile leading system block or a mutated history invalidates the
+ * provider's prefix cache for every message behind it - the first thing to
+ * check when a session's cache-hit rate collapses.
+ */
+export function detectPromptChange(previous: PromptFingerprint, next: PromptFingerprint) {
+  const changedSystem: number[] = []
+  const systemLength = Math.max(previous.system.length, next.system.length)
+  for (let index = 0; index < systemLength; index++) {
+    if (previous.system[index] !== next.system[index]) changedSystem.push(index)
+  }
+  let historyChangedAt = -1
+  const overlap = Math.min(previous.history.length, next.history.length)
+  for (let index = 0; index < overlap; index++) {
+    if (previous.history[index] !== next.history[index]) {
+      historyChangedAt = index
+      break
+    }
+  }
+  return {
+    changedSystem,
+    systemLength: [previous.system.length, next.system.length] as const,
+    toolsChanged: previous.tools !== next.tools,
+    historyChangedAt,
+    historyLength: [previous.history.length, next.history.length] as const,
+  }
+}
+
+/**
+ * Durable mid-turn reminder attached to the active user message as a synthetic
+ * part. Static text on purpose: any per-turn rewrite of an earlier message
+ * invalidates the provider prefix cache for everything after it.
+ */
+const MID_TURN_REMINDER =
+  "<system-reminder>\nPlease address the user's most recent message above and continue with your tasks.\n</system-reminder>"
 
 export interface Interface {
   readonly cancel: (sessionID: SessionID) => Effect.Effect<void>
@@ -2188,21 +2241,33 @@ export const layer = Layer.effect(
             if (step === 1 && !isFinalizationTurn)
               yield* summary.summarize({ sessionID, messageID: lastUser.id }).pipe(Effect.ignore, Effect.forkIn(scope))
 
+            // Mid-turn reminder, made cache-stable. The previous version
+            // rewrote the user message in memory for step > 1, so the same
+            // durable message serialized differently at step 1 vs step 2 and
+            // reverted to raw at the next turn - every such rewrite invalidated
+            // the provider's prefix cache for everything after that message.
+            // The reminder is now persisted once as a synthetic part (the TUI
+            // skips synthetic parts) with static text, so every later request
+            // sees identical bytes.
             if (step > 1 && lastFinished) {
               for (const m of msgs) {
                 if (m.info.role !== "user" || m.info.id <= lastFinished.id) continue
-                for (const p of m.parts) {
-                  if (p.type !== "text" || p.ignored || p.synthetic) continue
-                  if (!p.text.trim()) continue
-                  p.text = [
-                    "<system-reminder>",
-                    "The user sent the following message:",
-                    p.text,
-                    "",
-                    "Please address this message and continue with your tasks.",
-                    "</system-reminder>",
-                  ].join("\n")
-                }
+                const hasUserText = m.parts.some(
+                  (p) => p.type === "text" && !p.ignored && !p.synthetic && p.text.trim().length > 0,
+                )
+                if (!hasUserText) continue
+                const hasReminder = m.parts.some(
+                  (p) => p.type === "text" && p.synthetic && p.text === MID_TURN_REMINDER,
+                )
+                if (hasReminder) continue
+                yield* sessions.updatePart({
+                  id: PartID.ascending(),
+                  messageID: m.info.id,
+                  sessionID: m.info.sessionID,
+                  type: "text",
+                  text: MID_TURN_REMINDER,
+                  synthetic: true,
+                })
               }
             }
 
@@ -2225,7 +2290,7 @@ export const layer = Layer.effect(
               sys.environment(model),
               instruction.system().pipe(Effect.orDie),
               MessageV2.toModelMessagesEffect(msgs, model),
-              sys.memory({ keywords }),
+              sys.memory({ keywords, sessionID }),
             ])
             msg.latency = {
               ...(msg.latency ?? { attempts: [] }),
@@ -2250,9 +2315,14 @@ export const layer = Layer.effect(
                 : []),
             ]
 
-            // Trial log: inject recent tool call history for loop prevention.
-            // This is optional — if TrialLog.Service is not available, skip it.
-            const trialHistory = yield* (trialLog ? trialLog.formatHistory() : Effect.succeed(undefined))
+            // Trial log: loop-prevention history is only meaningful when repeated
+            // calls have been detected. Unconditional inclusion changed the
+            // prompt bytes every step and invalidated the provider prefix cache
+            // for the entire conversation.
+            const strikes = yield* (trialLog ? trialLog.strikes() : Effect.succeed([]))
+            const trialHistory = strikes.length > 0
+              ? yield* trialLog!.formatHistory()
+              : undefined
             if (trialHistory) {
               system.push(trialHistory)
             }
@@ -2273,6 +2343,31 @@ export const layer = Layer.effect(
                 },
               })
             }
+            if (cacheDebugEnabled()) {
+              const fingerprint: PromptFingerprint = {
+                system: system.map(promptHash),
+                tools: promptHash(Object.keys(tools).join("\n")),
+                history: modelMsgs.map((message) => promptHash(JSON.stringify(message))),
+              }
+              const previous = promptFingerprints.get(sessionID)
+              if (previous) {
+                const change = detectPromptChange(previous, fingerprint)
+                if (
+                  change.changedSystem.length > 0 ||
+                  change.systemLength[0] !== change.systemLength[1] ||
+                  change.toolsChanged ||
+                  change.historyChangedAt >= 0
+                ) {
+                  logCacheDebug("prompt_changed", { sessionID, step, ...change })
+                }
+              }
+              promptFingerprints.set(sessionID, fingerprint)
+              if (promptFingerprints.size > CACHE_DEBUG_STATE_LIMIT) {
+                const oldest = promptFingerprints.keys().next().value
+                if (oldest !== undefined) promptFingerprints.delete(oldest)
+              }
+            }
+
             const result = yield* handle.process({
               user: lastUser,
               agent,

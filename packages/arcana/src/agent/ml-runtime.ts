@@ -11,6 +11,7 @@ import {
   type ResponsePipelinePreflight,
 } from "@arcana/ml"
 import type { AgentConfig, ChatMessage } from "./types.js"
+import { modelContextWindow } from "./providers.js"
 
 export type MlRuntimeState = {
   enabled: boolean
@@ -50,6 +51,19 @@ export function appendMlPromptAddendum(messages: ChatMessage[], addendum: string
   const [first, ...rest] = messages
   if (first?.role === "system") return [first, mlMessage, ...rest]
   return [mlMessage, ...messages]
+}
+
+const FALLBACK_CONTEXT_WINDOW = 128_000
+
+/**
+ * Real model context window: explicit config override first, then the shared
+ * models.dev catalog cache. The fixed 128k fallback is only used when neither
+ * is known, so token allocation cannot silently exceed a small local window.
+ */
+function resolveContextWindow(config: AgentConfig): number {
+  const explicit = config.contextWindow
+  if (typeof explicit === "number" && Number.isFinite(explicit) && explicit > 0) return Math.floor(explicit)
+  return modelContextWindow(config.provider ?? "", config.model) ?? FALLBACK_CONTEXT_WINDOW
 }
 
 export function prepareMlRuntime(
@@ -143,7 +157,7 @@ export function prepareMlRuntime(
       ]
     }),
     model: {
-      contextWindow: 128_000,
+      contextWindow: resolveContextWindow(config),
       requestedOutputTokens: config.maxTokens,
       supportsTools: Boolean(availableTools?.length),
     },

@@ -53,19 +53,43 @@ let _memoryDb: Database | null = null
 let _memoryStmt: ReturnType<Database["prepare"]> | null = null
 let _memoryDbMtime: number | null = null
 
+/** Shared memory DB path (config.dataDir override, else ~/.arcana/data). */
+function memoryDbPath(): string {
+  let dataDir = join(homedir(), ".arcana", "data")
+  const configPath = join(homedir(), ".arcana", "config.json")
+  if (existsSync(configPath)) {
+    try {
+      const cfg = JSON.parse(readFileSync(configPath, "utf8"))
+      if (typeof cfg.dataDir === "string") dataDir = cfg.dataDir
+    } catch {}
+  }
+  return join(dataDir, "memory.db")
+}
+
+function learnedDirPath(): string {
+  return join(homedir(), ".arcana", "learned")
+}
+
+/**
+ * Fingerprint of the memory sources. A change means the memoized per-session
+ * block is stale and must be rebuilt (one-time prefix-cache break).
+ */
+function memorySourceEpoch(): string {
+  let db = "x"
+  try {
+    db = String(statSync(memoryDbPath()).mtimeMs)
+  } catch {}
+  let learned = "x"
+  try {
+    learned = String(statSync(learnedDirPath()).mtimeMs)
+  } catch {}
+  return `${db}:${learned}`
+}
+
 /** Lazily open one shared readonly handle + prepared statement; invalidates on db file mtime change. */
 function getMemoryStmt() {
   try {
-    // Respect config.dataDir if set, otherwise default to ~/.arcana/data
-    let dataDir = join(homedir(), ".arcana", "data")
-    const configPath = join(homedir(), ".arcana", "config.json")
-    if (existsSync(configPath)) {
-      try {
-        const cfg = JSON.parse(readFileSync(configPath, "utf8"))
-        if (typeof cfg.dataDir === "string") dataDir = cfg.dataDir
-      } catch {}
-    }
-    const dbPath = join(dataDir, "memory.db")
+    const dbPath = memoryDbPath()
     const mtime = statSync(dbPath).mtimeMs
     if (_memoryStmt && _memoryDbMtime === mtime) return _memoryStmt
     // File changed or first open — reconnect.
@@ -119,7 +143,7 @@ export function formatPersistentMemoryFacts(
  */
 function getLearnedEntries(): LearnedEntry[] {
   try {
-    const learnedDir = join(homedir(), ".arcana", "learned")
+    const learnedDir = learnedDirPath()
     const st = statSync(learnedDir)
     if (_learnedCache && _learnedCache.mtimeMs === st.mtimeMs) return _learnedCache.entries
     const files = readdirSync(learnedDir).filter((f) => f.endsWith(".md"))
@@ -153,10 +177,88 @@ function pickRandom<T>(arr: T[], n: number): T[] {
   return out
 }
 
+/** Assemble the persistent-memory block for the given (lowercase) keywords. */
+function buildMemoryBlock(keywords: string[]): string | undefined {
+  const parts: string[] = []
+
+  // Read user facts from shared SQLite DB — filter by relevance to current task.
+  // Previously sent all 20 facts (2,303 tok) every turn, even `l-drive` when task is `render`.
+  const stmt = getMemoryStmt()
+  if (stmt) {
+    try {
+      const rows = stmt.all() as Array<{ key: string; value: string; confidence: number }>
+      if (rows.length) {
+        const filtered = keywords.length
+          ? rows.filter((r) => {
+              const hay = `${r.key} ${r.value}`.toLowerCase()
+              return keywords.some((k) => hay.includes(k))
+            })
+          : rows
+        // If filter yields nothing, include at most 3 most recent facts as fallback (not all 20).
+        const toFormat = filtered.length > 0 ? filtered : rows.slice(-3)
+        const facts = formatPersistentMemoryFacts(toFormat)
+        if (facts) parts.push(facts)
+      }
+    } catch {
+      resetMemoryDb()
+    }
+  }
+
+  // Read learned wiki entries: only include if relevant to current task.
+  const learned = getLearnedEntries()
+  if (learned.length) {
+    const relevant = keywords.length
+      ? learned.filter((e) => {
+          const hay = `${e.slug} ${e.excerpt}`.toLowerCase()
+          return keywords.some((k) => hay.includes(k))
+        })
+      : []
+    const chosen = relevant.length > 0 ? relevant.slice(0, 2) : learned.slice(-1)
+    const lines = chosen.map((e) => `- [[${e.slug}]]: ${e.excerpt}`)
+    parts.push("<persistent-memory>\nKnowledge learned from past sessions:\n" + lines.join("\n") + "\n</persistent-memory>")
+  }
+
+  return parts.length ? parts.join("\n") : undefined
+}
+
+type MemoryBlockMemo = { block: string | undefined; keywords: Set<string>; epoch: string; calls: number; refreshedAt: number }
+const memoryBlockMemo = new Map<string, MemoryBlockMemo>()
+const MEMORY_BLOCK_MEMO_LIMIT = 64
+
+/**
+ * Minimum topic-shift refreshes are spaced out: rewriting the leading system
+ * block invalidates the provider's prefix cache for the whole conversation, so
+ * a refresh must cost less than the cache it destroys. Source changes (new
+ * facts/learned notes) still refresh immediately.
+ */
+export const MEMORY_REFRESH_MIN_CALLS = 20
+
+/** Fraction of incoming keywords already present in the memoized set (1 = same topic). */
+export function keywordOverlap(memoized: ReadonlySet<string>, incoming: readonly string[]): number {
+  if (memoized.size === 0 || incoming.length === 0) return 1
+  let hits = 0
+  for (const keyword of incoming) if (memoized.has(keyword)) hits += 1
+  return hits / incoming.length
+}
+
+/**
+ * Whether the memoized block can be reused for this call. Reuse while the
+ * topic holds; a topic shift is allowed to refresh only after the minimum call
+ * spacing, and source changes always refresh.
+ */
+export function shouldReuseMemoryBlock(
+  memo: { keywords: ReadonlySet<string>; epoch: string; calls: number; refreshedAt: number },
+  input: { keywords: readonly string[]; epoch: string },
+): boolean {
+  if (memo.epoch !== input.epoch) return false
+  if (keywordOverlap(memo.keywords, input.keywords) >= 0.34) return true
+  return memo.calls - memo.refreshedAt < MEMORY_REFRESH_MIN_CALLS
+}
+
 export interface Interface {
   readonly environment: (model: Provider.Model) => Effect.Effect<string[]>
   readonly skills: (agent: Agent.Info) => Effect.Effect<string | undefined>
-  readonly memory: (filter?: { keywords?: string[] }) => Effect.Effect<string | undefined>
+  readonly memory: (filter?: { keywords?: string[]; sessionID?: string }) => Effect.Effect<string | undefined>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@arcana/SystemPrompt") {}
@@ -207,48 +309,34 @@ export const layer = Layer.effect(
         ].filter((part): part is string => part !== undefined)
       }),
 
-      memory: Effect.fn("SystemPrompt.memory")(function* (filter?: { keywords?: string[] }) {
-        const parts: string[] = []
+      memory: Effect.fn("SystemPrompt.memory")(function* (filter?: { keywords?: string[]; sessionID?: string }) {
         const keywords = filter?.keywords?.map((k) => k.toLowerCase()).filter(Boolean) ?? []
+        const sessionID = filter?.sessionID
+        const epoch = memorySourceEpoch()
 
-        // Read user facts from shared SQLite DB — filter by relevance to current task.
-        // Previously sent all 20 facts (2,303 tok) every turn, even `l-drive` when task is `render`.
-        const stmt = getMemoryStmt()
-        if (stmt) {
-          try {
-            const rows = stmt.all() as Array<{ key: string; value: string; confidence: number }>
-            if (rows.length) {
-              const filtered = keywords.length
-                ? rows.filter((r) => {
-                    const hay = `${r.key} ${r.value}`.toLowerCase()
-                    return keywords.some((k) => hay.includes(k))
-                  })
-                : rows
-              // If filter yields nothing, include at most 3 most recent facts as fallback (not all 20).
-              const toFormat = filtered.length > 0 ? filtered : rows.slice(-3)
-              const facts = formatPersistentMemoryFacts(toFormat)
-              if (facts) parts.push(facts)
-            }
-          } catch {
-            resetMemoryDb()
+        // Prefix-cache stability: this block is part of the leading system
+        // prompt, so changing it between turns invalidates the provider's
+        // cached prefix for the whole conversation. Reuse one block per session
+        // while the topic holds; topic changes are spaced out by a minimum call
+        // floor, and source changes refresh immediately (one-time break).
+        const existing = sessionID ? memoryBlockMemo.get(sessionID) : undefined
+        const calls = (existing?.calls ?? 0) + 1
+        if (sessionID && existing) {
+          if (shouldReuseMemoryBlock({ ...existing, calls }, { keywords, epoch })) {
+            memoryBlockMemo.set(sessionID, { ...existing, calls })
+            return existing.block
           }
         }
 
-        // Read learned wiki entries: only include if relevant to current task.
-        const learned = getLearnedEntries()
-        if (learned.length) {
-          const relevant = keywords.length
-            ? learned.filter((e) => {
-                const hay = `${e.slug} ${e.excerpt}`.toLowerCase()
-                return keywords.some((k) => hay.includes(k))
-              })
-            : []
-          const chosen = relevant.length > 0 ? relevant.slice(0, 2) : learned.slice(-1)
-          const lines = chosen.map((e) => `- [[${e.slug}]]: ${e.excerpt}`)
-          parts.push("<persistent-memory>\nKnowledge learned from past sessions:\n" + lines.join("\n") + "\n</persistent-memory>")
+        const block = buildMemoryBlock(keywords)
+        if (sessionID) {
+          memoryBlockMemo.set(sessionID, { block, keywords: new Set(keywords), epoch, calls, refreshedAt: calls })
+          if (memoryBlockMemo.size > MEMORY_BLOCK_MEMO_LIMIT) {
+            const oldest = memoryBlockMemo.keys().next().value
+            if (oldest !== undefined) memoryBlockMemo.delete(oldest)
+          }
         }
-
-        return parts.length ? parts.join("\n") : undefined
+        return block
       }),
 
       skills: Effect.fn("SystemPrompt.skills")(function* (agent: Agent.Info) {

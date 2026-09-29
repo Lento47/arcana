@@ -26,7 +26,8 @@ import { useTheme } from "../../context/theme"
 import { useSync } from "../../context/sync"
 import { useTuiConfig } from "../../config"
 import { contextUsageFor, hasContextUsage } from "../../util/context-pressure"
-import { formatSessionMetrics, type SessionMetricSnapshot } from "./metrics"
+import { createEase } from "../../util/motion"
+import { cacheMissPercent, formatSessionMetrics, type SessionMetricSnapshot } from "./metrics"
 import { useTerminalDimensions, type JSX } from "@opentui/solid"
 
 export function SessionMetricsBar(props: { sessionID?: string; freeUsage?: { state?: string; expiresAt?: string } | null }): JSX.Element {
@@ -103,16 +104,24 @@ export function SessionMetricsBar(props: { sessionID?: string; freeUsage?: { sta
     return attempts[attempts.length - 1]?.firstContentMs
   })
 
-  // Per-turn cache read (hit) tokens from the last assistant message.
-  const cacheRead = createMemo(() => {
-    const last = lastAssistant() as { tokens?: { cache?: { read?: number } } | undefined } | undefined
-    return last?.tokens?.cache?.read
-  })
+  // Session-scoped cache read/write counters, aligned with the session
+  // input/output/total beside them. Per-turn cache behaviour is carried by
+  // the miss % "turn" scope below.
+  const cacheRead = createMemo(() => tokens()?.cache?.read)
 
-  // Per-turn cache write (miss) tokens from the last assistant message.
-  const cacheWrite = createMemo(() => {
-    const last = lastAssistant() as { tokens?: { cache?: { write?: number } } | undefined } | undefined
-    return last?.tokens?.cache?.write
+  const cacheWrite = createMemo(() => tokens()?.cache?.write)
+
+  // Cache miss share, both scopes: per-turn (last assistant message) and
+  // session-wide (cumulative session tokens). Same denominator — uncached
+  // input + cache read + cache write.
+  const cacheMiss = createMemo(() => {
+    const last = lastAssistant() as
+      | { tokens?: { input?: number; cache?: { read?: number; write?: number } } }
+      | undefined
+    return {
+      turn: cacheMissPercent(last?.tokens),
+      session: cacheMissPercent(tokens()),
+    }
   })
 
   // Free-tier remaining time from the proxy's /v1/free/usage snapshot.
@@ -137,18 +146,32 @@ export function SessionMetricsBar(props: { sessionID?: string; freeUsage?: { sta
     return Boolean(session())
   })
 
+  // Cumulative gauges glide between values instead of snapping; a counter that
+  // jumps by hundreds reads as a live instrument rather than a redraw. Elapsed
+  // stays 1Hz and exact — ttft/pressure/free-remaining are never interpolated.
+  const METRIC_EASE = { stepMs: 80, riseRate: 0.32, fallRate: 0.32, epsilon: 1 } as const
+  const easedInput = createEase(() => tokens()?.input ?? 0, METRIC_EASE)
+  const easedOutput = createEase(() => tokens()?.output ?? 0, METRIC_EASE)
+  const easedTotal = createEase(() => {
+    const t = tokens()
+    if (!t) return 0
+    return (t.input ?? 0) + (t.output ?? 0) + (t.reasoning ?? 0) + (t.cache?.read ?? 0) + (t.cache?.write ?? 0)
+  }, METRIC_EASE)
+  const easedCost = createEase(() => session()?.cost ?? 0, { ...METRIC_EASE, epsilon: 0.0005 })
+
   const metricSnapshot = createMemo<SessionMetricSnapshot>(() => {
     const t = tokens()
     return {
       elapsedSeconds: elapsed(),
-      inputTokens: t?.input,
-      outputTokens: t?.output,
-      totalTokens: (t?.input ?? 0) + (t?.output ?? 0) + (t?.reasoning ?? 0) +
-        (t?.cache?.read ?? 0) + (t?.cache?.write ?? 0),
+      inputTokens: t?.input === undefined ? undefined : Math.round(easedInput()),
+      outputTokens: t?.output === undefined ? undefined : Math.round(easedOutput()),
+      totalTokens: t ? Math.round(easedTotal()) : 0,
       ttftMs: ttft(),
       cacheReadTokens: cacheRead(),
       cacheWriteTokens: cacheWrite(),
-      costUsd: session()?.cost,
+      cacheMissPercentTurn: cacheMiss().turn,
+      cacheMissPercentSession: cacheMiss().session,
+      costUsd: session()?.cost === undefined ? undefined : Math.round(easedCost() * 10_000) / 10_000,
       pressure: pressure(),
       freeRemaining: freeRemaining(),
     }

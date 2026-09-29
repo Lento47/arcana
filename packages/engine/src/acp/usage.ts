@@ -89,7 +89,9 @@ export function buildUsage(message: AssistantTokenCost): Usage {
   return {
     inputTokens: message.tokens.input,
     outputTokens: message.tokens.output,
-    totalTokens: message.tokens.input + message.tokens.output + thoughtTokens + cachedReadTokens + cachedWriteTokens,
+    // Canonical context rule so per-message and session usage can never
+    // disagree with `contextUsedTokens` below.
+    totalTokens: contextUsedTokens(message.tokens),
     ...(thoughtTokens > 0 ? { thoughtTokens } : {}),
     ...(cachedReadTokens > 0 ? { cachedReadTokens } : {}),
     ...(cachedWriteTokens > 0 ? { cachedWriteTokens } : {}),

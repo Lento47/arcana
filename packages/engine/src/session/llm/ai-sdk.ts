@@ -49,13 +49,17 @@ function usage(value: unknown) {
     totalTokens?: number
     reasoningTokens?: number
     cachedInputTokens?: number
-    inputTokenDetails?: { cacheReadTokens?: number; cacheWriteTokens?: number }
+    inputTokenDetails?: { cacheReadTokens?: number; cacheWriteTokens?: number; noCacheTokens?: number }
     outputTokenDetails?: { reasoningTokens?: number }
   }
   const entries = Object.entries({
     inputTokens: item.inputTokens,
     outputTokens: item.outputTokens,
     totalTokens: item.totalTokens,
+    // AI SDK v6 exposes the explicit non-cached input count; prefer it over
+    // engine-side subtraction so a provider that reports a non-inclusive
+    // inputTokens cannot silently under-count input.
+    nonCachedInputTokens: item.inputTokenDetails?.noCacheTokens,
     reasoningTokens: item.outputTokenDetails?.reasoningTokens ?? item.reasoningTokens,
     cacheReadInputTokens: item.inputTokenDetails?.cacheReadTokens ?? item.cachedInputTokens,
     cacheWriteInputTokens: item.inputTokenDetails?.cacheWriteTokens,

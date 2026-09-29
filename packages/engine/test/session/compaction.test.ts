@@ -1845,7 +1845,7 @@ describe("SessionNs.getUsage", () => {
   })
 
   test.each(["@ai-sdk/anthropic", "@ai-sdk/amazon-bedrock", "@ai-sdk/google-vertex/anthropic"])(
-    "computes total from components for %s models",
+    "keeps the provider total and separates cache for %s models",
     (npm) => {
       const model = createModel({ context: 100_000, output: 32_000, npm })
       // AI SDK v6: inputTokens includes cached tokens for all providers
@@ -1872,7 +1872,8 @@ describe("SessionNs.getUsage", () => {
         expect(result.tokens.input).toBe(500)
         expect(result.tokens.cache.read).toBe(200)
         expect(result.tokens.cache.write).toBe(300)
-        // total = adjusted (500) + output (500) + cacheRead (200) + cacheWrite (300)
+        // Total is provider-reported pass-through (1500 here); the context
+        // count rule in Token.contextCount guards against stale totals.
         expect(result.tokens.total).toBe(1500)
         return
       }
@@ -1891,7 +1892,7 @@ describe("SessionNs.getUsage", () => {
       expect(result.tokens.input).toBe(500)
       expect(result.tokens.cache.read).toBe(200)
       expect(result.tokens.cache.write).toBe(300)
-      // total = adjusted (500) + output (500) + cacheRead (200) + cacheWrite (300)
+      // Provider total pass-through; context counting is guarded in Token.contextCount.
       expect(result.tokens.total).toBe(1500)
     },
   )
@@ -1911,6 +1912,80 @@ describe("SessionNs.getUsage", () => {
     expect(result.tokens.input).toBe(500)
     expect(result.tokens.cache.read).toBe(200)
     expect(result.tokens.cache.write).toBe(300)
+  })
+
+  test("prefers the explicit non-cached input count over subtraction", () => {
+    const model = createModel({ context: 100_000, output: 32_000 })
+    const result = SessionNs.getUsage({
+      model,
+      usage: usage({
+        inputTokens: 1000,
+        outputTokens: 500,
+        nonCachedInputTokens: 700,
+        cacheReadInputTokens: 200,
+        cacheWriteInputTokens: 100,
+      }),
+    })
+
+    expect(result.tokens.input).toBe(700)
+    expect(result.tokens.cache.read).toBe(200)
+    expect(result.tokens.cache.write).toBe(100)
+  })
+
+  test("clamps cache reads greater than the inclusive input", () => {
+    const model = createModel({ context: 100_000, output: 32_000 })
+    const result = SessionNs.getUsage({
+      model,
+      usage: usage({ inputTokens: 10, outputTokens: 20, cacheReadInputTokens: 25 }),
+    })
+
+    expect(result.tokens.input).toBe(0)
+    expect(result.tokens.cache.read).toBe(25)
+    expect(Number.isNaN(result.cost)).toBe(false)
+  })
+
+  test("clamps reasoning greater than output", () => {
+    const model = createModel({ context: 100_000, output: 32_000 })
+    const result = SessionNs.getUsage({
+      model,
+      usage: usage({ inputTokens: 10, outputTokens: 5, reasoningTokens: 20 }),
+    })
+
+    expect(result.tokens.output).toBe(0)
+    expect(result.tokens.reasoning).toBe(20)
+  })
+
+  test("does not double count cache write present in usage and metadata", () => {
+    const model = createModel({ context: 100_000, output: 32_000 })
+    const result = SessionNs.getUsage({
+      model,
+      usage: usage({ inputTokens: 1000, outputTokens: 500, cacheWriteInputTokens: 100 }),
+      metadata: { anthropic: { cacheCreationInputTokens: 100 } },
+    })
+
+    expect(result.tokens.cache.write).toBe(100)
+  })
+
+  test("zero provider total still yields the component sum for context pressure", () => {
+    const model = createModel({ context: 100_000, output: 32_000 })
+    const result = SessionNs.getUsage({
+      model,
+      usage: usage({ inputTokens: 10, outputTokens: 20, totalTokens: 0, cacheReadInputTokens: 5 }),
+    })
+
+    expect(result.tokens.total).toBe(0)
+    // input is already net of cache (10 - 5), so the sum is 5 + 20 + 5.
+    expect(Token.contextCount(result.tokens)).toBe(30)
+  })
+
+  test("total below the component sum never under-reads context", () => {
+    const model = createModel({ context: 100_000, output: 32_000 })
+    const result = SessionNs.getUsage({
+      model,
+      usage: usage({ inputTokens: 10, outputTokens: 20, totalTokens: 12, cacheReadInputTokens: 5 }),
+    })
+
+    expect(Token.contextCount(result.tokens)).toBe(30)
   })
 })
 

@@ -32,6 +32,91 @@
 - [[proxy-origin-check]] — PayPal endpoint Origin check, CF Function proxy, client never sees proxy URL
 
 ## Project: arcana
+- [[goal-check-workspace-default]] — goal_check tool may default to workspace root instead of current workdir, causing wrong project detection
+- [[wait-for-quiet-before-split]] — When splitting a live-edited file with no VCS, wait for the file to stop changing before editing
+- [[barrel-re-export-split-pattern]] — Split large files by making the original a barrel of re-exports so no caller imports break
+- [[barrel-re-export-refactor]] — Use a barrel file with re-exports so splitting a module is invisible to all callers
+- [[wait-for-quiet-refactor]] — When splitting a live-edited file without VCS, watch for quiet then apply the barrel split to avoid unrecoverable collisions
+- [[ts-harness-grounding-gate]] — TS-Harness uses a grounding gate to drop claims without verbatim vendor citations.
+- [[per-domain-fetch-headers-implementation]] — Implemented per-domain fetch headers to make ts-harness self-configurable.
+- [[ts-harness-audit-validation]] — README claims for ts-harness are verified against source code with identified testing gaps.
+- [[cli-override-for-bootstrapping]] — Use a CLI command outside the chat pipeline to handle first-entry cases that require relaxed guards
+- [[ts-harness-plugin-api-unimplemented]] — Plugin API 1 declares plugin hooks but the host implementation has no runtime for them
+- [[ts-harness-bootstrapping-deadlock]] — Domain verification creates a catch-22: need profile to have domains in allowlist, need domains in allowlist to create profile
+- [[ts-harness-plugin-api-is-declarative-only]] — Plugin API 1 declares hooks but host implementation doesn't exist — plugins produce files that do nothing
+- [[ts-harness-domain-verification-catch-22]] — Profile creation requires domain verification against the profile's own allowlist, creating a bootstrapping deadlock
+- [[domain-verification-catch-22]] — Domain verification in profile creation creates a catch-22 when the domain isn't already in the allowlist
+- [[epistemic-humility-ai-tools]] — Incorporate epistemic humility in AI troubleshooting tools by displaying rejections and unknowns.
+- [[source-code-verification-over-docs]] — Verify AI tool claims with source code, not just documentation.
+- [[protected-paths-non-widenable]] — UNWRITABLE_PATHS list is self-referential and case-insensitive to protect critical files.
+- [[wholesale-replacement-guard]] — Guard rejects edits with over 30% diff ratio to prevent wholesale replacement.
+- [[require-confirm-per-step-enforcement]] — Multiple enforcement layers for requireConfirmPerStep in ts-harness.
+- [[anti-slop-guard-for-ai-advice]] — Implement anti-slop guard to catch generic advice and ensure specific, actionable output.
+- [[epistemic-humility-in-ai-tools]] — Show rejections, gaps, and uncertainties to build user trust.
+- [[grounding-ai-claims-in-verbatim-quotes]] — Ground AI claims in verbatim vendor quotes to prevent hallucination.
+- [[splunk-certified-architect-exam-domains]] — Breakdown of Splunk Certified Architect exam domains, weights, and key topics for study planning.
+- [[splunk-architect-exam-domains]] — Exam domains and weights for Splunk Certified Architect certification.
+- [[deployment-symbol-restriction]] — Deployment authority restricts which symbols can be traded; expanding requires authority update
+- [[session-guard-market-hours]] — Session guard blocks forex trades outside market hours (open 07:00 UTC Mon - close ~22:00 UTC Fri)
+- [[cci-trend-following-mode]] — CCI >100 or <-100 with ADX>25 and multi-timeframe confirmation can signal trend-following entries
+- [[cci-recovery-filter]] — CCI must be moving away from extreme, not deeper, to prevent catching falling knives.
+- [[trend-consistency-filter]] — Require EMA20/50 crossover to hold for 5 bars to avoid whipsaws.
+- [[adx-trend-strength-filter]] — Add ADX > 25 filter to ensure trades are made only in strong trends.
+- [[max-open-positions-flip-bug]] — 1-fill bug prevented position flips; fix allows proper handling of max_open_positions.
+- [[trend-consistency-multi-bar-confirmation]] — Trend consistency filter requires EMA20/50 relationship to hold for 5 consecutive bars, not just current bar
+- [[cci-recovery-filter-catching-knife]] — CCI recovery filter prevents entering while CCI is still moving deeper into extreme territory
+- [[adx-trend-filter-for-mean-reversion]] — ADX > 25 filters out choppy markets where mean-reversion CCI strategy fails
+- [[risk-max-open-positions-off-by-one]] — Off-by-one in risk.py max_open_positions check blocked legitimate position flips
+- [[mt5-comment-length-limit-29-chars]] — MetaTrader5 Python binding silently rejects order comments ≥30 characters; truncate to [:29]
+- [[bypassing-trend-guards-causes-trend-fighting-losses]] — Opening CCI reversion positions with trend guards bypassed led to fighting the H4/H1 downtrend
+- [[mt5-python-binding-comment-length-limit]] — MetaTrader5 Python binding rejects order comments ≥30 characters with a misleading error
+- [[mt5-comment-max-29-chars]] — MetaTrader5 Python binding rejects order comments ≥30 characters
+- [[risk-py-max-open-positions-flip]] — Fixed bug where max_open_positions allowed position flips in risk management.
+- [[cci-reversion-trade-management]] — CCI reversion trades need both SL and TP set immediately; exit on mean cross is not sufficient alone
+- [[mt5-python-comment-length-limit]] — MT5 Python binding rejects order comments ≥30 characters with a misleading error
+- [[cci-revert-trend-filter-blocking]] — CCI reversion strategy uses H4/H1 trend + EMA200 as entry guards to avoid fighting the trend
+- [[cci-reversion-strategy-exit-mechanism]] — CCI reversion strategy exits on mean cross, not fixed TP
+- [[mt5-python-binding-comment-limit]] — MT5 Python binding rejects order comments ≥30 characters
+- [[max-open-positions-flip-correction]] — Fixed risk check that incorrectly allowed position flips when at max open positions.
+- [[atr-based-stop-loss-take-profit]] — Set stop loss at 2x ATR below entry and take profit at 2:1 risk-reward for CCI strategy.
+- [[metatrader5-comment-length-limit]] — MetaTrader5 Python API rejects order comments with 30 or more characters.
+- [[risk-max-open-positions-flip]] — max_open_positions in risk management should account for position flips to avoid 1-fill bugs.
+- [[mt5-comment-length-limit]] — MetaTrader5 Python binding requires order comments to be less than 30 characters.
+- [[risk-max-open-positions-fix]] — Fixed max_open_positions rejection in risk.py by considering already-open symbols.
+- [[notepad-ai-assisted-idea]] — User expressed interest in a simple, blank notepad with AI-assisted features as a project idea.
+- [[arcana-three-tier-publishing-strategy]] — Arcana can be published in tiers: open-source repo, developer launch with positioning, or enterprise governance layer.
+- [[arcana-authorization-vs-completion-verification]] — Arcana adds proof obligations and verified completion beyond basic tool success responses.
+- [[arcana-intent-binding-feature]] — Arcana implements intent binding with request hashing, session binding, and expiring/revocable tokens.
+- [[arcana-is-security-kernel-not-coding-assistant]] — Arcana is an execution-security kernel and proof layer for autonomous agents, distinct from coding assistants.
+- [[arcana-category-identification]] — Arcana is an execution-security kernel and proof layer for autonomous agents, not a coding assistant.
+- [[denied-remote-content-injection-policy]] — MCP connections blocked by PEP DENY_REMOTE_CONTENT_INJECTION — requires explicit user approval in TUI
+- [[cci-threshold-too-high-for-market-range]] — CCI revert strategy threshold (308) exceeded actual market CCI range (-232 to +224), producing zero trades ever
+- [[freeconomics-validation-pipeline]] — Strategies must pass deterministic validation, walk-forward, and Monte Carlo before live capital
+- [[freeconomics-three-profitability-blockers]] — Kill switch engaged, promoted strategy was dead (all 'hold'), no strategy has passed full pipeline with actual trades
+- [[freeconomics-core-architecture]] — AI proposes → evidence decides → risk rules control → broker truth wins
+- [[freeconomics-project-location-and-stack]] — Trading bot at L:\PROJECTS\freeconomics — Python 3.12+, Pydantic, httpx, FastAPI worker, pytest (~78 source, ~85 test files)
+- [[freeconomics-project-discovery]] — Discovered the freeconomics project at L:\PROJECTS\freeconomics for AI-assisted FX research and MT5 execution.
+- [[width-contract-chain]] — Terminal dimension propagation chain from renderer to prose width
+- [[prose-width-collapses-to-1-on-first-paint]] — First-paint race: prose wrap width collapses to 1 column, causing word-per-line rendering in chat
+- [[route-extension-pattern]] — Adding new TUI routes requires extending the Route union type and creating a route module
+- [[gantt-bar-rendering-pattern]] — Gantt bars rendered as horizontal SolidJS components with phase label, duration, and status color
+- [[incident-gantt-timeline-dashboard]] — Incident Gantt Timeline Dashboard implemented in TUI as /incident route using OpenTUI/SolidJS
+- [[text-delta-no-word-boundary-awareness]] — text-delta events are individual chunks with no word-boundary awareness, causing mid-word breaks
+- [[normalize-chat-prose-limited-kinds]] — normalizeChatProse only collapses hard newlines for plan/ok/ask/think spine kinds, not assistant prose
+- [[text-delta-assembly]] — Text delta assembly in session processor may split mid-word
+- [[token-budget-limits]] — Token budget layers create compounding output constraints
+- [[output-truncation-pipeline]] — Multi-layer output truncation pipeline causes mid-word cuts in AI responses
+- [[mid-word-wrap-artifact]] — Chat display renderer can split words at apostrophe boundaries during soft-wrap
+- [[arcana-entry-points]] — Three main package directories to start building on Arcana: core, engine, and tui
+- [[arcana-project-status]] — Arcana Phase C is complete and validated; Phase D (distributed authority) is planned but not built
+- [[arcana-project-scope]] — Arcana is a runtime/kernel, not an LLM wrapper or chatbot
+- [[arcana-phase-c-status]] — Phase C governance engine is production-validated: 95 fixtures, 722 tests, 0 false allows
+- [[arcana-tech-stack]] — Arcana uses TypeScript + Effect + SolidJS with OpenTUI for a TUI-first agent console
+- [[arcana-governance-engine]] — Arcana enforces ¬Authorized ⇒ ¬Executed invariant with a proof system for governed agent autonomy
+- [[peter-pan-inspiration]] — J.M. Barrie's Peter Pan was inspired by the Llewelyn Davies boys and his own childhood grief.
+- [[barrie-grief-and-childhood]] — Barrie's grief over his brother David's death influenced the themes of eternal youth in Peter Pan
+- [[peter-pan-first-appearances]] — Peter Pan appeared in three distinct works across 12 years before becoming the iconic character
+- [[peter-pan-origins]] — J.M. Barrie's Peter Pan was inspired by the Llewelyn Davies boys he met in 1897
 - [[arcana-runtime-architecture]] — Arcana is a governed autonomy runtime on TypeScript/Bun with Effect and SolidJS
 - [[remote-search-blocked]] — Web search and remote content fetching are blocked by DENY_REMOTE_CONTENT_INJECTION policy
 - [[arcana-ai-npm-package]] — arcana-ai is a self-improving AI agent CLI on npm v0.3.68
@@ -93,6 +178,51 @@
 - [[corrupt-glyphs-error-effect]] — CORRUPT_GLYPHS pool used for error "unencrypt" effect
 
 ## Patterns
+- [[domain-surface-file-split]] — Split large UI files by independent domain surfaces, each with its own types and layout logic
+- [[verify-refactoring-with-checks]] — After code splitting, run typecheck, build, and test suites to ensure the refactor is clean.
+- [[wait-for-quiet-before-splitting]] — In environments without version control, wait for file changes to stabilize before performing structural edits to avoid conflicts.
+- [[barrel-pattern-for-code-splitting]] — Use a central re-export file to split large modules without breaking existing imports.
+- [[split-by-domain-surface]] — Split a large UI file by independent renderable domain surfaces, not by arbitrary line count
+- [[safe-file-split-without-vcs]] — When splitting a large file with no VCS, wait for the live writer to go quiet before applying the split; use barrel re-exports so no caller imports break.
+- [[refactor-by-domain-surface]] — Split large files into separate modules based on independent domain surfaces to improve maintainability.
+- [[split-large-file-by-domain-surface]] — Split large files by independent domain surfaces rather than by technical layer (types, utils, etc.)
+- [[parallel-subagent-code-audit]] — Using parallel subagents to audit multiple codebase subsystems efficiently.
+- [[audit-from-source-not-readme]] — README-level assessments can be directionally correct but miss important nuances only visible in source code
+- [[audit-source-before-claims]] — Read the actual source code before making quality or architecture claims about a project
+- [[parallel-code-audits]] — Use parallel audits for different aspects of code to efficiently verify claims.
+- [[parallel-audit-technique]] — Use parallel audits to efficiently verify multiple claims in a codebase.
+- [[multi-layer-security-enforcement]] — Enforce security settings at schema, runtime, and architectural levels for robust protection.
+- [[evaluating-ai-product-ideas]] — Evaluate AI product ideas based on core thesis, epistemic humility, and anti-slop guards.
+- [[suggest-alternatives-for-non-text-inputs]] — When unable to process certain file types (e.g., PDFs), suggest alternative input methods to maintain user engagement.
+- [[provide-certification-domain-breakdown]] — Structure certification study assistance with domain weights and key topics.
+- [[multi-factor-entry-gate]] — Combine multiple filters (trend, momentum, consistency) for robust trade entries.
+- [[multi-gate-entry-filter-architecture]] — Layer entry filters in ordered gates: structure → signal → trend → strength → confirmation
+- [[always-set-both-sl-and-tp]] — When setting stop loss, always set take profit in the same operation
+- [[demo-test-guard-bypass-for-execution-verification]] — Bypass trading guards temporarily to verify the full execution chain, then revert
+- [[full-authority-chain-demo-trading]] — End-to-end trade execution testing from signal generation to MT5 fill in demo mode.
+- [[atr-based-sl-tp-setting]] — Use ATR for stop loss and a fixed risk-reward ratio for take profit in mean reversion strategies.
+- [[set-sl-and-tp-in-same-pass]] — When adding protective orders to positions, set both SL and TP together in the same workflow
+- [[atr-based-stop-loss-and-rr-take-profit]] — Set stop loss at 2x ATR and take profit at 2:1 risk-reward ratio for trades.
+- [[sl-then-tp-sequence-mistake]] — Always set SL and TP together in the same operation, not sequentially
+- [[atr-based-sl-with-fixed-rr-tp]] — Set SL at 2x ATR and TP at 2:1 risk-reward ratio for structured trade management
+- [[atr-based-sl-with-rr-tp]] — Use 2x ATR for stop loss and 2:1 risk-reward for take profit
+- [[testing-live-trades-with-guard-bypasses]] — Temporarily disable trading guards to test live trade execution.
+- [[temporary-guard-bypass-for-testing]] — Bypass strategy guards temporarily to force trade signals during testing, then revert after verification.
+- [[atr-based-stop-loss-2x]] — Set stop loss at 2 times ATR below entry for volatility-adjusted protection in trading strategies.
+- [[position-counter-needs-symbol-awareness]] — When enforcing max open positions, check per-symbol open status, not just the integer counter
+- [[structured-brainstorming-categories]] — Generate project ideas by categorizing them into domains like Security, Developer Tools, Fun, and Productivity.
+- [[fallback-on-tool-failure]] — When external tools like MCP fail, fall back to direct data fetching or pre-pulled information.
+- [[brainstorming-project-ideas]] — Provide random creative project ideas to spark brainstorming.
+- [[comparing-specialized-vs-general-tools]] — Structure comparisons by acknowledging category differences first, then highlighting unique value propositions and honest tradeoffs.
+- [[staged-open-source-publishing]] — Publish projects in tiers: open-source repo first, then community features, then commercial options.
+- [[ai-tool-comparison-methodology]] — Structured head-to-head analysis for comparing AI tools based on category, similarities, differences, and tradeoffs.
+- [[validate-indicator-range-before-deploy]] — Before deploying a strategy, verify historical indicator values actually reach the configured entry thresholds
+- [[retry-instead-of-explain-permission-blocks]] — When PEP blocks an action requiring user approval, immediately retry so the TUI prompt appears rather than explaining why it failed
+- [[iterative-research-with-goal-tracking]] — Researching complex rendering bugs requires setting goals, checking git history, diffing files, and tracing data flow
+- [[signal-driven-tui-state]] — TUI state managed via SolidJS createSignal/createMemo with hooks for route, theme, dimensions, dialog, toast, kv, and plugin runtime
+- [[arcana-chrome-component-composition]] — TUI dashboards compose from ArcanaSection, ArcanaMetricLine, FrameBorder, RoundBorder, Glyph
+- [[layered-output-constraints]] — Output limits are applied at multiple independent layers, each potentially reducing available output
+- [[truncation-type-distinction]] — undefined
 - [[fallback-skill-installation-methods]] — When skill installation is blocked, use local install or manual fetch as fallbacks.
 - [[list-skills-by-install-count]] — When searching for skills, present results sorted by install count to highlight popular options.
 - [[verify-skill-status-first]] — Always verify the installation status of a skill before taking action.
@@ -124,6 +254,45 @@
 - [[caveman-compression]] — Tool/system prompts compressed ~40% by dropping articles/filler
 
 ## Mistakes
+- [[trusting-tool-output-without-verifying-workspace]] — Don't trust automated tool results without confirming they ran against the correct project
+- [[goal-check-workspace-mismatch]] — Tools may default to the wrong workspace, leading to incorrect results in automated checks.
+- [[verify-changes-thoroughly]] — Failing to detect user-indicated changes due to insufficient re-verification, leading to incorrect assumptions.
+- [[no-end-to-end-pipeline-test]] — No end-to-end pipeline test exists for ts-harness, limiting validation of integrated functionality.
+- [[missing-filterresults-unit-tests]] — Identified missing unit tests for the filterResults() function in ts-harness.
+- [[audit-surface-level-initial-take]] — Initial product assessment was based on README claims; code audit revealed more nuance and discipline
+- [[premature-fix-recommendation]] — Recommended specific code fixes (test gaps, refactors) without being asked — user had different priorities
+- [[avoid-surface-level-code-assessment]] — Always verify claims with deep code audit; initial assessments can be inaccurate.
+- [[surface-level-assessment-error]] — Avoid making assessments based only on surface-level information like READMEs.
+- [[bypassing-entry-filters]] — Disabling trend filters resulted in trades against the market trend, causing losses.
+- [[mt5-terminal-locking-on-restart]] — MT5 terminal can lock/freeze after trading sessions, requiring full restart before reconnection
+- [[only-set-sl-forgot-tp]] — Set stop loss on demo positions but forgot take profit until user prompted
+- [[omitted-take-profit-on-demo-positions]] — Set SL but forgot TP on demo positions, user had to correct twice
+- [[risk-management-position-flip-bug]] — Fixed a bug in risk management that allowed position flips beyond max_open_positions.
+- [[mt5-comment-length-bug]] — MT5 Python binding rejects order comments ≥30 chars, causing order submission failures.
+- [[guard-bypass-for-testing]] — Temporarily bypassed trend filters for testing, but positions were opened against the trend.
+- [[missing-take-profit-initially]] — Forgot to set take profit on demo trade, requiring correction later.
+- [[forgot-tp-when-setting-sl]] — Set SL on demo positions but completely forgot to set TP until user corrected
+- [[guard-bypasses-create-trend-fighting-positions]] — Bypassing trend guards for testing creates positions that fight the prevailing trend
+- [[forgot-to-set-take-profit]] — Only set stop loss on demo positions, forgot to set take profit until user reminded
+- [[forgot-tp-on-demo-positions]] — Set SL on demo positions but forgot to set TP — user had to remind
+- [[risk-max-open-positions-flip-bug]] — max_open_positions in risk.py allowed position flips due to 1-fill bug
+- [[forgot-to-set-tp-with-sl]] — Set SL on positions but forgot take profit, user had to remind
+- [[position-flip-in-max-positions]] — Risk management code allowed position flips at max open positions, violating limits.
+- [[comment-slice-off-by-one-error]] — Sliced order comment to 31 chars instead of 29, causing MT5 rejection.
+- [[no-initial-stop-loss]] — Trades were executed without setting a stop loss, requiring post-execution adjustment.
+- [[order-comment-slicing-error]] — Incorrectly slicing order comment to 31 characters caused MT5 binding rejection.
+- [[goal-check-ran-wrong-test-suite]] — Goal check ran arcana's tests instead of freeconomics — always verify the working directory or explicit path when running tests
+- [[wrong-test-suite-in-goal-check]] — Ensure goal_check runs the correct test suite for the target project.
+- [[misaligned-initial-ideas]] — Initial project ideas did not fully align with the user's preference for brainstorming, leading to a need for redirection.
+- [[firecrawl-mcp-assumption]] — Assumed Firecrawl MCP was configured and available without verifying its setup or connectivity.
+- [[licensing-contradiction-error]] — Contradictory licensing terms in project README can undermine credibility and confuse contributors.
+- [[explained-block-instead-of-retrying-request]] — Spent multiple turns explaining why MCP was blocked instead of retrying so the user could approve in the TUI
+- [[bash-tool-needs-goal]] — Bash tool requires a goal to be set before use
+- [[dismissing-user-concern-as-rendering-artifact]] — Initially dismissed user's line-wrapping report as a terminal display artifact
+- [[truncated-code-output]] — Implementation code was truncated mid-import (cut off at Glyph import) and was not completed
+- [[design-before-code-user-preference]] — Initial response provided only a design outline when the user wanted the full implementation inline
+- [[initial-wrong-paths]] — Started searching with incorrect file paths before finding correct ones
+- [[incomplete-response-cut-off]] — Assistant's response about Peter Pan's naming was cut off mid-sentence
 - [[avoid-duplicate-messages]] — Sending duplicate messages in chat can confuse users and disrupt conversation flow.
 - [[user-misconception-about-installed-skills]] — Users may incorrectly assume skills are not installed when they are.
 - [[network-drive-theory-wrong]] — Incorrectly hypothesized `L:\` network drive caused slow git; actually local volume, git fast
@@ -139,3 +308,6 @@
 - [[shell-run-before-binding-goal]] — First shell attempt ran without an active goal and was refused
 - [[bun-transpiler-transformSync-not-available]] — Bun.Transpiler.transformSync not in Bun 1.3.11; use `bun build`
 - [[engine-promise-all-batch]] — Batch tool used unbounded Promise.all fan-out; fixed with bounded mapPool + recursive auth
+- [[arcana-opentui-scroll-coordinates]] — ScrollBoxRenderable y is layout position, not scroll offset; scrolled children make three "suspicious" sites correct
+- [[opentui-border-row-consumes-text-row]] — `border={["bottom"]}` on a `height={1}` box paints the hairline through its own text row
+- [[opentui-truncate-props-vs-locale]] — `<text truncate>` emits `...` (middle elision) while `Locale.truncate` emits `…`; adjacent truncated texts fuse

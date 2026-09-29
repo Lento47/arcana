@@ -1,0 +1,14 @@
+---
+tags: [arcana, tui, bug]
+date: 2026-08-28
+source: ses_fbac982d6ffebcaiMIiwY8Mejc
+---
+# arcana tui diff hang root cause
+
+TUI /diff hangs: git mode over L:\ network drive + server Git.run has no timeout/kill
+
+**Why:** `/diff` opens the diff viewer in git mode (hardcoded at `diff-viewer.tsx:1155`, default in `mode()`/`diffInput`). The daemon runs `git diff|status|stats|patchAll` over the repo on `L:\` (mapped network drive, `cwd=L:\PROJECTS\arcana`). Server-side `Git.run` (`packages/engine/src/git/index.ts:128`) has a `maxOutputBytes` cap but no process timeout/kill, so a blocked `git` runs unbounded. The TUI's 15s client timeout (`DIFF_REQUEST_TIMEOUT_MS = 15_000`) only aborts the client `await` and does not kill the server process (and may not be honored for GET), causing perpetual loading.
+
+**How to apply:** When users report TUI hangs on git ops in Arcana, check if repo is on a network/mapped drive and whether server-side VCS calls have timeouts. Recommend `Esc` to back out, or kill+respawn dev daemon (safe, auto-respawns per AGENTS.md). Proposed fix: wrap `appProcess.run` in `Effect.timeoutFail` (~12s) with a `GitTimeoutError`.
+
+Related: [[arcana-tui-diff-hang-network-drive]] [[arcana-shell-is-powershell]] [[arcana-bash-tool-gated]] [[arcana-agents-md-conventions]] [[verify-claims-repo-wide-before-asserting]] [[trace-client-and-server-for-hang]] [[asserted-effect-timeout-kills-child-unverified]] [[inferred-root-cause-without-reproduction]] [[vcs-diff-ignores-directory]] [[git-run-no-timeout]] [[agts-md-tui-strings]] [[createresource-memo-equals]] [[arcana-runtime-architecture]] [[arcana-ai-npm-package]] [[arcana-governance-engine]] [[arcana-tech-stack]] [[arcana-phase-c-status]] [[arcana-project-scope]] [[arcana-project-status]] [[arcana-entry-points]] [[mid-word-wrap-artifact]] [[output-truncation-pipeline]] [[token-budget-limits]] [[text-delta-assembly]] [[layered-output-constraints]] [[normalize-chat-prose-limited-kinds]] [[text-delta-no-word-boundary-awareness]] [[incident-gantt-timeline-dashboard]] [[gantt-bar-rendering-pattern]] [[route-extension-pattern]] [[arcana-chrome-component-composition]] [[signal-driven-tui-state]] [[design-before-code-user-preference]] [[truncated-code-output]] [[prose-width-collapses-to-1-on-first-paint]] [[width-contract-chain]] [[bash-tool-needs-goal]] [[denied-remote-content-injection-policy]] [[retry-instead-of-explain-permission-blocks]] [[explained-block-instead-of-retrying-request]] [[arcana-category-identification]] [[arcana-is-security-kernel-not-coding-assistant]] [[arcana-intent-binding-feature]] [[arcana-authorization-vs-completion-verification]] [[arcana-three-tier-publishing-strategy]] [[mt5-comment-length-limit]] [[mt5-python-binding-comment-limit]] [[risk-max-open-positions-flip-bug]] [[mt5-comment-max-29-chars]] [[domain-verification-catch-22]]

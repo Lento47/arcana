@@ -94,13 +94,15 @@ export const APCA_BAND_LC: Record<ApcaBand, number> = {
 }
 
 /**
- * Band a token's WCAG floor maps to: 7:1 tokens are body ink, 4.5–4.8:1 are
- * fluent content, 3.8:1 sub-fluent, and the 2.2–3.2:1 rails are non-text.
+ * Band a token's WCAG floor maps to. Only body ink (7:1) carries the full
+ * fluent requirement; UI text and chips (4.5–4.8:1) are sub-fluent per the ARC
+ * draft (Lc 45), and rails/comments (≤3.8:1) are non-text (Lc 30). Keeping the
+ * band honest to the role is what leaves chroma room on dark surfaces — a
+ * forced Lc 60 on every token washed the colors out.
  */
 export function apcaBandForRatio(ratio: number): ApcaBand {
   if (ratio >= 7) return "body"
-  if (ratio >= 4.5) return "fluent"
-  if (ratio >= 3.8) return "subFluent"
+  if (ratio >= 4.5) return "subFluent"
   return "nonText"
 }
 

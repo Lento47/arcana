@@ -1,0 +1,16 @@
+---
+tags: [arcana, tooling, turborepo]
+date: 2026-08-27
+source: ses_fbac982d6ffebcaiMIiwY8Mejc
+---
+# arcana tooling stack
+
+Arcana uses oxlint + Turborepo (bun turbo); no per-pkg typecheck script
+
+Arcana uses oxlint (not biome/eslint) and Turborepo with `typecheck`/`build`/`test` tasks run via `bun turbo`. Tiny packages have no local `typecheck` script, so `bun run typecheck` fails at pkg level.
+
+**Why:** Assistant tried `bun run typecheck` on small pkgs and got 'no script exists' errors.
+
+**How to apply:** Run typecheck/build via turbo at repo root, not per-package npm/bun scripts.
+
+Related: [[bash-tool-gated-on-goal]] [[arcana-agents-md-conventions]] [[arcana-deny-unlabeled-consequential-unenforced]] [[arcana-ancestors-intentbindings-failopen]] [[arcana-authorize-execute-sync-issues]] [[arcana-diff-command-flow]] [[arcana-diff-fetch-timeout-bounded]] [[arcana-diffviewer-no-reactive-loop]] [[arcana-diff-freeze-suspect-opentui-renderable]] [[tui-command-trace-method]] [[arcana-diff-viewer-git-mode-default]] [[arcana-server-git-no-timeout]] [[arcana-repo-on-network-drive]] [[arcana-tui-recovery-esc-daemon]] [[debug-tui-hang-trace-path]] [[arcana-tui-diff-hang-network-drive]] [[arcana-pdp-deny-unlabeled-gap]] [[powershell-constraints-arcana]] [[bash-tool-gated-goal-set]] [[arcana-git-no-timeout]] [[arcana-validate-ancestors-fail-open]] [[arcana-stray-db-files]] [[verify-enforcement-gap-with-rg]] [[verify-untracked-before-deletion]] [[arcana-tui-diff-hang-root-cause]] [[arcana-bash-tool-gated]] [[arcana-powershell-not-bash]] [[arcana-agents-md-export-namespace]] [[arcana-agents-md-branding]] [[arcana-governance-deny-unlabeled-gap]] [[effect-timeoutfail-kills-child-process]] [[arcana-verify-trash-untracked]] [[arcana-shell-is-powershell]] [[verify-claims-repo-wide-before-asserting]] [[trace-client-and-server-for-hang]] [[asserted-effect-timeout-kills-child-unverified]] [[inferred-root-cause-without-reproduction]] [[powershell-environment]] [[arcana-runtime-architecture]] [[arcana-ai-npm-package]] [[arcana-governance-engine]] [[arcana-tech-stack]] [[arcana-phase-c-status]] [[arcana-project-scope]] [[arcana-project-status]] [[arcana-entry-points]] [[mid-word-wrap-artifact]] [[output-truncation-pipeline]] [[token-budget-limits]] [[text-delta-assembly]] [[layered-output-constraints]] [[normalize-chat-prose-limited-kinds]] [[text-delta-no-word-boundary-awareness]] [[incident-gantt-timeline-dashboard]] [[gantt-bar-rendering-pattern]] [[route-extension-pattern]] [[arcana-chrome-component-composition]] [[signal-driven-tui-state]] [[design-before-code-user-preference]] [[truncated-code-output]] [[prose-width-collapses-to-1-on-first-paint]] [[width-contract-chain]] [[bash-tool-needs-goal]] [[denied-remote-content-injection-policy]] [[retry-instead-of-explain-permission-blocks]] [[explained-block-instead-of-retrying-request]] [[arcana-category-identification]] [[arcana-is-security-kernel-not-coding-assistant]] [[arcana-intent-binding-feature]] [[arcana-authorization-vs-completion-verification]] [[arcana-three-tier-publishing-strategy]] [[fallback-on-tool-failure]] [[firecrawl-mcp-assumption]] [[goal-check-workspace-mismatch]] [[goal-check-workspace-default]] [[trusting-tool-output-without-verifying-workspace]]

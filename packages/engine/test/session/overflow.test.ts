@@ -51,6 +51,13 @@ describe("overflow.tokenCount", () => {
   test("prefers total when set", () => {
     expect(tokenCount({ ...tokens(10, 20), total: 99, reasoning: 5 })).toBe(99)
   })
+  test("falls back to the sum when the total is zero", () => {
+    expect(tokenCount({ ...tokens(10, 20, 5), total: 0 })).toBe(35)
+  })
+  test("never under-reads when the total is below the component sum", () => {
+    // Broken proxy total must not hide cached/reasoning context from pressure.
+    expect(tokenCount({ ...tokens(10, 20, 5), total: 12, reasoning: 3 })).toBe(38)
+  })
 })
 
 describe("overflow.thresholdPercent", () => {

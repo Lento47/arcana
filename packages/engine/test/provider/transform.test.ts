@@ -90,6 +90,40 @@ describe("ProviderTransform.options - setCacheKey", () => {
     expect(result.promptCacheKey).toBe(sessionID)
   })
 
+  test("uses the wire field name prompt_cache_key for openai-compatible gateways", () => {
+    const compatibleModel = {
+      ...mockModel,
+      providerID: "xiaomi-token-plan-sgp",
+      api: {
+        id: "mimo-v2.5-pro",
+        url: "https://example.com/v1",
+        npm: "@ai-sdk/openai-compatible",
+      },
+    }
+    const result = ProviderTransform.options({
+      model: compatibleModel,
+      sessionID,
+      providerOptions: { setCacheKey: true },
+    })
+    expect(result.prompt_cache_key).toBe(sessionID)
+    expect(result.promptCacheKey).toBeUndefined()
+  })
+
+  test("omits the cache key for openai-compatible gateways unless opted in", () => {
+    const compatibleModel = {
+      ...mockModel,
+      providerID: "xiaomi-token-plan-sgp",
+      api: {
+        id: "mimo-v2.5-pro",
+        url: "https://example.com/v1",
+        npm: "@ai-sdk/openai-compatible",
+      },
+    }
+    const result = ProviderTransform.options({ model: compatibleModel, sessionID, providerOptions: {} })
+    expect(result.prompt_cache_key).toBeUndefined()
+    expect(result.promptCacheKey).toBeUndefined()
+  })
+
   test("should set store=false for openai provider", () => {
     const openaiModel = {
       ...mockModel,

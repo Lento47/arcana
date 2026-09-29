@@ -6,7 +6,7 @@
 
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
-import { fetchModelsDev, type ModelsDevProvider } from "./models-dev.js"
+import { fetchModelsDev, readModelsDevCache, type ModelsDevProvider } from "./models-dev.js"
 import { currentDir } from "../util/path.js"
 
 export type ProviderProfile = {
@@ -72,6 +72,32 @@ export async function resolveProvider(provider: string): Promise<ProviderProfile
     )
   }
   return { baseURL, envKey, defaultModel }
+}
+
+const modelContextCache = new Map<string, number | undefined>()
+
+/**
+ * Best-effort model context window from the shared models.dev cache (sync, no
+ * network). Callers fall back to their own default when the catalog does not
+ * know the model. Memoized per provider/model because the cache JSON parse is
+ * not free and this runs on the agent turn path.
+ */
+export function modelContextWindow(provider: string, modelId?: string): number | undefined {
+  if (!provider || !modelId) return undefined
+  const key = `${provider}\u0000${modelId}`
+  if (modelContextCache.has(key)) return modelContextCache.get(key)
+  let value: number | undefined
+  try {
+    const alias = ALIASES[provider] ?? provider
+    const all = readModelsDevCache()
+    const md = localExtrasCache?.[provider] ?? all?.[alias] ?? all?.[provider]
+    const limit = md?.models?.[modelId]?.limit?.context
+    if (typeof limit === "number" && Number.isFinite(limit) && limit > 0) value = Math.floor(limit)
+  } catch {
+    value = undefined
+  }
+  modelContextCache.set(key, value)
+  return value
 }
 
 /** Auto-detect which provider is configured via env vars. Reads models.dev to

@@ -43,8 +43,9 @@ describe("APCA (SAPC 0.0.98G-4g)", () => {
 
   test("bands follow the ARC font guidance", () => {
     expect(apcaBandForRatio(7)).toBe("body")
-    expect(apcaBandForRatio(4.7)).toBe("fluent")
-    expect(apcaBandForRatio(3.8)).toBe("subFluent")
+    expect(apcaBandForRatio(4.7)).toBe("subFluent")
+    expect(apcaBandForRatio(4.5)).toBe("subFluent")
+    expect(apcaBandForRatio(3.8)).toBe("nonText")
     expect(apcaBandForRatio(2.2)).toBe("nonText")
     expect(apcaPasses(-APCA_BAND_LC.body, "body")).toBe(true)
     expect(apcaPasses(-(APCA_BAND_LC.body - 1), "body")).toBe(false)

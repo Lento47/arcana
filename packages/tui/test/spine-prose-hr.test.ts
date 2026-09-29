@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
+import { stripMarkdownEmphasis } from "../src/shell/command-spine/chat-prose"
 import {
-  escapeMarkdownUnderscoreEmphasis,
   stripMarkdownHorizontalRules,
 } from "../src/shell/command-spine/spine-prose"
 
@@ -58,9 +58,19 @@ describe("stripMarkdownHorizontalRules", () => {
   })
 })
 
-describe("escapeMarkdownUnderscoreEmphasis (fence-aware regression)", () => {
-  test("escapes underscores outside fences and inline code only", () => {
-    expect(escapeMarkdownUnderscoreEmphasis("_a_ and `_b_`")).toBe("\\_a\\_ and `_b_`")
-    expect(escapeMarkdownUnderscoreEmphasis("```\n_a_\n```")).toBe("```\n_a_\n```")
+describe("stripMarkdownEmphasis (underscore regression)", () => {
+  test("strips underscore emphasis outside fences and inline code only", () => {
+    expect(stripMarkdownEmphasis("_a_ and `_b_`")).toBe("a and `_b_`")
+    expect(stripMarkdownEmphasis("```\n_a_\n```")).toBe("```\n_a_\n```")
+  })
+
+  test("leaves snake_case identifiers intact (no backslash escapes)", () => {
+    const text = "- account.open_positions >= max_open_positions while ma_cross(3,10) flips _private fields"
+    expect(stripMarkdownEmphasis(text)).toBe(text)
+    expect(stripMarkdownEmphasis(text)).not.toContain("\\_")
+  })
+
+  test("strips strong underscore emphasis but not numeric separators", () => {
+    expect(stripMarkdownEmphasis("__bold__ and 2_000_000")).toBe("bold and 2_000_000")
   })
 })

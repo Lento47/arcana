@@ -21,6 +21,11 @@ export type ArcanaTokenClass = typeof ArcanaTokenClass.Type
 export const ArcanaTokenLedgerPhase = Schema.Literals(["estimate", "actual", "reconcile"])
 export type ArcanaTokenLedgerPhase = typeof ArcanaTokenLedgerPhase.Type
 
+/**
+ * Reconciliation verdict from the estimate's perspective: `under_estimate`
+ * means actual exceeded the estimate (estimate was too low), `over_estimate`
+ * means actual came in below the estimate (estimate was too high).
+ */
 export const ArcanaTokenLedgerStatus = Schema.Literals(["exact", "under_estimate", "over_estimate", "missing_estimate", "missing_actual"])
 export type ArcanaTokenLedgerStatus = typeof ArcanaTokenLedgerStatus.Type
 
@@ -191,7 +196,7 @@ export function reconcileTokenEntries(action_id: string, entries: readonly Arcan
     return { action_id, status: "exact", estimated_total, actual_total, delta, reason: "Estimated and actual token usage match." }
   }
   if (delta > 0) {
-    return { action_id, status: "over_estimate", estimated_total, actual_total, delta, reason: "Actual token usage exceeded the admitted estimate." }
+    return { action_id, status: "under_estimate", estimated_total, actual_total, delta, reason: "Actual token usage exceeded the admitted estimate; the estimate was too low." }
   }
-  return { action_id, status: "under_estimate", estimated_total, actual_total, delta, reason: "Actual token usage was lower than the admitted estimate." }
+  return { action_id, status: "over_estimate", estimated_total, actual_total, delta, reason: "Actual token usage was lower than the admitted estimate; the estimate was too high." }
 }

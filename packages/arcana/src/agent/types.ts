@@ -44,6 +44,12 @@ export type AgentConfig = {
   maxTokensPerSession?: number
   /** Opt-in ML response pipeline. Also enabled by ARCANA_ML_RUNTIME=1. */
   mlRuntime?: boolean
+  /**
+   * Model context window in tokens for ML token allocation. When unset the
+   * models.dev catalog value for `provider`/`model` is used, falling back to
+   * 128k only when the catalog does not know the model.
+   */
+  contextWindow?: number
   /** Maximum silent quality revisions per final assistant response. Default: 1 when ML runtime is enabled. */
   mlSilentRevisions?: number
   /** Consent-gated local optimizer learning. Never implies consent by itself. */
@@ -176,6 +182,14 @@ export type ToolRegistry = Map<string, { def: ToolDef; handler: ToolHandler }>
 export type TurnResult = {
   content: string
   toolCalls: number
+  /** Inclusive input tokens (cache reads/writes included) — legacy billed total. */
   inputTokens: number
+  /** Inclusive output tokens (reasoning included) — legacy billed total. */
   outputTokens: number
+  /** Normalized buckets for RunProof / playbook §48 cost accounting. */
+  inputUncachedTokens?: number
+  cacheReadTokens?: number
+  cacheWriteTokens?: number
+  outputVisibleTokens?: number
+  reasoningTokens?: number
 }

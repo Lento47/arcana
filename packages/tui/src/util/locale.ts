@@ -84,35 +84,87 @@ const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" })
 /** Display width in terminal columns — grapheme-aware; newlines cost 0 columns. */
 export function displayWidth(str: string): number {
   let width = 0
-  for (const part of graphemes.segment(str)) {
-    width += Bun.stringWidth(part.segment)
+  for (const token of tokenizeAnsi(str)) {
+    if (token.sgr) continue
+    for (const part of graphemes.segment(token.chunk)) {
+      width += Bun.stringWidth(part.segment)
+    }
   }
   return width
+}
+
+/**
+ * The string as styled spans and plain text. SGR color sequences are atomic
+ * zero-width units that are always kept whole; every other CSI sequence
+ * (cursor moves, line erases) is dropped, because it cannot survive a cut —
+ * keeping `\x1b[2K` would erase the row it lands on.
+ *
+ * Without this, cutting `\x1b[38;2;30;30;30m` mid-sequence leaks a literal
+ * `8;2;30;30;30m` tail into the row: `Bun.stringWidth` counts the `[38;2…m`
+ * characters as visible columns, so a width walk happily splits the escape.
+ */
+const CSI_RE = /\x1b\[[0-9;:?]*[A-Za-z]/g
+const SGR_RE = /^\x1b\[[0-9;:?]*m$/
+
+function* tokenizeAnsi(str: string): Generator<{ chunk: string; sgr: boolean }> {
+  CSI_RE.lastIndex = 0
+  let last = 0
+  for (let match = CSI_RE.exec(str); match !== null; match = CSI_RE.exec(str)) {
+    if (match.index > last) yield { chunk: str.slice(last, match.index), sgr: false }
+    if (SGR_RE.test(match[0])) yield { chunk: match[0], sgr: true }
+    last = match.index + match[0].length
+  }
+  if (last < str.length) yield { chunk: str.slice(last), sgr: false }
 }
 
 /** Longest grapheme prefix fitting `maxWidth` display columns (never splits a glyph). */
 function takeGraphemes(str: string, maxWidth: number): string {
   let out = ""
   let width = 0
-  for (const part of graphemes.segment(str)) {
-    const w = Bun.stringWidth(part.segment)
-    if (width + w > maxWidth) break
-    out += part.segment
-    width += w
+  let done = false
+  for (const token of tokenizeAnsi(str)) {
+    // Style codes ride along even past the cut — a trailing reset keeps the
+    // ellipsis from inheriting the cut text's color.
+    if (token.sgr) {
+      out += token.chunk
+      continue
+    }
+    if (done) continue
+    for (const part of graphemes.segment(token.chunk)) {
+      const w = Bun.stringWidth(part.segment)
+      if (width + w > maxWidth) {
+        done = true
+        break
+      }
+      out += part.segment
+      width += w
+    }
   }
-  return out
+  // The cut lands after whole graphemes, so trailing whitespace is just the
+  // word-break remainder — drop it (and only it) ahead of trailing resets.
+  // Only when a cut actually happened: a fitting string keeps its spaces.
+  if (!done) return out
+  return out.replace(/\s+((?:\x1b\[[0-9;:?]*m)*)$/, "$1")
 }
 
 /** Last graphemes fitting `maxWidth` display columns, in original order. */
 function takeGraphemesFromEnd(str: string, maxWidth: number): string {
-  const parts = [...graphemes.segment(str)].map((p) => p.segment)
+  const tokens = [...tokenizeAnsi(str)]
   let tail = ""
   let width = 0
-  for (let i = parts.length - 1; i >= 0; i--) {
-    const w = Bun.stringWidth(parts[i]!)
-    if (width + w > maxWidth) break
-    tail = parts[i]! + tail
-    width += w
+  for (let i = tokens.length - 1; i >= 0; i--) {
+    const token = tokens[i]!
+    if (token.sgr) {
+      tail = token.chunk + tail
+      continue
+    }
+    const parts = [...graphemes.segment(token.chunk)].map((p) => p.segment)
+    for (let j = parts.length - 1; j >= 0; j--) {
+      const w = Bun.stringWidth(parts[j]!)
+      if (width + w > maxWidth) return tail
+      tail = parts[j]! + tail
+      width += w
+    }
   }
   return tail
 }

@@ -25,6 +25,7 @@
 //   event arrives, the queue entry is removed and the footer falls back
 //   to the next pending request or to the prompt view.
 import type { Event, Part, PermissionRequest, QuestionRequest, ToolPart } from "@arcana/sdk/v2"
+import { Token } from "@arcana/core/util/token"
 import * as Locale from "@/util/locale"
 import { toolView } from "./tool"
 import type { FooterOutput, FooterPatch, FooterView, StreamCommit } from "./types"
@@ -140,15 +141,9 @@ function formatUsage(
   limit: number | undefined,
   cost: number | undefined,
 ): string | undefined {
-  // Canonical context size — mirrors engine `session/overflow.tokenCount`:
-  // prefer the provider-filled total, else sum the non-overlapping buckets.
-  const summed =
-    (tokens?.input ?? 0) +
-    (tokens?.output ?? 0) +
-    (tokens?.reasoning ?? 0) +
-    (tokens?.cache?.read ?? 0) +
-    (tokens?.cache?.write ?? 0)
-  const total = tokens?.total != null && Number.isFinite(tokens.total) ? tokens.total : summed
+  // Canonical context size — shared core rule (provider total when it covers
+  // the non-overlapping buckets, else the bucket sum).
+  const total = Token.contextCount(tokens ?? {})
 
   if (total <= 0) {
     if (typeof cost === "number" && cost > 0) {

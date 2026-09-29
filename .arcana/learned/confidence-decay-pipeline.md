@@ -53,3 +53,5 @@ Pressing `Tab` in [[ghost-preview-system]] toggles a filter showing only `[CONF:
 - [[ghost-preview-system]] — Confidence tags rendered in ghost plan
 - [[negative-memory-system]] — Anti-patterns are another form of learned distrust
 - [[transactional-engineering-skill]] — Skill-level confidence calibration guidance
+
+Related: [[epistemic-humility-ai-tools]]

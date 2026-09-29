@@ -54,6 +54,10 @@ import {
   normalizeTextDelta,
   type TextNormalizationReason,
 } from "./text-stream-normalizer"
+import { Token } from "@arcana/core/util/token"
+import { createTokenLedgerEntry, reconcileTokenEntries } from "@/kernel/token-ledger"
+import { tokenEntriesFromProviderUsage } from "@/kernel/token-provider"
+import { evaluateTokenEfficiency } from "@/performance/token-efficiency"
 
 const DOOM_LOOP_THRESHOLD = 3
 export type Result = "compact" | "stop" | "continue"
@@ -143,6 +147,8 @@ interface ProcessorContext extends Input {
   mlCorrection: { problems: string[]; hints: string[]; score: number } | undefined
   /** The textID that was evaluated by the ML quality gate. */
   mlEvaluatedTextID: string | undefined
+  /** Canonical estimate of the current request's prompt size (ledger reconciliation). */
+  promptEstimate: number | undefined
 }
 
 /**
@@ -163,6 +169,28 @@ export function shouldFlushPersist(
   threshold: number = PART_PERSIST_DELTA_THRESHOLD,
 ): boolean {
   return now - state.lastAt >= intervalMs || state.count >= threshold
+}
+
+/**
+ * Canonical preflight estimate of a request about to be sent. Used only for
+ * token-ledger reconciliation in the step-finish handler. Tool schemas are
+ * serialized best-effort: unsupported or circular schemas are skipped rather
+ * than breaking the turn.
+ */
+function estimateStreamInputTokens(input: LLM.StreamInput): number {
+  const toolText = Object.values(input.tools ?? {})
+    .map((tool) => {
+      const schema = (() => {
+        try {
+          return JSON.stringify((tool as { inputSchema?: unknown }).inputSchema ?? {})
+        } catch {
+          return ""
+        }
+      })()
+      return `${(tool as { description?: string }).description ?? ""}\n${schema}`
+    })
+    .join("\n")
+  return Token.estimate([input.system.join("\n"), JSON.stringify(input.messages), toolText].join("\n"))
 }
 
 type StreamEvent = LLMEvent
@@ -234,6 +262,7 @@ export const layer = Layer.effect(
         crossTurnLoopWarning: undefined,
         mlCorrection: undefined,
         mlEvaluatedTextID: undefined,
+        promptEstimate: undefined,
       }
       const mirrorAssistant = flags.experimentalEventSystem && !input.assistantMessage.summary
       let aborted = false
@@ -1054,6 +1083,82 @@ export const layer = Layer.effect(
               usage: value.usage ?? new Usage({}),
               metadata: value.providerMetadata,
             })
+            // Context-count drift guard: a provider total below the component
+            // sum would silently under-read context pressure (see
+            // Token.contextCount). Surface it instead of guessing.
+            const bucketSum = Token.contextSum(usage.tokens)
+            if (
+              usage.tokens.total != null &&
+              Number.isFinite(usage.tokens.total) &&
+              usage.tokens.total < bucketSum
+            ) {
+              yield* Effect.logWarning("provider token total below component sum", {
+                sessionID: ctx.sessionID,
+                messageID: ctx.assistantMessage.id,
+                providerID: ctx.model.providerID,
+                modelID: ctx.model.id,
+                step: value.index,
+                total: usage.tokens.total,
+                bucketSum,
+              })
+            }
+            // Token-ledger reconciliation (Stage A): estimate vs actual per
+            // model call, logged for drift measurement. Durable surfacing is a
+            // later stage; the kernel types already back the cockpit console.
+            if (ctx.promptEstimate !== undefined) {
+              const actionID = `${ctx.assistantMessage.id}:${value.index}`
+              const actualEntries = tokenEntriesFromProviderUsage({
+                action_id: actionID,
+                run_id: ctx.sessionID,
+                usage: {
+                  provider: ctx.model.providerID,
+                  model: ctx.model.id,
+                  input_uncached: usage.tokens.input,
+                  input_cache_read: usage.tokens.cache?.read,
+                  input_cache_write: usage.tokens.cache?.write,
+                  output_visible: usage.tokens.output,
+                  output_reasoning: usage.tokens.reasoning,
+                },
+              })
+              const reconciliation = reconcileTokenEntries(actionID, [
+                createTokenLedgerEntry({
+                  action_id: actionID,
+                  run_id: ctx.sessionID,
+                  provider: ctx.model.providerID,
+                  model: ctx.model.id,
+                  phase: "estimate",
+                  token_class: "input_uncached",
+                  estimated_tokens: ctx.promptEstimate,
+                }),
+                ...actualEntries,
+              ])
+              const efficiency = evaluateTokenEfficiency({
+                estimated_tokens: ctx.promptEstimate,
+                actual_tokens: reconciliation.actual_total,
+                cached_read_tokens: usage.tokens.cache?.read,
+                cached_write_tokens: usage.tokens.cache?.write,
+                uncached_input_tokens: usage.tokens.input,
+                output_tokens: usage.tokens.output,
+                reasoning_tokens: usage.tokens.reasoning,
+              })
+              const context = {
+                sessionID: ctx.sessionID,
+                messageID: ctx.assistantMessage.id,
+                providerID: ctx.model.providerID,
+                modelID: ctx.model.id,
+                step: value.index,
+                estimated_total: reconciliation.estimated_total,
+                actual_total: reconciliation.actual_total,
+                delta: reconciliation.delta,
+                status: reconciliation.status,
+                notes: efficiency.notes,
+              }
+              if (efficiency.notes.includes("estimate_actual_drift")) {
+                yield* Effect.logWarning("arcana.token.reconcile drift", context)
+              } else {
+                yield* Effect.logDebug("arcana.token.reconcile", context)
+              }
+            }
             // Degenerate empty completion: free-pool upstreams occasionally
             // end a post-tool follow-up call with zero content and an
             // unparseable finish reason ("unknown"). Ending the turn there
@@ -1688,6 +1793,7 @@ export const layer = Layer.effect(
                     system: [...streamInput.system, ctx.mlPreparation.promptAddendum],
                   }
                 : streamInput
+            ctx.promptEstimate = estimateStreamInputTokens(effectiveStreamInput)
             const stream = llm.stream(effectiveStreamInput)
             // openai-compatible >= 2.0.70 reports a stream that ends without a
             // finish reason as an ERROR instead of a step-finish with an

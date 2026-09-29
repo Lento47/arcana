@@ -46,3 +46,5 @@ source: session-hardening-15-failure-modes
 
 - [[run-budgets]] — Budget-level protection against runaway sessions
 - [[ghost-preview-system]] — Plan state machine handles mid-run interruption
+
+Related: [[wait-for-quiet-refactor]] [[wait-for-quiet-before-splitting]] [[wait-for-quiet-before-split]]

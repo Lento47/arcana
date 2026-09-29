@@ -1,10 +1,11 @@
 import { Show, createMemo, createSignal, useContext, type JSX } from "solid-js"
-import type { MouseEvent } from "@opentui/core"
-import { ThemeContext } from "../../context/theme"
+import type { MouseEvent, RGBA } from "@opentui/core"
+import { ThemeContext, tint } from "../../context/theme"
 import { fallbackTheme } from "../../theme"
 import type { SpineKind, SpineLayout, SpineReceipt } from "./spine-types"
 import { spineTone } from "./spine-types"
 import { displayWidth, truncate } from "../../util/locale"
+import { createFlare } from "../../util/motion"
 import { toolCategoryLabel, toolChipModel, type ToolChipLifecycle } from "./spine-chrome"
 
 /**
@@ -58,6 +59,14 @@ export function SpineToolChip(props: {
   const summaryText = createMemo(() => model().summary)
   const hasRichSummary = createMemo(() => props.children !== undefined)
   const outcome = createMemo(() => model().outcome ?? "")
+  // Settle flare: a brief lift when a live row lands. Rows that mount already
+  // settled (scrollback, restore) never flare — createFlare only pulses on an
+  // edge it observed while mounted.
+  const settleFlare = createFlare(() => model().lifecycle !== "running" && model().lifecycle !== "queued")
+  const flareInk = (base: RGBA) => {
+    const intensity = settleFlare()
+    return intensity > 0 ? tint(base, theme.text, intensity * 0.5) : base
+  }
   const labelText = createMemo(() => {
     const max = layout() === "minimal" ? 8 : layout() === "narrow" ? 10 : 16
     return truncate(model().label, max)
@@ -77,18 +86,21 @@ export function SpineToolChip(props: {
   const showElapsed = createMemo(() => layout() !== "minimal" && !!elapsed())
   const showDisclosure = createMemo(() => !!disclosure())
   const statusColor = createMemo(() => {
-    switch (model().lifecycle) {
-      case "failure":
-        return theme.spineFail
-      case "interrupted":
-        return theme.warning
-      case "success":
-        return theme.spineOk
-      case "running":
-        return theme.spineRun
-      default:
-        return theme.spineContext
-    }
+    const base = (() => {
+      switch (model().lifecycle) {
+        case "failure":
+          return theme.spineFail
+        case "interrupted":
+          return theme.warning
+        case "success":
+          return theme.spineOk
+        case "running":
+          return theme.spineRun
+        default:
+          return theme.spineContext
+      }
+    })()
+    return flareInk(base)
   })
   const categoryColor = createMemo(() => {
     const category = toolCategoryLabel(String(props.kind))

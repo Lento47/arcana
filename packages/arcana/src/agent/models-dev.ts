@@ -17,6 +17,10 @@ export type ModelsDevModel = {
   id?: string
   name?: string
   family?: string
+  limit?: {
+    context?: number
+    output?: number
+  }
 }
 
 export type ModelsDevProvider = {
@@ -78,3 +82,12 @@ export async function fetchModelsDev(): Promise<Record<string, ModelsDevProvider
 }
 
 export function _clearCache(): void { cache = null }
+
+/**
+ * Best-effort synchronous read of the shared models.dev cache (no network).
+ * Used by call sites that need catalog metadata on a hot path — e.g. the ML
+ * runtime resolving a model's real context window before token allocation.
+ */
+export function readModelsDevCache(): Record<string, ModelsDevProvider> | null {
+  return readCache()
+}

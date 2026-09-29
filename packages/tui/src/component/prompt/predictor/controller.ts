@@ -5,6 +5,7 @@ import {
   nextPredictionChunk,
   postProcessPrediction,
   shouldPredict,
+  type PredictorContextMessage,
   type PredictorSettings,
 } from "./predict"
 import { PredictorUnavailableError, requestPrediction, resolveCached } from "./client"
@@ -14,12 +15,24 @@ export interface PredictorInputState {
   cursorOffset: number
   autocompleteVisible: boolean
   busy?: boolean
+  /**
+   * Recent turns, resolved lazily so keystrokes never rebuild context for a
+   * request that the debounce may never send.
+   */
+  context?: () => readonly PredictorContextMessage[]
 }
 
 interface StoredPrediction {
   prefix: string
   prediction: string
 }
+
+/**
+ * Prefix → prediction memo. Pausing, typing a character and deleting it again
+ * must show the same ghost, not re-roll a different continuation for the same
+ * draft (which reads as the predictor being unstable).
+ */
+const CACHE_LIMIT = 8
 
 /**
  * Debounced, abortable predictor pipeline. Framework-free; the owner wires it
@@ -31,13 +44,18 @@ export class PredictorController {
   private abort: AbortController | undefined
   private generation = 0
   private dead = false
+  private cache = new Map<string, string>()
 
   /** Called after every settle (result stored or failed) and every invalidation. */
   onUpdate: () => void = () => {}
   /** Called once when the predictor gives up for the session. */
   onDisabled: (reason: string) => void = () => {}
 
-  constructor(private settings: () => PredictorSettings | null) {}
+  constructor(
+    private settings: () => PredictorSettings | null,
+    /** Injectable for tests; production always uses the real client. */
+    private request: typeof requestPrediction = requestPrediction,
+  ) {}
 
   /** Valid prediction for the exact text before the cursor, or null. */
   peek(textBeforeCursor: string): string | null {
@@ -74,26 +92,50 @@ export class PredictorController {
       return
     }
 
+    const cached = this.cache.get(prefix)
+    if (cached) {
+      this.stored = { prefix, prediction: cached }
+      this.onUpdate()
+      return
+    }
+
     const gen = this.generation
     this.timer = setTimeout(() => {
-      void this.run(gen, settings, prefix)
+      void this.run(gen, settings, prefix, input.context)
     }, settings.debounce_ms ?? PREDICTOR_DEFAULT_DEBOUNCE_MS)
   }
 
-  private async run(gen: number, settings: PredictorSettings, prefix: string) {
+  private remember(prefix: string, prediction: string) {
+    this.cache.set(prefix, prediction)
+    while (this.cache.size > CACHE_LIMIT) {
+      const oldest = this.cache.keys().next().value
+      if (oldest === undefined) break
+      this.cache.delete(oldest)
+    }
+  }
+
+  private async run(
+    gen: number,
+    settings: PredictorSettings,
+    prefix: string,
+    context?: () => readonly PredictorContextMessage[],
+  ) {
     try {
       const endpoint = await resolveCached(settings)
       const controller = new AbortController()
       this.abort = controller
-      const raw = await requestPrediction(
+      const raw = await this.request(
         endpoint,
         prefix,
         settings.max_tokens ?? PREDICTOR_DEFAULT_MAX_TOKENS,
         controller.signal,
+        context?.() ?? [],
       )
       if (gen !== this.generation) return
       const prediction = postProcessPrediction(raw, prefix)
-      if (prediction) this.stored = { prefix, prediction }
+      if (!prediction) return
+      this.stored = { prefix, prediction }
+      this.remember(prefix, prediction)
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") return
       this.dead = true
