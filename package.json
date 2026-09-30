@@ -109,9 +109,9 @@
   "devDependencies": {
     "@tsconfig/bun": "catalog:",
     "@types/node": "catalog:",
-    "oxlint": "1.60.0",
-    "prettier": "3.6.2",
-    "turbo": "2.10.11",
+    "oxlint": "1.83.0",
+    "prettier": "3.9.6",
+    "turbo": "2.10.13",
     "typescript": "7.0.2"
   },
   "license": "MIT",
@@ -120,7 +120,7 @@
     "printWidth": 120
   },
   "dependencies": {
-    "@noble/curves": "2.2.0",
-    "better-sqlite3": "13.0.2"
+    "@noble/curves": "2.4.0",
+    "better-sqlite3": "13.0.3"
   }
 }
